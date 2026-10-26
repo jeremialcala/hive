@@ -11,6 +11,7 @@ No necesita `config.env` ni servicios: usa los ajustes de prueba de `tests/conft
 """
 import importlib
 import pathlib
+import re
 import runpy
 import sys
 
@@ -20,6 +21,9 @@ RAIZ = pathlib.Path(__file__).resolve().parents[2]
 CONTRATOS = RAIZ / "docs" / "02-design" / "contracts"
 # El módulo de cada servicio y el fichero de su contrato.
 SERVICIOS = {"app": CONTRATOS / "openapi.yaml", "webhook": CONTRATOS / "openapi-webhook.yaml"}
+# Dónde atiende cada servicio (ADR-0024). Va en el contrato, que es lo que se publica en hive.higerotech.com/docs
+# (ADR-0026), y no en la aplicación: allí haría que la documentación de desarrollo llamara a producción.
+PUBLICO = {"app": "https://hive-api.higerotech.com", "webhook": "https://hive-webhook.higerotech.com"}
 
 # Los DTO generan sus valores por defecto y sus ejemplos con Faker y random al importarse, así que cambian en cada
 # arranque. Se quitan del contrato para que este sea estable y comparable.
@@ -47,7 +51,21 @@ def normalizar(nodo, en_propiedades=False):
     return nodo
 
 
-def volcar(spec) -> str:
+def version() -> str:
+    """
+        La versión del gateway según el CHANGELOG: la última publicada y, si `[Unreleased]` ya tiene cambios,
+        `+develop` (metadatos de compilación de SemVer). La de la aplicación es la de los ajustes, que en las
+        pruebas no dice nada.
+    """
+    texto = (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8")
+    pendiente, publicada = re.search(r"## \[Unreleased\](.*?)## \[(\d+\.\d+\.\d+)\]", texto, re.S).groups()
+    return publicada + ("+develop" if re.search(r"^- ", pendiente, re.M) else "")
+
+
+def volcar(spec, publico: str | None = None) -> str:
+    spec = {**spec, "info": {**spec["info"], "version": version()}}
+    if publico:
+        spec = {**spec, "servers": [{"url": publico}]}
     return CABECERA + yaml.safe_dump(normalizar(spec), sort_keys=True, allow_unicode=True, width=110)
 
 
@@ -58,7 +76,8 @@ def generar() -> dict:
     # Y la raíz, de donde se importa `shared` (ADR-0023).
     sys.path.insert(1, str(RAIZ))
     runpy.run_path(str(RAIZ / "tests" / "conftest.py"))
-    return {destino: volcar(importlib.import_module(modulo).app.openapi()) for modulo, destino in SERVICIOS.items()}
+    return {destino: volcar(importlib.import_module(modulo).app.openapi(), PUBLICO[modulo])
+            for modulo, destino in SERVICIOS.items()}
 
 
 if __name__ == "__main__":

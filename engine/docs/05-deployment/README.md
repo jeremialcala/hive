@@ -14,13 +14,15 @@ Jeremi del 2026-10-20). El Gate 4, con el pipeline, sus gates y el SBOM, queda p
 
 | Proyecto compose | Dónde | Contenedores |
 |---|---|---|
-| `hive-gateway` | `/srv/apps/hive-gateway` (`deploy/docker-compose.yml` de la raíz) | `hive-webhook`, `hive-api`, `hive-ingest` y, con el perfil `tunel`, `hive-tunel` |
+| `hive-gateway` | `/srv/apps/hive-gateway` (`deploy/docker-compose.yml` de la raíz) | `hive-webhook`, `hive-api`, `hive-ingest`, `hive-docs` y, con el perfil `tunel`, `hive-tunel` |
 | `hive-engine` | `/srv/apps/hive-engine` (`engine/deploy/docker-compose.yml`) | `hive-classifier`, `hive-coordinator`, `hive-responder` y `hive-notifier` |
 
 `hive-tunel` publica, desde Cloudflare (ADR-0024 del gateway):
 
 - `https://hive-webhook.higerotech.com` hacia `http://hive-webhook:5002`;
-- `https://hive-api.higerotech.com` hacia `http://hive-api:5002`.
+- `https://hive-api.higerotech.com` hacia `http://hive-api:5002`;
+- `https://hive.higerotech.com` hacia `http://hive-docs:8080`: la documentación de la API, en `/docs` (ADR-0026 del
+  gateway).
 
 Bifröst, Andvari y Saga los ponen sus repositorios. Los workers llegan a ellos y a la API del gateway por las redes
 externas `bifrost`, `andvari` y `yggdrasil_saga`.
@@ -52,6 +54,7 @@ tiene para su cliente.
    git -c core.autocrlf=false archive develop | ssh midgard 'rm -rf ~/hive-build && mkdir ~/hive-build && tar -x -C ~/hive-build'
    docker build -t ghcr.io/jeremialcala/hive-gateway:<etiqueta> ~/hive-build
    docker build -f ~/hive-build/engine/Dockerfile -t ghcr.io/jeremialcala/hive-engine:<etiqueta> ~/hive-build
+   docker build -f ~/hive-build/deploy/docs/Dockerfile -t ghcr.io/jeremialcala/hive-docs:<etiqueta> ~/hive-build
    ```
 2. **Andvari**, con un token raíz temporal y en una terminal propia: el `secret_id` del coordinador y del
    notificador, que firman con su clave para cada cliente. Pide la clave de recuperación sin eco:
@@ -114,8 +117,8 @@ tiene para su cliente.
    - en Meta, la URL del webhook es `https://hive-webhook.higerotech.com/chat/{bot_id}`, con su `verifyToken`, y se
      suscribe a `messages`.
 8. **El vigía** (`deploy/vigia/` de la raíz): Docker marca `unhealthy` un contenedor cuyo healthcheck falla, pero
-   no lo reinicia. `hive-vigia.timer` mira cada minuto, en el segundo 30, el gateway, el webhook, la ingesta y los
-   cuatro workers. Reinicia el que esté `unhealthy` y avisa por ntfy, por el mismo canal que los otros vigías de
+   no lo reinicia. `hive-vigia.timer` mira cada minuto, en el segundo 30, el gateway, el webhook, la ingesta, la
+   documentación y los cuatro workers. Reinicia el que esté `unhealthy` y avisa por ntfy, por el mismo canal que los otros vigías de
    midgard. Si uno sigue `unhealthy` tras 3 reinicios en una hora, deja de reiniciarlo y avisa con urgencia.
 
    ```bash

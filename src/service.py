@@ -16,7 +16,7 @@ from shared import bus
 from shared import tracing
 from shared.bus.nats_jetstream import NatsPublisher
 from classes import ResponseData, Settings
-from constants import APPLICATION_JSON, CONTACT, CONTENT_TYPE, PROCESSING_TIME, TERMS
+from constants import APPLICATION_JSON, CONTENT_TYPE, PROCESSING_TIME
 from crypto.key_service import OpenBaoKeyService
 from repository import data_keys
 from utils import BodySizeLimit, configure_logging, describe
@@ -143,8 +143,6 @@ def build(**metadata) -> FastAPI:
         on_startup=[configure_logging],
         on_shutdown=[bus.close, tracing.shutdown],
         version=settings.version,
-        terms_of_service=TERMS,
-        contact=CONTACT,
         license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0.html"},
         **metadata,
     )

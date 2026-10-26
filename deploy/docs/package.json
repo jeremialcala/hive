@@ -1,0 +1,13 @@
+{
+  "name": "hive-docs",
+  "private": true,
+  "description": "The static page of the management API, published at https://hive.higerotech.com/docs (ADR-0026)",
+  "type": "module",
+  "devDependencies": {
+    "@redocly/cli": "2.62.1",
+    "redoc": "2.5.4"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
+  }
+}

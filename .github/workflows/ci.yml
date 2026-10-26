@@ -100,3 +100,24 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # The page of the management API's contract (ADR-0026): it builds, it serves the page and nothing else, and its
+  # Content-Security-Policy lets in nothing from outside.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build -f deploy/docs/Dockerfile -t hive-docs:ci .
+
+      - name: Serve the page as the server does
+        run: |
+          docker run -d --name hive-docs --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges:true -p 127.0.0.1:8080:8080 hive-docs:ci
+          for i in $(seq 20); do curl -fsS -o /dev/null http://127.0.0.1:8080/health && break; sleep 1; done
+          curl -fsS -D headers.txt -o page.html http://127.0.0.1:8080/docs/
+          grep -q "<title>Hive management API</title>" page.html
+          grep -qi "^content-security-policy: default-src 'none'; script-src 'self' 'sha256-" headers.txt
+          curl -fsS -o /dev/null http://127.0.0.1:8080/docs/redoc.standalone.js
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/openapi.json)" = 404

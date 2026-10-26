@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ["TITLE", "SUMMARY", "TERMS", "DESCRIPTION", "WEBHOOK_DESCRIPTION", "TAGS_METADATA", "CONTACT"]
+__all__ = ["TITLE", "SUMMARY", "DESCRIPTION", "WEBHOOK_DESCRIPTION", "TAGS_METADATA"]
 
-TITLE = "Facebook Messenger Webhook Manager"
+TITLE = "Hive management API"
 
-SUMMARY = "Controls the Facebook Messenger Lifecycle"
-
-TERMS = "https://web-ones.com/terms"
+SUMMARY = "The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts"
 
 DESCRIPTION = """
-The management API of the gateway between Meta (Messenger and WhatsApp) and the response engine of each chatbot.
-Each client manages its own chatbots through it and reaches nothing of anybody else's. What Meta calls is another
-service, the webhook, which runs apart from this one.
+The management API of Hive, the gateway between Meta (Messenger and WhatsApp) and the response engine of each
+chatbot. Each client manages its own chatbots through it and reaches nothing of anybody else's. What Meta calls is
+another service, the webhook, which runs apart from this one.
 
-Every route but the health check asks for a token in `Authorization: Bearer`: a JWT signed by the caller inside a
-JWE encrypted to the gateway, valid once and for 60 seconds at most.
+### Getting a token
+
+Every route but the health check and /oauth/token asks for an access token in `Authorization: Bearer`.
+
+* /oauth/token: @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who it is
+  with an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's `kid`), with
+  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted to a public key of
+  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for 60 seconds at most.
+* The access token lasts 10 minutes and is good for every request in them.
 
 ### A client and its chatbots
 
@@ -23,7 +28,7 @@ JWE encrypted to the gateway, valid once and for 60 seconds at most.
 * /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials are loaded.
 * /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.
 * /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=` gives the last one of it.
-* /chat/{bot_id}/rules: @POST adds rules, @GET builds the system prompt from them.
+* /chat/{bot_id}/rules: @POST adds rules, @GET the persona of the chatbot and its rules, as data.
 * /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.
 * /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions for the model.
 * /chat/{bot_id}/contacts: @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id} exports
@@ -69,12 +74,17 @@ TAGS_METADATA = [
         "description": "The registry of clients and of the public keys they sign their tokens with."
     },
     {
+        "name": "OAuth",
+        "description": "The access token every other route asks for (ADR-0025)."
+    },
+    {
         "name": "Bot",
-        "description": "This entry will manage the chatbot lifecycle, ",
+        "description": "Creating a chatbot and deleting it with everything stored for it.",
     },
     {
         "name": "Chat",
-        "description": "This is conversation management and communication control"
+        "description": "What a chatbot is made of: its Meta credentials, numbers and rules, and what the response "
+                       "engine reads of it."
     },
     {
         "name": "Contacts",
@@ -87,10 +97,3 @@ TAGS_METADATA = [
                        "stored per chatbot and consumed by the downstream worker."
     }
 ]
-
-CONTACT = {
-      "name": "Jeremi Alcala",
-      "url": "https://jeremi.web-ones.com",
-      "email": "jeremialcala@gmail.com",
-    }
-
