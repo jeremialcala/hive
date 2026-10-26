@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-    The service Meta calls: the verification of each chatbot's webhook and its notifications. It is the only one
-    published on the internet, and it runs apart from the management API (app.py): it holds neither the gateway's
-    key pair nor the register of erasures, and it serves no route but these.
+    The service Meta calls: the verification of each chatbot's webhook and its notifications. It runs apart from
+    the management API (app.py), though both are published by the tunnel (ADR-0024): it holds neither the gateway's
+    keys nor the register of erasures, and it serves no route but these.
 
         uvicorn webhook:app
 """

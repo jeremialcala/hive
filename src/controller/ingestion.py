@@ -7,7 +7,7 @@
         1. it is skipped if it is already in the history: Meta sent it again;
         2. the contact is found, or stored, as before, asking the Graph API in Messenger;
         3. the message identified is published on its conversation's partition of MENSAJES, and the envelope of
-           version 1 goes to the queue `llm` of Hermod, for the response engine that still reads it;
+           version 1 goes to the legacy queue `llm` of Hermod, until Hermod is retired;
         4. the message is stored in the history.
 
     Publishing goes before storing: if the worker stops in between, the event is delivered again and the message

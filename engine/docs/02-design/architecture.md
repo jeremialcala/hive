@@ -10,8 +10,9 @@
 * **ADRs relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007
 
 > **Describe el servicio de antes.** Desde el E3b (2026-10-20) el código de RabbitMQ, NeMo Guardrails y Ollama ya no
-> existe: el motor son workers sobre Bifröst ([ADR-0008](adr/ADR-0008-seis-workers-sobre-bifrost.md)) que usan Claude
-> ([ADR-0009](adr/ADR-0009-claude-como-llm.md)). Este documento se rehace con ellas antes de cerrar el Gate 1 del
+> existe: el motor son workers sobre Bifröst ([ADR-0008](adr/ADR-0008-seis-workers-sobre-bifrost.md)) que usan un
+> LLM propio con llama.cpp ([ADR-0010](adr/ADR-0010-llm-propio-con-llama-cpp.md), que sustituye a la ADR-0009 de
+> Claude). Este documento se rehace con ellas antes de cerrar el Gate 1 del
 > motor; mientras tanto, lo construido está en la sección «Construido» de cada ADR.
 
 Documento de diseño reconstruido a partir del código de `develop` (4c7bb9e). Describe lo que

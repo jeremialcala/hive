@@ -227,7 +227,7 @@ services:
       - /srv/infra/andvari/tls/ca.crt:/run/gateway/andvari-ca.crt:ro
 
 networks:
-  # Only the tunnel and the three services it publishes.
+  # Only the tunnel and the services it publishes: the webhook, the management API and the docs page.
   publico:
   hermod:
     external: true
