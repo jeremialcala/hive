@@ -8,6 +8,14 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **[La matriz rol × acción](docs/02-design/matriz-rol-accion.md) (draft)**, a partir del borrador de Jeremi del
+  2026-10-26: qué puede cada rol sobre cada recurso de `hive-api`.
+  - Los roles son `operador`, `cliente-admin`, `cliente-analista` y el `motor`, worker por worker.
+  - Separa lo que el código ya autoriza de lo que se propone. Lo construido sale de `require_operator`,
+    `require_service`, `WORKER_ROUTES` y el repositorio del cliente.
+  - Lo nuevo del borrador entra como propuesto, sin requisito en el PRD: usuarios humanos del cliente, sesión con un
+    IdP, guardrails, versiones y procesos MCP.
+  - Deja siete decisiones pendientes (D1–D7). La primera es si Hive tiene usuarios humanos.
 - **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
   (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
   Dark Ash / Hive Amber con Meta Blue y WhatsApp Green solo para canales, Geist + JetBrains Mono servidas desde el
