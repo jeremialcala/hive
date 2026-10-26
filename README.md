@@ -508,4 +508,4 @@ La política de reporte de vulnerabilidades está en [SECURITY.md](SECURITY.md).
 
 Publicado bajo la **Apache License 2.0**. Ver [LICENSE](LICENSE).
 
-Mantenedor: **Jeremi Alcala** — <jeremialcala@gmail.com> · https://jeremi.web-ones.com
+Mantenedor: **Jeremi Alcala** — [github.com/jeremialcala](https://github.com/jeremialcala)

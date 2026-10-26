@@ -247,6 +247,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **El README ya no lleva el correo ni la web personal de Jeremi** en la sección Licencia (decisión de Jeremi del
+  2026-10-26): el mantenedor se nombra con su perfil de GitHub, como en el README del motor.
 - **El README, al día con lo que hay en `develop`.** Contaba el gateway de antes de Bifröst y de la ADR-0025. Ahora
   cuenta:
   - el camino de un mensaje por `WEBHOOK`, `hive-ingest`, `MENSAJES` y `RESPUESTAS`, y la cola `llm` como heredada;
