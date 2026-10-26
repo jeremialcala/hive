@@ -142,6 +142,7 @@ su propio [README](engine/README.md).
 ├── docs/                   # Documentación AI-DLC, una carpeta por fase (00-project ... 06-monitoring)
 ├── .ai-dlc/                # Checklists de los gates, plantillas, mapeo OWASP y scripts (contrato OpenAPI)
 ├── deploy/                 # El compose del servidor, la página de documentación (docs/) y el vigía (vigia/)
+├── assets/                 # El design system exportado (design-system/) y el logotipo (logos/) — ADR-0027
 ├── .github/                # Workflows (ci, build, engine, build-engine, seguridad, guardia GitFlow) y CODEOWNERS
 │
 ├── Dockerfile              # Imagen python:3.12-slim, usuario sin privilegios, uvicorn en :5002
