@@ -27,11 +27,10 @@ from fastapi.testclient import TestClient
 import app as app_module
 import webhook as webhook_module
 import controller.ingestion as ingestion
-from shared.auth import gateway_keys
 from shared.auth.client import new_signing_key, public_part
 from auth.client_keys import public_signing_key
 from classes import Client, Contact
-from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, bearer, request_token, signed_assertion
+from conftest import GATEWAY_AUDIENCE, bearer, request_token, signed_assertion
 from enums import Role, Status, Worker
 from repository import TenantRepository, data_keys, find_signer
 
