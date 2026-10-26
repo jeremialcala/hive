@@ -8,6 +8,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
+  (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
+  Dark Ash / Hive Amber con Meta Blue y WhatsApp Green solo para canales, Geist + JetBrains Mono servidas desde el
+  propio origen, cuatro patrones obligatorios (code-first, confirmación escribiendo el nombre o el UUID, cargas con
+  micro-copy técnico, slide-overs) y el onboarding de un bot en cuatro pasos.
+  - El design system vive en el artifact "Hive" de Claude; el repo guarda su exportación versionada en
+    `assets/design-system/` (tokens, `tokens.css`, `bundle.css`, `bundle.js`, tipos, brand book y superficies) y el
+    registro con el historial y el procedimiento de actualización en `docs/02-design/design-system.md`.
+  - El logotipo, en `assets/logos/`: isotipo hexagonal isométrico, wordmark geométrico, lockups horizontal y
+    vertical, monocromos, favicon e iconos de la PWA, con su guía de uso.
 - **[ADR-0026](docs/00-project/adr/0026-documentacion-publica-de-la-api.md) (aceptada): la documentación de la API de
   gestión, en `https://hive.higerotech.com/docs`** (decisiones de Jeremi del 2026-10-26).
   - Una página de Redoc generada con el contrato versionado (`deploy/docs/`), en un contenedor propio,
