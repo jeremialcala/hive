@@ -201,6 +201,7 @@ def test_the_ingestion_goes_on_with_the_trace_of_the_event_and_hands_it_to_the_e
     ("gateway.bot_id", "6f0c2c1e-0000-4000-8000-000000000001"),
     ("gateway.messages", 3),
     ("gateway.channel", "whatsapp"),
+    ("gateway.outcome", "sent"),
     ("http.route", "/chat/{bot_id}/contacts/{contact_id}/turns"),
     ("http.route", "/health"),
     ("messaging.destination.name", "WEBHOOK"),

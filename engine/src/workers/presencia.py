@@ -40,7 +40,8 @@ VIGENCIA = 20
 
 async def _marcar(tokens: TokensDelBot, canal: CanalDeMeta, client_id, bot_id, cuenta: str, message_id: str,
                   escribiendo: bool) -> str:
-    """Lo pide a Meta, con un token nuevo si rechaza el que había. Devuelve cómo fue, para la traza y el log."""
+    """Lo pide a Meta, con un token nuevo si rechaza el que había. Devuelve cómo fue, con un valor de
+    `gateway.outcome` para la traza: «sent» o «failed»."""
     try:
         token = await tokens.token_de_whatsapp(client_id, bot_id)
         try:
@@ -52,8 +53,8 @@ async def _marcar(tokens: TokensDelBot, canal: CanalDeMeta, client_id, bot_id, c
     except (NoEncontrado, FuenteNoDisponible, EnvioFallido, EnvioRechazado) as e:
         que = "«escribiendo…»" if escribiendo else "el recibo de lectura"
         log.warning("Sin %s para un mensaje del bot %s: %s", que, bot_id, e)
-        return "fallido"
-    return "hecho"
+        return "failed"
+    return "sent"
 
 
 class Leido:
