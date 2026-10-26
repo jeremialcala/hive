@@ -208,3 +208,16 @@ def test_si_meta_falla_el_mensaje_se_confirma_igual():
 
 def test_un_sobre_que_no_lo_es_se_descarta():
     assert escribiendo(del_motor({"no": "es un sobre"}))[0] is Resultado.DESCARTADO
+
+
+# --- La traza --------------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("marcar", [lambda meta: leido(de_mensajes(identificado()), meta=meta),
+                                    lambda meta: escribiendo(del_motor(clasificado()), meta=meta)],
+                         ids=["recibo de lectura", "escribiendo"])
+@pytest.mark.parametrize("meta", [Meta, lambda: Meta(EnvioFallido("Meta 131000"))], ids=["hecho", "fallido"])
+def test_como_fue_llega_a_la_traza(marcar, meta, caplog):
+    """La traza solo admite ciertos valores de `gateway.outcome`: uno que no esté entre ellos se queda fuera."""
+    marcar(meta())
+
+    assert "An attribute was kept out of a span" not in caplog.text

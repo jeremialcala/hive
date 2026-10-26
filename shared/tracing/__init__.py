@@ -40,7 +40,8 @@ NUMBERS = {"gateway.messages", "http.response.status_code"}
 WORDS = {
     "gateway.channel": {"whatsapp", "messenger", "instagram"},
     "gateway.entity": {"contact", "bot", "client"},
-    "gateway.outcome": {"acknowledged", "dropped", "waiting", "ingested", "seen", "failed", "stored"},
+    "gateway.outcome": {"acknowledged", "dropped", "waiting", "ingested", "seen", "failed", "stored",
+                        "sent"},
     "messaging.system": {"nats"},
     "http.request.method": {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "OTHER"},
 }

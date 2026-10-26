@@ -195,6 +195,9 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
   `jwcrypto` y `cryptography` se quedan: los usa `shared.auth`. `PyYAML` pasa a las dependencias de desarrollo.
 
 ### Corregido
+- **Las trazas del leído y de «escribiendo…» no decían cómo fue** (visto en midgard el 2026-10-26). El notificador
+  ponía en `gateway.outcome` «hecho» o «fallido», que la traza no admite: el atributo se quedaba fuera y el log
+  avisaba dos veces por mensaje. Ahora son «sent» y «failed», y `shared/tracing` admite «sent».
 - **La primera consulta al LLM tras horas sin uso tardaba hasta 16 s** (ADR-0010, medido el 2026-10-21). La
   generación iba a su velocidad: lo lento era traer de vuelta la memoria de la VM de Docker Desktop. llama-server
   tenía 7 GB propios en la VM de 12, 1,4 GB en swap, casi todo su caché de prompts en RAM (hasta 8 GiB por defecto).
