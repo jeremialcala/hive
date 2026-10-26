@@ -7,9 +7,10 @@
 > este README se ejecutan desde `engine/`.
 
 Es la mitad de **Hive** que responde ([ADR-0024](../docs/00-project/adr/0024-el-producto-se-llama-hive.md)): contesta
-los mensajes que las personas envían a los chatbots por WhatsApp, Messenger e Instagram. Son seis workers de
-una misma imagen, uno por contenedor, que se pasan cada mensaje por Bifröst, el NATS JetStream de midgard
-([ADR-0008](docs/02-design/adr/ADR-0008-seis-workers-sobre-bifrost.md)). El clasificador y el de respuesta usan
+los mensajes que las personas envían a los chatbots. Hoy responde por WhatsApp; Messenger e Instagram llegan en el
+E10. Son workers de una misma imagen, uno por contenedor, que se pasan cada mensaje por Bifröst, el NATS JetStream de
+midgard ([ADR-0008](docs/02-design/adr/ADR-0008-seis-workers-sobre-bifrost.md)). El diseño tiene seis, y hoy
+corren cuatro. El clasificador y el de respuesta usan
 un modelo propio, Gemma 4 26B A4B, servido por llama.cpp en una RTX 3090 de la LAN
 ([ADR-0010](docs/02-design/adr/ADR-0010-llm-propio-con-llama-cpp.md)): el texto no sale de la red de Hive.
 
@@ -62,6 +63,11 @@ coordinador.
 gateway, y publica lo enviado para el historial del gateway. Antes de enviar mira el bucket `enviados` de Bifröst, para
 no enviar dos veces la misma respuesta. Messenger e Instagram llegan en el E10.
 
+También es el que se ocupa de lo que la persona ve mientras espera (`src/workers/presencia.py`), con dos consumidores
+más: `notifier-leido`, sobre `MENSAJES`, pone en azul los ticks del mensaje en cuanto llega, y `notifier-escribiendo`,
+sobre `motor.clasificado`, muestra «escribiendo…» cuando el mensaje sigue. Las dos cosas son un extra: no se
+reintentan y nada espera por ellas.
+
 El sobre que se pasan los workers es el contrato interno del motor,
 [`asyncapi-motor.yaml`](docs/02-design/contracts/asyncapi-motor.yaml).
 
@@ -73,7 +79,8 @@ src/
 │   ├── models/sobre.py              # el sobre de los workers, versión 1
 │   └── ports/                       # ClasificadorDeEntrada, FuenteDelBot, Redactor, y los del envío
 ├── infrastructure/
-│   ├── llm/                         # LlmClasificador y LlmRedactor: llama.cpp por su API compatible con la de OpenAI
+│   ├── llm/                         # LlmClasificador y LlmRedactor: llama.cpp por su API compatible con la de OpenAI,
+│   │                                #   y el calentamiento del modelo tras un rato sin uso (caliente.py)
 │   ├── gateway/                     # ApiDelGateway: la API de gestión, con la clave del worker
 │   ├── meta/                        # WhatsAppCloud: la Cloud API de WhatsApp
 │   ├── bifrost/                     # EnviadosEnBifrost: el bucket `enviados`
@@ -84,7 +91,8 @@ src/
     ├── classifier.py                # el clasificador
     ├── coordinator.py               # el coordinador
     ├── responder.py                 # el de respuesta
-    └── notifier.py                  # el notificador
+    ├── notifier.py                  # el notificador
+    └── presencia.py                 # las confirmaciones de lectura y el «escribiendo…», del notificador
 tests/                               # unit, contract e integration (contra un NATS)
 docs/                                # documentación AI-DLC por fase (00 a 06)
 ```
@@ -134,8 +142,10 @@ El CI (workflows `engine` y `build-engine`) hace lo mismo, con el NATS y con las
 
 ## Despliegue
 
-Todavía no está desplegado: el esqueleto se despliega en midgard en el E7, un contenedor por worker, junto a Bifröst
-y Andvari.
+Corre en midgard desde el E7, un contenedor por worker (`hive-classifier`, `hive-coordinator`, `hive-responder` y
+`hive-notifier`), junto a Bifröst y Andvari, con [`deploy/docker-compose.yml`](deploy/docker-compose.yml). Es la
+instancia de prueba: la imagen se construye en midgard desde `develop`, sin pasar por `main`. El procedimiento está en
+[docs/05-deployment](docs/05-deployment/README.md); el Gate 4 queda para cuando el motor llegue a `main`.
 
 ## Metodología AI-DLC
 

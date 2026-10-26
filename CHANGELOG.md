@@ -247,6 +247,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **El README, al día con lo que hay en `develop`.** Contaba el gateway de antes de Bifröst y de la ADR-0025. Ahora
+  cuenta:
+  - el camino de un mensaje por `WEBHOOK`, `hive-ingest`, `MENSAJES` y `RESPUESTAS`, y la cola `llm` como heredada;
+  - `POST /oauth/token`, las rutas de `Clients`, la de las vueltas y los pasos para dar de alta un bot;
+  - los paquetes y entidades nuevos (`Client`, `ConversationMessage`, `SeenToken`, `clientId`);
+  - la configuración de Bifröst, de las trazas y de `ops.engine_keys`;
+  - `hive-docs`, el túnel y el vigía en el despliegue, y que hoy se despliega a mano desde `develop`;
+  - en Seguridad, el token de acceso de 10 minutos, la API publicada y la documentación aparte.
+
+  También dice que Instagram está en el contrato pero el webhook todavía no lo lee, y que `GET /chat/{bot_id}/info`
+  devuelve el `verifyToken`. Se corrigen al paso los comentarios desfasados de `config.env.example`, del compose y
+  de `webhook.py` e `ingestion.py`.
 - **El contrato de la API de gestión, puesto al día para publicarlo** (ADR-0026).
   - Se llama «Hive management API», y su descripción explica cómo se pide el token (ADR-0025). Ya no decía lo de
     antes: que cada petición llevaba un JWT firmado por quien llama.

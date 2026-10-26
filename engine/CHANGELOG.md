@@ -139,6 +139,10 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 - `.ai-dlc/scripts/`: generadores del contrato AsyncAPI y del historial del repo.
 
 ### Cambiado
+- **El README, al día.** Decía que el motor no estaba desplegado: corre en midgard desde el E7, con cuatro de sus
+  seis workers. Ahora cuenta también las confirmaciones de lectura y el «escribiendo…» del notificador, el
+  calentamiento del LLM y que hoy solo responde por WhatsApp. El aviso de `architecture.md` nombraba la ADR-0009
+  (Claude), que la ADR-0010 sustituyó.
 - **El motor pide tokens de acceso OAuth 2.0 al gateway** (ADR-0025 del gateway, 2026-10-26). Por cada cliente, el
   coordinador y el notificador envían a `/oauth/token` una aserción firmada con su clave para ese cliente y usan el
   token hasta un minuto antes de que caduque, en lugar de firmar un token por llamada. Si el gateway rechaza el token,
