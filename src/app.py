@@ -299,7 +299,7 @@ async def list_contacts(bot_id: str, offset: int = Query(default=0, ge=0),
 
 @app.get(path="/chat/{bot_id}/contacts/{contact_id}", tags=["Contacts"], response_model=ResponseData)
 async def export_contact(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
-    """Everything the service stores about a contact. It does not keep the messages: those go to the queue."""
+    """Everything the service stores about a contact, the history of its messages included."""
     return await ctr_export_contact(repo, bot_id, contact_id)
 
 

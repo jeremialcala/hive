@@ -375,42 +375,41 @@ components:
           tokenUrl: /oauth/token
       type: oauth2
 info:
-  contact:
-    email: jeremialcala@gmail.com
-    name: Jeremi Alcala
-    url: https://jeremi.web-ones.com/
-  description: "\nThe management API of the gateway between Meta (Messenger and WhatsApp) and the response engine\
-    \ of each chatbot.\nEach client manages its own chatbots through it and reaches nothing of anybody else's. What\
-    \ Meta calls is another\nservice, the webhook, which runs apart from this one.\n\nEvery route but the health\
-    \ check asks for a token in `Authorization: Bearer`: a JWT signed by the caller inside a\nJWE encrypted to the\
-    \ gateway, valid once and for 60 seconds at most.\n\n### A client and its chatbots\n\n* /bot: @POST creates\
-    \ a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with everything stored for it.\n* /chat/{bot_id}/info: @GET\
-    \ what is stored of the chatbot, and which Meta credentials are loaded.\n* /chat/{bot_id}/credentials: @PUT\
-    \ loads or rotates its Meta credentials. They are never returned.\n* /chat/{bot_id}/phones: @POST adds a WhatsApp\
-    \ number, @GET lists them. `?environment=` gives the last one of it.\n* /chat/{bot_id}/rules: @POST adds rules,\
-    \ @GET builds the system prompt from them.\n* /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id}\
-    \ takes @GET, @PUT and @DELETE.\n* /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions\
-    \ for the model.\n* /chat/{bot_id}/contacts: @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id}\
-    \ exports\n  one with @GET and deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot\
-    \ of the client, by number or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate;\
-    \ /keys/{kid} removes one with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own\
-    \ key for each client, and the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator,\
-    \ the rules, the tools and the last turns of a conversation; the\nclassifier, the responder and the evaluator,\
-    \ the rules; the link, the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta\
-    \ tokens of a chatbot. Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n\
-    * /chat/{bot_id}/contacts/{contact_id}/turns: @GET the last 10 turns of a conversation, for the coordinator.\n\
-    \n### The operator\n\n* /clients: @POST registers a client, @GET lists them; /clients/{client_id} takes one\
-    \ off with @DELETE.\n* /clients/{client_id}/keys: the keys a client signs with; /clients/{client_id}/service-keys,\
-    \ the keys each\n  worker of the response engine signs with for that client, with the worker that signs with\
-    \ each.\n\n### Any caller\n\n* /gateway/keys: @GET the audience and the public keys tokens are encrypted to.\n\
-    * /health: @GET liveness, without a token.\n"
+  description: "\nThe management API of Hive, the gateway between Meta (Messenger and WhatsApp) and the response\
+    \ engine of each\nchatbot. Each client manages its own chatbots through it and reaches nothing of anybody else's.\
+    \ What Meta calls is\nanother service, the webhook, which runs apart from this one.\n\n### Getting a token\n\
+    \nEvery route but the health check and /oauth/token asks for an access token in `Authorization: Bearer`.\n\n\
+    * /oauth/token: @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who\
+    \ it is\n  with an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's\
+    \ `kid`), with\n  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted\
+    \ to a public key of\n  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for\
+    \ 60 seconds at most.\n* The access token lasts 10 minutes and is good for every request in them.\n\n### A client\
+    \ and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with everything\
+    \ stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials are\
+    \ loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.\n\
+    * /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=` gives the last one of\
+    \ it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the persona of the chatbot and its rules, as data.\n*\
+    \ /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.\n\
+    * /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions for the model.\n* /chat/{bot_id}/contacts:\
+    \ @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id} exports\n  one with @GET and\
+    \ deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot of the client, by number\
+    \ or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate; /keys/{kid} removes one\
+    \ with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own key for each client, and\
+    \ the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator, the rules, the tools\
+    \ and the last turns of a conversation; the\nclassifier, the responder and the evaluator, the rules; the link,\
+    \ the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta tokens of a chatbot.\
+    \ Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n* /chat/{bot_id}/contacts/{contact_id}/turns:\
+    \ @GET the last 10 turns of a conversation, for the coordinator.\n\n### The operator\n\n* /clients: @POST registers\
+    \ a client, @GET lists them; /clients/{client_id} takes one off with @DELETE.\n* /clients/{client_id}/keys:\
+    \ the keys a client signs with; /clients/{client_id}/service-keys, the keys each\n  worker of the response engine\
+    \ signs with for that client, with the worker that signs with each.\n\n### Any caller\n\n* /gateway/keys: @GET\
+    \ the audience and the public keys tokens are encrypted to.\n* /health: @GET liveness, without a token.\n"
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-  summary: Controls the Facebook Messenger Lifecycle
-  termsOfService: https://web-ones.com/terms
-  title: Facebook Messenger Webhook Manager
-  version: 0.0.0
+  summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
+  title: Hive management API
+  version: 0.3.0+develop
 openapi: 3.1.0
 paths:
   /bot:
@@ -555,8 +554,7 @@ paths:
       tags:
       - Contacts
     get:
-      description: 'Everything the service stores about a contact. It does not keep the messages: those go to the
-        queue.'
+      description: Everything the service stores about a contact, the history of its messages included.
       operationId: export_contact_chat__bot_id__contacts__contact_id__get
       parameters:
       - in: path
@@ -1462,12 +1460,17 @@ paths:
       summary: An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)
       tags:
       - OAuth
+servers:
+- url: https://hive-api.higerotech.com
 tags:
 - description: The registry of clients and of the public keys they sign their tokens with.
   name: Clients
-- description: 'This entry will manage the chatbot lifecycle, '
+- description: The access token every other route asks for (ADR-0025).
+  name: OAuth
+- description: Creating a chatbot and deleting it with everything stored for it.
   name: Bot
-- description: This is conversation management and communication control
+- description: 'What a chatbot is made of: its Meta credentials, numbers and rules, and what the response engine
+    reads of it.'
   name: Chat
 - description: 'The people who wrote to a chatbot: listing them, finding one, exporting what is stored about it
     and deleting it.'

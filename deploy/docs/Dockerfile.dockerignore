@@ -1,0 +1,5 @@
+# The root .dockerignore leaves docs/ and deploy/ out of the gateway's image. This image needs only the contract
+# and this directory.
+*
+!docs/02-design/contracts/openapi.yaml
+!deploy/docs/

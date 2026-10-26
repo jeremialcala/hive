@@ -24,7 +24,7 @@ set -euo pipefail
 
 AVISO_ENV=${AVISO_ENV:-/etc/hive-aviso.env}
 ESTADO=${VIGIA_ESTADO:-/var/lib/hive-vigia}
-CONTENEDORES=${VIGIA_CONTENEDORES:-hive-webhook hive-api hive-ingest hive-classifier hive-coordinator hive-responder hive-notifier}
+CONTENEDORES=${VIGIA_CONTENEDORES:-hive-webhook hive-api hive-ingest hive-docs hive-classifier hive-coordinator hive-responder hive-notifier}
 MAX_REINICIOS=${VIGIA_MAX_REINICIOS:-3}
 VENTANA_S=${VIGIA_VENTANA_S:-3600}
 GRACIA_S=${VIGIA_GRACIA_S:-600}

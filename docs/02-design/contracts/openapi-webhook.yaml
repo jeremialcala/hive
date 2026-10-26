@@ -41,10 +41,6 @@ components:
       title: ValidationError
       type: object
 info:
-  contact:
-    email: jeremialcala@gmail.com
-    name: Jeremi Alcala
-    url: https://jeremi.web-ones.com/
   description: "\nWhat Meta calls for each chatbot. It checks that a notification comes from Meta, finds or stores\
     \ who wrote, and\nqueues each message for the response engine. It runs apart from the management API and serves\
     \ nothing else.\n\n* /chat/{bot_id}: what Meta calls for a chatbot.\n    * @GET: the verification challenge,\
@@ -54,9 +50,8 @@ info:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: What Meta calls for each chatbot
-  termsOfService: https://web-ones.com/terms
   title: Meta webhook
-  version: 0.0.0
+  version: 0.3.0+develop
 openapi: 3.1.0
 paths:
   /chat/{bot_id}:
@@ -164,6 +159,8 @@ paths:
       summary: Health
       tags:
       - Health
+servers:
+- url: https://hive-webhook.higerotech.com
 tags:
 - description: The verification and the notifications of a chatbot.
   name: Chat

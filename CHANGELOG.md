@@ -8,6 +8,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **[ADR-0026](docs/00-project/adr/0026-documentacion-publica-de-la-api.md) (aceptada): la documentación de la API de
+  gestión, en `https://hive.higerotech.com/docs`** (decisiones de Jeremi del 2026-10-26).
+  - Una página de Redoc generada con el contrato versionado (`deploy/docs/`), en un contenedor propio,
+    `hive-docs`: nginx sin privilegios, de solo lectura y solo en la red del túnel. La API sigue sin servir su
+    esquema.
+  - Nada de fuera: Redoc se sirve desde la página, comprobado contra el hash que fija Redocly CLI, sin fuentes de
+    Google. La CSP solo deja pasar el script en línea por su hash.
+  - Dependencias de npm exactas y resueltas con más de dos semanas, con `npm audit` limpio.
+  - El CI construye la imagen y comprueba la página, su CSP y que no sirve otra cosa. `hive-vigia` también la
+    vigila.
+  - En Cloudflare, el túnel necesita el nombre público `hive.higerotech.com` hacia `http://hive-docs:8080`.
 - **El vigía de Hive en midgard** (`deploy/vigia/`; decisión de Jeremi del 2026-10-21). Docker marca `unhealthy` un
   contenedor cuyo healthcheck falla, pero no lo reinicia: el 2026-10-21, `bots-gateway` pasó seis minutos colgado sin
   que nada lo levantara.
@@ -236,6 +247,14 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **El contrato de la API de gestión, puesto al día para publicarlo** (ADR-0026).
+  - Se llama «Hive management API», y su descripción explica cómo se pide el token (ADR-0025). Ya no decía lo de
+    antes: que cada petición llevaba un JWT firmado por quien llama.
+  - Corregidas la descripción de `GET /chat/{bot_id}/rules`, que devuelve la persona y las reglas como datos, y la
+    de la exportación de un contacto, que incluye su historial.
+  - Sin contacto ni términos de servicio (decisión de Jeremi del 2026-10-26).
+  - El generador añade a cada contrato dónde atiende (`servers`) y pone en `info.version` la versión del
+    CHANGELOG.
 - **Incompatible para todo cliente de la API: OAuth 2.0 `client_credentials`** (ADR-0025; decisiones de Jeremi del
   2026-10-26).
   - **`POST /oauth/token`** recibe una aserción (el JWT firmado por el cliente dentro de un JWE de antes, ahora con
