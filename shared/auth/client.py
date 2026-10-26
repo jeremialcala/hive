@@ -1,16 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-    The client's side of the authentication, as a reference: what a client of the service has to do to call it.
-    The tests build their tokens with this, so what is documented for clients is what is verified.
+    The client's side of the authentication, as a reference: what a client of the service has to do to call it
+    (ADR-0025).
+
+    1. Build an assertion: a JWT signed with its key, inside a JWE for the gateway. It is good once and for 60 s.
+    2. Send it to POST /oauth/token as the body `token_request` gives, and get an access token back.
+    3. Call the API with `Authorization: Bearer <access token>` until it expires, 10 minutes later.
+
+    The tests build their assertions with this, so what is documented for clients is what is verified.
 """
 import json
 import time
 from uuid import uuid4
 
 from jwcrypto import jwe, jwk, jws
+from jwcrypto.common import base64url_decode
 
 from .key_proof import PROOF_TYPE
 from .tokens import CONTENT_ENCRYPTION, KEY_ENCRYPTION, MAX_LIFETIME, SIGNATURE
+
+TOKEN_PATH = "/oauth/token"
+GRANT_TYPE = "client_credentials"
+ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
 
 def new_signing_key() -> dict:
@@ -23,16 +34,15 @@ def public_part(private: dict) -> dict:
     return {name: private[name] for name in ("kty", "crv", "x", "y") if name in private}
 
 
-def build_token(signing_key: dict, client_id, audience: str, gateway_key: dict,
-                now: float | None = None, lifetime: int = MAX_LIFETIME, jti: str | None = None) -> str:
+def build_assertion(signing_key: dict, client_id, audience: str, gateway_key: dict,
+                    now: float | None = None, lifetime: int = MAX_LIFETIME, jti: str | None = None) -> str:
     """
-        A token for one request: sign first, then encrypt. `signing_key` is the client's private JWK and
-        `gateway_key` one of the gateway's public ones. The jti is chosen here unless the request needs to
-        know it: registering a key does (key_proof).
+        An assertion to get one access token: sign first, then encrypt. `signing_key` is the client's private JWK
+        and `gateway_key` one of the gateway's public ones. Its issuer and its subject are the client.
     """
     issued = int(time.time() if now is None else now)
-    claims = {"iss": str(client_id), "aud": audience, "iat": issued, "exp": issued + lifetime,
-              "jti": jti or str(uuid4())}
+    claims = {"iss": str(client_id), "sub": str(client_id), "aud": audience, "iat": issued,
+              "exp": issued + lifetime, "jti": jti or str(uuid4())}
 
     signed = jws.JWS(json.dumps(claims).encode())
     signed.add_signature(jwk.JWK(**signing_key), alg=SIGNATURE,
@@ -45,12 +55,25 @@ def build_token(signing_key: dict, client_id, audience: str, gateway_key: dict,
     return envelope.serialize(compact=True)
 
 
+def token_request(assertion: str) -> dict:
+    """The body of POST /oauth/token, to send as application/x-www-form-urlencoded."""
+    return {"grant_type": GRANT_TYPE, "client_assertion_type": ASSERTION_TYPE, "client_assertion": assertion}
+
+
+def access_token_jti(access_token: str) -> str:
+    """
+        The jti of an access token, read without checking it: the client trusts the gateway that gave it. A proof
+        for a new key is bound to it (key_proof).
+    """
+    return json.loads(base64url_decode(access_token.split(".")[1]))["jti"]
+
+
 def key_proof(new_key: dict, client_id, audience: str, jti: str, now: float | None = None,
               lifetime: int = MAX_LIFETIME) -> str:
     """
         What registering a new key with POST /keys asks for besides its public part: a JWT the new private key
-        signs, for the jti of the token that goes with that same request. The token is signed with a key the
-        client already has; the proof, with the one it is adding.
+        signs, for the jti of the access token that goes with that same request. The access token comes from a key
+        the client already has; the proof, from the one it is adding.
     """
     issued = int(time.time() if now is None else now)
     claims = {"iss": str(client_id), "aud": audience, "iat": issued, "exp": issued + lifetime, "jti": jti}

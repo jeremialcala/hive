@@ -14,9 +14,8 @@ from fastapi.testclient import TestClient
 import app as app_module
 import ops.engine_keys as engine_keys
 from shared.auth import gateway_keys
-from shared.auth.client import build_token
 from classes import Client
-from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE
+from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, bearer, signed_assertion
 from shared.engine_key_store import KeyStoreUnavailable
 from enums import Worker
 
@@ -76,8 +75,7 @@ def service_keys(acme):
 
 
 def signs_as(key: dict, client_id) -> dict:
-    gateway_key = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()["keys"][0]
-    return {"Authorization": f"Bearer {build_token(key, client_id, GATEWAY_AUDIENCE, gateway_key)}"}
+    return bearer(signed_assertion(key, client_id))
 
 
 # --- Issuing --------------------------------------------------------------------------------------------------------
@@ -230,7 +228,12 @@ def environment(monkeypatch, tmp_path, http, operator, store):
         sent.append((method, url))
         return http.request(method, url.removeprefix("http://gestion:5002"), json=json, headers=headers)
 
+    def token_over_http(url, data=None, timeout=None):
+        sent.append(("POST", url))
+        return http.post(url.removeprefix("http://gestion:5002"), data=data)
+
     monkeypatch.setattr(engine_keys.requests, "request", over_http)
+    monkeypatch.setattr(engine_keys.requests, "post", token_over_http)
     monkeypatch.setattr(engine_keys, "EngineKeyStore", lambda *args: store)
     return sent
 
@@ -241,8 +244,9 @@ def test_the_command_issues_the_keys_and_says_what_it_did(environment, acme, sto
     printed = json.loads(capsys.readouterr().out)
     assert [entry["worker"] for entry in printed] == WORKERS
     assert len(service_keys(acme)) == 6
-    # One list of clients and six registrations, each with a token of its own.
-    assert [method for method, _ in environment] == ["GET"] + ["POST"] * 6
+    # One access token, one list of clients and six registrations, all with that token (ADR-0025).
+    assert environment == ([("POST", "http://gestion:5002/oauth/token"), ("GET", "http://gestion:5002/clients")]
+                           + [("POST", f"http://gestion:5002/clients/{acme.client_id}/service-keys")] * 6)
 
 
 def test_the_command_ends_with_an_error_when_a_worker_was_not_done(environment, acme, store, capsys):

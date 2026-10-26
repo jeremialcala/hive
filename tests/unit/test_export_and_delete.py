@@ -24,6 +24,7 @@ import controller.facebook as facebook
 import controller.ingestion as ingestion
 import repository.clients as clients
 from classes import ChatBot, ChatbotPhone, Client, Contact, Intent, Rule, SeenToken
+from conftest import request_token
 from enums import Status
 from repository import NotFound, TenantRepository, data_keys, delete_client, operator_client
 
@@ -530,12 +531,15 @@ def test_the_operator_deletes_a_client_with_everything_stored_for_it(http, opera
 
 
 def test_a_deleted_client_no_longer_gets_in(http, operator, leaving):
-    made_before = leaving.token()
+    made_before = leaving.assertion()
+    token_before = leaving.access_token()
 
     erase(http, operator, f"/clients/{leaving.client_id}")
 
-    for token in (made_before, leaving.token()):
-        assert http.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    for assertion in (made_before, leaving.assertion()):
+        assert request_token(assertion).status_code == 401
+    # The access token it already had lasts until it expires (ADR-0025), and there is nothing left to reach.
+    assert http.get("/keys", headers={"Authorization": f"Bearer {token_before}"}).status_code != 200
 
 
 def test_the_webhooks_of_a_deleted_client_are_not_found(http, operator, leaving, people, queue):
@@ -603,14 +607,14 @@ def test_a_deletion_cut_short_has_already_shut_the_client_out_and_is_finished_by
 
     forget_tokens = clients.forget_tokens
     monkeypatch.setattr(clients, "forget_tokens", fails)
-    made_before = leaving.token()
+    made_before = leaving.assertion()
 
     cut_short = erase(http, operator, f"/clients/{leaving.client_id}")
 
     assert cut_short.status_code == 500
     client = Client.objects(uuid=leaving.client_id).first()
     assert (client.signingKeys, client.status) == ([], Status.DIS.value)
-    assert http.get("/keys", headers={"Authorization": f"Bearer {made_before}"}).status_code == 401
+    assert request_token(made_before).status_code == 401
 
     monkeypatch.setattr(clients, "forget_tokens", forget_tokens)
     again = erase(http, operator, f"/clients/{leaving.client_id}")

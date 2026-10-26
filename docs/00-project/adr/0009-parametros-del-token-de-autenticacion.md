@@ -1,6 +1,6 @@
 # ADR-0009: Parámetros del token de autenticación
 
-* **Estado:** accepted
+* **Estado:** accepted; superseded en parte por [ADR-0025](0025-oauth2-client-credentials-con-private-key-jwt.md): sus parámetros son los de la aserción de `POST /oauth/token`, que además lleva `sub`
 * **Fecha:** 2026-10-12
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design

@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """
     La API del gateway como la llama un worker (src/infrastructure/gateway/api.py), contra un servidor HTTP local que
-    hace de gateway: abre cada token con la clave privada del gateway, comprueba la firma con la clave pública del
-    worker y que lo emite el cliente para la audiencia del gateway, y contesta lo que el gateway contestaría.
+    hace de gateway (ADR-0025 del gateway): en /oauth/token abre la aserción con la clave privada del gateway,
+    comprueba la firma con la clave pública del worker y que la emite el cliente para la audiencia del gateway, y da
+    un token de acceso; en el resto de rutas, solo acepta los tokens que dio, y contesta lo que el gateway contestaría.
 """
 import asyncio
 import json
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
 from uuid import uuid4
 
 import pytest
@@ -36,27 +38,45 @@ def mensaje(direccion, texto, id_meta, hora="2026-10-20T09:00:00+00:00", adjunto
 
 
 class Gateway(BaseHTTPRequestHandler):
-    """Contesta por ruta lo que diga `respuestas`, y solo a un token válido de la clave que diga `vale`."""
+    """
+        Da tokens de acceso a una aserción válida de la clave que diga `vale`, y contesta por ruta lo que diga
+        `respuestas`, solo a un token que dio.
+    """
     respuestas: dict = {}
     vale: dict = {}
     vistas: list = []
+    emitidos: set = set()
+    pedidos: int = 0
 
     def log_message(self, *_args):
         pass
 
-    def do_GET(self):  # pylint: disable=invalid-name
-        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+    def do_POST(self):  # pylint: disable=invalid-name
+        largo = int(self.headers.get("Content-Length", 0))
+        form = {nombre: valores[0] for nombre, valores in parse_qs(self.rfile.read(largo).decode()).items()}
         try:
+            assert self.path == "/oauth/token"
+            assert form["grant_type"] == "client_credentials"
+            assert form["client_assertion_type"] == "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
             sobre = jwe.JWE()
-            sobre.deserialize(token, key=jwk.JWK(**GATEWAY))
+            sobre.deserialize(form["client_assertion"], key=jwk.JWK(**GATEWAY))
             firmado = jws.JWS()
             firmado.deserialize(sobre.payload.decode())
             firmado.verify(jwk.JWK(**public_part(Gateway.vale["clave"])))
             claims = json.loads(firmado.payload)
-            assert (claims["iss"], claims["aud"]) == (str(CLIENTE), AUDIENCIA)
+            assert (claims["iss"], claims["sub"], claims["aud"]) == (str(CLIENTE), str(CLIENTE), AUDIENCIA)
         except Exception:  # pylint: disable=broad-except
+            return self._contestar(401, {"error": "invalid_client"})
+        token = f"at-{uuid4()}"
+        Gateway.emitidos.add(token)
+        Gateway.pedidos += 1
+        return self._contestar(200, {"access_token": token, "token_type": "Bearer", "expires_in": 600})
+
+    def do_GET(self):  # pylint: disable=invalid-name
+        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        if token not in Gateway.emitidos:
             return self._contestar(401, {"detail": "Unauthorized"})
-        Gateway.vistas.append((self.path, claims["jti"]))
+        Gateway.vistas.append((self.path, token))
         codigo, cuerpo = Gateway.respuestas.get(self.path, (404, {"code": 404, "message": "not found"}))
         return self._contestar(codigo, cuerpo)
 
@@ -99,6 +119,8 @@ def clave():
     actual = new_signing_key()
     Gateway.vale = {"clave": actual}
     Gateway.vistas = []
+    Gateway.emitidos = set()
+    Gateway.pedidos = 0
     Gateway.respuestas = {
         f"/chat/{BOT}/rules": (200, {"code": 200, "data": PERSONA}),
         f"/chat/{BOT}/contacts/{CONTACTO}/turns": (200, {"code": 200, "data": {"messages": [
@@ -127,15 +149,41 @@ def test_pide_la_persona_con_un_token_firmado_por_su_clave_para_el_cliente(servi
     assert andvari.leidas == [(CLIENTE, "coordinator")]
 
 
-def test_cada_llamada_lleva_un_token_nuevo_y_la_clave_se_lee_una_sola_vez(servidor, clave):
+def test_un_token_de_acceso_sirve_para_varias_llamadas_y_la_clave_se_lee_una_sola_vez(servidor, clave):
     andvari = Andvari(clave)
     gateway = api(servidor, andvari)
 
     asyncio.run(gateway.persona(CLIENTE, BOT))
     asyncio.run(gateway.vueltas(CLIENTE, BOT, CONTACTO, "wamid.4", LLEGO))
 
-    assert len({jti for _, jti in Gateway.vistas}) == 2
+    assert len({token for _, token in Gateway.vistas}) == 1 and Gateway.pedidos == 1
     assert len(andvari.leidas) == 1
+
+
+def test_un_minuto_antes_de_que_caduque_se_pide_otro(servidor, clave, monkeypatch):
+    ahora = [1000.0]
+    monkeypatch.setattr("src.infrastructure.gateway.api.time.monotonic", lambda: ahora[0])
+    gateway = api(servidor, Andvari(clave))
+
+    asyncio.run(gateway.vueltas(CLIENTE, BOT, CONTACTO, "wamid.4", LLEGO))
+    ahora[0] += 539
+    asyncio.run(gateway.vueltas(CLIENTE, BOT, CONTACTO, "wamid.4", LLEGO))
+    assert Gateway.pedidos == 1
+    ahora[0] += 1
+    asyncio.run(gateway.vueltas(CLIENTE, BOT, CONTACTO, "wamid.4", LLEGO))
+
+    assert Gateway.pedidos == 2
+
+
+def test_si_el_gateway_rechaza_el_token_de_acceso_se_pide_otro_una_vez(servidor, clave):
+    gateway = api(servidor, Andvari(clave))
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+    # El gateway rotó su clave de firma: los tokens que dio ya no valen.
+    Gateway.emitidos.clear()
+
+    vueltas = asyncio.run(gateway.vueltas(CLIENTE, BOT, CONTACTO, "wamid.4", LLEGO))
+
+    assert len(vueltas) == 3 and Gateway.pedidos == 2
 
 
 def test_la_persona_se_pide_una_vez_y_se_recuerda_cinco_minutos(servidor, clave, monkeypatch):

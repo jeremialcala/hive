@@ -1,31 +1,39 @@
 # -*- coding: utf-8 -*-
 """
-    What a client of the service does on its side, as a reference implementation. It needs neither the service's
-    settings nor its database: copy it, or do the same with any JOSE library.
+    What a client of the service does on its side, as a reference implementation (ADR-0025). It needs neither the
+    service's settings nor its database: copy it, or do the same with any JOSE and OAuth library.
 
         python -m ops.client new-key <file>
             Writes a new private signing key to the file, owner-only, and prints its public part: that is what
             gets registered. The private key is never printed.
 
-        python -m ops.client token <key file> <client id> <audience> <gateway keys file>
-            Prints a token for one request. It is valid once and for 60 seconds, so build one per call:
+        python -m ops.client access-token <key file> <client id> <audience> <gateway keys file> <gateway url>
+            Gets an access token from POST /oauth/token and prints it. It lasts 10 minutes, for every request in them:
 
-                curl -H "Authorization: Bearer $(python -m ops.client token ...)" https://.../bot
+                TOKEN=$(python -m ops.client access-token ...)
+                curl -H "Authorization: Bearer $TOKEN" https://.../bot
 
             The gateway keys file is what GET /gateway/keys or the registration answer gave under "keys",
             saved as {"keys": [...]}.
 
-        python -m ops.client add-key <key file> <new key file> <client id> <audience> <gateway keys file>
-            Prints what POST /keys takes to add the new key, as {"token": ..., "body": {...}}: a token signed
-            with the key the client has, and a body with the public part of the new one and the proof it signs
-            for that same token. Like the token, it is good once and for 60 seconds.
+        python -m ops.client assertion <key file> <client id> <audience> <gateway keys file>
+            Prints only the assertion, to send to POST /oauth/token with another tool. It is good once and for 60
+            seconds.
+
+        python -m ops.client add-key <new key file> <client id> <audience> <access token>
+            Prints the body POST /keys takes to add the new key, to send with that access token: the public part of
+            the new key and the proof it signs for that access token.
 """
 import json
 import os
 import sys
-from uuid import uuid4
 
-from shared.auth.client import build_token, key_proof, new_signing_key, public_part
+import requests
+
+from shared.auth.client import (TOKEN_PATH, access_token_jti, build_assertion, key_proof, new_signing_key,
+                                public_part, token_request)
+
+TIMEOUT = 10  # seconds
 
 
 def new_key(path: str) -> dict:
@@ -42,25 +50,31 @@ def _read(path: str) -> dict:
         return json.load(file)
 
 
-def token(key_path: str, client_id: str, audience: str, gateway_keys_path: str, jti: str | None = None) -> str:
+def assertion(key_path: str, client_id: str, audience: str, gateway_keys_path: str) -> str:
     # The last gateway key is the newest: while the gateway rotates, that is the one to move to.
-    return build_token(_read(key_path), client_id, audience, _read(gateway_keys_path)["keys"][-1], jti=jti)
+    return build_assertion(_read(key_path), client_id, audience, _read(gateway_keys_path)["keys"][-1])
 
 
-def add_key(key_path: str, new_key_path: str, client_id: str, audience: str, gateway_keys_path: str) -> dict:
-    jti = str(uuid4())
+def access_token(key_path: str, client_id: str, audience: str, gateway_keys_path: str, gateway_url: str) -> str:
+    response = requests.post(f"{gateway_url.rstrip('/')}{TOKEN_PATH}", timeout=TIMEOUT,
+                             data=token_request(assertion(key_path, client_id, audience, gateway_keys_path)))
+    if response.status_code != 200:
+        raise SystemExit(f"The gateway gave no access token: {response.status_code} {response.text[:200]}")
+    return response.json()["access_token"]
+
+
+def add_key(new_key_path: str, client_id: str, audience: str, token: str) -> dict:
     new_key = _read(new_key_path)
-    return {"token": token(key_path, client_id, audience, gateway_keys_path, jti=jti),
-            "body": {"signingKey": public_part(new_key), "proof": key_proof(new_key, client_id, audience, jti)}}
+    return {"signingKey": public_part(new_key), "proof": key_proof(new_key, client_id, audience,
+                                                                     access_token_jti(token))}
 
 
 if __name__ == "__main__":
+    commands = {"new-key": (new_key, 1, True), "access-token": (access_token, 5, False),
+                "assertion": (assertion, 4, False), "add-key": (add_key, 4, True)}
     arguments = sys.argv[1:]
-    if len(arguments) == 2 and arguments[0] == "new-key":
-        print(json.dumps(new_key(arguments[1]), indent=2))
-    elif len(arguments) == 5 and arguments[0] == "token":
-        print(token(*arguments[1:]))
-    elif len(arguments) == 6 and arguments[0] == "add-key":
-        print(json.dumps(add_key(*arguments[1:])))
-    else:
+    if not arguments or arguments[0] not in commands or len(arguments) - 1 != commands[arguments[0]][1]:
         raise SystemExit(__doc__)
+    command, _, as_json = commands[arguments[0]]
+    result = command(*arguments[1:])
+    print(json.dumps(result, indent=2) if as_json else result)

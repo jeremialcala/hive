@@ -139,6 +139,10 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 - `.ai-dlc/scripts/`: generadores del contrato AsyncAPI y del historial del repo.
 
 ### Cambiado
+- **El motor pide tokens de acceso OAuth 2.0 al gateway** (ADR-0025 del gateway, 2026-10-26). Por cada cliente, el
+  coordinador y el notificador envían a `/oauth/token` una aserción firmada con su clave para ese cliente y usan el
+  token hasta un minuto antes de que caduque, en lugar de firmar un token por llamada. Si el gateway rechaza el token,
+  piden otro una vez; si rechaza la aserción, vuelven a leer la clave de Andvari una vez.
 - **La imagen del motor es `ghcr.io/jeremialcala/hive-engine`**, no `chatbot-engine`, y el coordinador y el
   notificador llegan a la API de gestión como `hive-api` (ADR-0024 del gateway, versión 0.3.0; decisión de Jeremi del
   2026-10-22).

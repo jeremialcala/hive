@@ -76,7 +76,7 @@ def test_every_route_of_a_chatbot_is_covered():
         ("DELETE", "/clients/{client_id}/service-keys/{kid}"), ("DELETE", "/keys/{kid}"),
         ("GET", "/clients"), ("GET", "/gateway/keys"), ("GET", "/keys"), ("POST", "/bot"), ("POST", "/clients"),
         ("POST", "/clients/{client_id}/keys"), ("POST", "/clients/{client_id}/service-keys"),
-        ("POST", "/contacts/search"), ("POST", "/keys"),
+        ("POST", "/contacts/search"), ("POST", "/keys"), ("POST", "/oauth/token"),
     ]
 
 

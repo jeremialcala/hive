@@ -1,7 +1,7 @@
 # Contrato OpenAPI de un servicio del gateway (fase 02-design). Refleja la API tal como está construida.
 # Generado con .ai-dlc/scripts/gen_openapi.py: regenerar, no editar a mano.
 # Sin valores por defecto ni ejemplos: en el código son aleatorios y cambian en cada arranque.
-# Declara el token de autenticación (HTTPBearer: un JWT firmado dentro de un JWE). La firma X-Hub-Signature-256
+# Declara la autenticación (OAuth2, client_credentials en /oauth/token, ADR-0025). La firma X-Hub-Signature-256
 # del webhook no aparece: se comprueba en una dependencia que OpenAPI no ve.
 components:
   schemas:

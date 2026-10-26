@@ -96,7 +96,11 @@ tiene para su cliente.
      ssh midgard 'sudo install -m 400 -o 10001 -g 10001 /dev/stdin /srv/apps/hive-engine/keys/llm-api-key' \
        < /c/hive-llm/api-key
      ```
-4. **El gateway**, con la imagen nueva y `GATEWAY_AUDIENCE=https://hive-api.higerotech.com` en su `.env`.
+4. **El gateway**, con la imagen nueva y `GATEWAY_AUDIENCE=https://hive-api.higerotech.com` en su `.env`. Su
+   fichero `keys/gateway-keys.json` necesita, además del par de cifrado, el de firma de los tokens de acceso
+   (ADR-0025): `python -m ops.gateway_key generate-signing /keys/gateway-keys.json` con la imagen, una vez. Sin él, el
+   gateway no arranca. El gateway y el motor se despliegan juntos: el motor de antes firmaba un token por llamada, y
+   el gateway nuevo ya no lo acepta.
 5. **El motor:** `/srv/apps/hive-engine` con su `docker-compose.yml`, su `.env` (`deploy/.env.example`) y `keys/`
    (root:10001, 750) con los dos `secret_id`, la clave del LLM y una copia de `gateway-public.json`. Después:
 

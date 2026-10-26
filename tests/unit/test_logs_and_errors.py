@@ -118,8 +118,18 @@ def notify(http, bot_id, payload, secret=SECRETS["appSecret"]):
                      headers={"content-type": "application/json", "X-Hub-Signature-256": signature})
 
 
+def headers_of(caller) -> dict:
+    """
+        One access token per caller, as a client keeps it for its ten minutes (ADR-0025): the lines these tests count
+        are the calls', not the requests for a token.
+    """
+    if "headers" not in caller.__dict__:
+        caller.headers = caller.auth
+    return caller.headers
+
+
 def call(http, caller, method, path, body=None, **params):
-    return http.request(method, path, headers=caller.auth, json=body, params=params or None)
+    return http.request(method, path, headers=headers_of(caller), json=body, params=params or None)
 
 
 def set_up(http, caller) -> dict:
@@ -145,7 +155,7 @@ def test_nothing_a_caller_or_meta_sends_reaches_the_log(http, caller, operator, 
     new_key = new_signing_key()
     key = public_part(new_key)
     adding = caller.adding(new_key)
-    token = caller.token()
+    token = caller.access_token()
 
     answers = [
         call(http, caller, "GET", f"/chat/{bot}/info"),
@@ -312,7 +322,7 @@ def test_a_method_that_is_not_one_of_the_usual_is_not_written_as_sent(http, logg
 # --- The text of a failure -------------------------------------------------------------------------------------------
 
 LEAK = "failure-text-marker 12025550143 EAAG-token-in-the-failure"
-PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
+PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
 # It answers from what the service holds in memory: there is nothing in it to fail. And the tokens and the last
 # turns are only for the response engine: the operator, who makes these calls, is turned away before anything can
 # fail.
