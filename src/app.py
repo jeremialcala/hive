@@ -6,12 +6,18 @@
         uvicorn app:app
 """
 from inspect import currentframe
+from urllib.parse import parse_qs
 
 from fastapi import Depends, HTTPException, Query, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+from fastapi.openapi.models import OAuthFlowClientCredentials, OAuthFlows
+from fastapi.security import OAuth2
+from fastapi.security.utils import get_authorization_scheme_param
 
+from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE
 from shared.auth.gateway_keys import GatewayKeys
-from auth.principal import Principal, authenticate
+from auth.principal import Principal, authenticate, exchange
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ContactSearchRequest, IntentRequest, OwnedKeyRequest, ResponseData, RulesRequest,
@@ -42,9 +48,22 @@ GATEWAY_KEYS = GatewayKeys.load(settings.gateway_keys_file)
 # Every deletion is written down here before it is made. It is only reached when needed.
 erasures.configure(settings.erasures_dir)
 
-bearer = HTTPBearer(auto_error=False, bearerFormat="JWE",
-                    description="A JWT signed by the client (ES256), inside a JWE encrypted to the gateway "
-                                "(RSA-OAEP-256, A256CBC-HS512). It lasts 60 seconds at most and is valid once.")
+# The contract says how to get the token: OAuth 2.0 client_credentials at /oauth/token. The header is read here and
+# checked in get_principal; nothing here answers on its own (auto_error=False).
+oauth2 = OAuth2(flows=OAuthFlows(clientCredentials=OAuthFlowClientCredentials(tokenUrl="/oauth/token")),
+                scheme_name="OAuth2", auto_error=False,
+                description="An access token from POST /oauth/token (ADR-0025): a JWT the gateway signs (ES256, typ "
+                            "at+jwt), sent as `Authorization: Bearer <token>`. It lasts 10 minutes and is good for "
+                            "every request in them. The client authenticates at /oauth/token with a signed assertion "
+                            "(RFC 7523), not with a secret.")
+
+# POST /oauth/token (ADR-0025): OAuth 2.0 client_credentials, the client authenticated by a signed assertion
+# (RFC 7523, section 2.2). Its body is a form, never bigger than this.
+MAX_TOKEN_REQUEST = 16 * 1024
+FORM = "application/x-www-form-urlencoded"
+TOKEN_PARAMETERS = ("grant_type", "client_assertion_type", "client_assertion")
+# RFC 6749, section 5.1: neither the token nor an error about it is kept by a cache.
+NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
 
 GATEWAY_KEYS_ROUTE = ("GET", "/gateway/keys")
@@ -70,17 +89,18 @@ SERVICE_ROUTES = set().union(*WORKER_ROUTES.values())
 
 
 def get_principal(request: Request,
-                  credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> Principal:
+                  authorization: str | None = Depends(oauth2)) -> Principal:
     """
-        Everything in this service but the health check depends on this. The answer to a token
-        that is not accepted is always the same 401: the reason only goes to the log.
+        Everything in this service but the health check and POST /oauth/token depends on this. The answer to a
+        token that is not accepted is always the same 401: the reason only goes to the log.
 
-        A function, not a coroutine: authenticating reads MongoDB, which blocks. FastAPI runs a function in its pool
-        of threads, so a slow read holds up only its own request, never the event loop and every other request with
-        it. The same goes for get_repository and for the routes of the response engine.
+        Checking an access token does not touch the database (ADR-0025). It stays a function, not a coroutine, like
+        get_repository and the routes of the response engine: FastAPI runs them in its pool of threads, so what
+        blocks holds up only its own request.
     """
     try:
-        principal = authenticate(credentials.credentials if credentials else None, GATEWAY_KEYS,
+        scheme, token = get_authorization_scheme_param(authorization)
+        principal = authenticate(token if scheme.lower() == "bearer" else None, GATEWAY_KEYS,
                                  settings.gateway_audience)
     except InvalidToken as e:
         log.warning(f"Rejected a request: {e}")
@@ -125,6 +145,79 @@ async def require_operator(principal: Principal = Depends(get_principal)) -> Pri
 
 
 app = build(title=TITLE, summary=SUMMARY, description=DESCRIPTION, openapi_tags=TAGS_METADATA)
+
+
+def _oauth_error(code: int, error: str) -> JSONResponse:
+    """An error of RFC 6749, section 5.2: the code and nothing else, whatever the reason."""
+    headers = {**NO_STORE, **({"WWW-Authenticate": "Bearer"} if code == status.HTTP_401_UNAUTHORIZED else {})}
+    return JSONResponse(status_code=code, content={"error": error}, headers=headers)
+
+
+def _form(body: bytes) -> dict | None:
+    """The parameters of the token request, each once; None if the body is not a form of them."""
+    try:
+        parsed = parse_qs(body.decode("ascii"), keep_blank_values=False, strict_parsing=True, max_num_fields=10)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    # RFC 6749, section 3.2: a parameter sent more than once is not taken.
+    if any(len(values) != 1 for values in parsed.values()):
+        return None
+    return {name: values[0] for name, values in parsed.items()}
+
+
+def _oauth_answer(description: str, schema: dict) -> dict:
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+OAUTH_ERROR = {"type": "object", "required": ["error"], "properties": {"error": {"type": "string"}}}
+# What the contract says of /oauth/token: the route reads its form by hand, so FastAPI cannot infer it.
+TOKEN_CONTRACT = {
+    "requestBody": {"required": True, "content": {FORM: {"schema": {
+        "type": "object", "required": list(TOKEN_PARAMETERS),
+        "properties": {
+            "grant_type": {"type": "string", "enum": [GRANT_TYPE]},
+            "client_assertion_type": {"type": "string", "enum": [ASSERTION_TYPE]},
+            "client_assertion": {"type": "string", "description": (
+                "A JWT the client signs (ES256, with the kid of its registered key; iss and sub, the client; aud, "
+                "the gateway; 60 seconds at most; good once), inside a JWE for a key of GET /gateway/keys "
+                "(RSA-OAEP-256, A256CBC-HS512, cty JWT).")},
+        }}}}},
+    "responses": {
+        "200": _oauth_answer("An access token, good for 10 minutes.", {
+            "type": "object", "required": ["access_token", "token_type", "expires_in"],
+            "properties": {"access_token": {"type": "string"}, "token_type": {"type": "string", "enum": ["Bearer"]},
+                           "expires_in": {"type": "integer"}}}),
+        "400": _oauth_answer("invalid_request or unsupported_grant_type.", OAUTH_ERROR),
+        "401": _oauth_answer("invalid_client: the assertion is not good, whatever the reason.", OAUTH_ERROR),
+    },
+}
+
+
+@app.post(path="/oauth/token", tags=["OAuth"], openapi_extra=TOKEN_CONTRACT,
+          summary="An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)",
+          description="The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 "
+                      "(ADR-0025), and gets an access token the gateway signs, for every other route.")
+async def oauth_token(request: Request):
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != FORM:
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
+    body = await request.body()
+    form = _form(body) if len(body) <= MAX_TOKEN_REQUEST else None
+    if form is None or any(name not in form for name in TOKEN_PARAMETERS):
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
+    if form["grant_type"] != GRANT_TYPE:
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "unsupported_grant_type")
+    if form["client_assertion_type"] != ASSERTION_TYPE:
+        return _oauth_error(status.HTTP_401_UNAUTHORIZED, "invalid_client")
+    try:
+        # It reads the client's key and remembers the assertion's jti in MongoDB: in a thread, not in the event loop.
+        token, lifetime, caller = await run_in_threadpool(exchange, form["client_assertion"], GATEWAY_KEYS,
+                                                          settings.gateway_audience)
+    except InvalidToken as e:
+        log.warning(f"Rejected a request for an access token: {e}")
+        return _oauth_error(status.HTTP_401_UNAUTHORIZED, "invalid_client")
+    log.info(f"Access token for client {caller.client_id}, key {caller.kid}, worker {caller.worker_name}")
+    return JSONResponse(status_code=status.HTTP_200_OK, headers=NO_STORE,
+                        content={"access_token": token, "token_type": "Bearer", "expires_in": lifetime})
 
 
 @app.post(path="/bot", tags=["Bot"], response_model=BotResponse)

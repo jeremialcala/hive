@@ -236,6 +236,22 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **Incompatible para todo cliente de la API: OAuth 2.0 `client_credentials`** (ADR-0025; decisiones de Jeremi del
+  2026-10-26).
+  - **`POST /oauth/token`** recibe una aserción (el JWT firmado por el cliente dentro de un JWE de antes, ahora con
+    `sub` igual a `iss`, RFC 7523) y devuelve un token de acceso: un JWT que firma el gateway (`typ: at+jwt`, `ES256`),
+    que vale 10 minutos y para todas las peticiones. Errores de RFC 6749: `invalid_request`, `unsupported_grant_type`
+    e `invalid_client`.
+  - **Las rutas solo aceptan tokens de acceso.** El token de una petición de antes ya no entra: el cambio es de golpe.
+  - **Una petición deja de ir a la base para autenticarse**: el token dice quién es el cliente. Solo la petición de
+    un token escribe su `jti`.
+  - **Revocar una clave o borrar un cliente** impide al momento pedir un token; el que ya tenía vale hasta que
+    caduca. Para cortarlos todos, se rota la clave de firma del gateway.
+  - **El gateway tiene una clave de firma propia** (P-256, `use: sig`) en su fichero de claves: no arranca sin ella
+    (`python -m ops.gateway_key generate-signing`). No se entrega en `GET /gateway/keys`.
+  - **La prueba de una clave nueva** (`POST /keys`) se ata al `jti` del token de acceso y vale una vez.
+  - `ops.client` pasa a `access-token`, `assertion` y `add-key` con el token; `ops.engine_keys` pide un token y lo
+    reutiliza. El contrato OpenAPI declara el esquema `oauth2` con el flujo `clientCredentials`.
 - **Todo pasa a llamarse Hive** (ADR-0024, versión 0.3.0; decisión de Jeremi del 2026-10-22): «la plataforma para la
   gestión automatizada de tus bots y agentes».
   - El repositorio es `jeremialcala/hive`; GitHub redirige `wh-python-fastapi-messenger`.

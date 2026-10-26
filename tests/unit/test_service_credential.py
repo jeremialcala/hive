@@ -28,10 +28,10 @@ import app as app_module
 import webhook as webhook_module
 import controller.ingestion as ingestion
 from shared.auth import gateway_keys
-from shared.auth.client import build_token, new_signing_key, public_part
+from shared.auth.client import new_signing_key, public_part
 from auth.client_keys import public_signing_key
 from classes import Client, Contact
-from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE
+from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, bearer, request_token, signed_assertion
 from enums import Role, Status, Worker
 from repository import TenantRepository, data_keys, find_signer
 
@@ -58,7 +58,7 @@ BODIES = {
     ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key()),
                                                     "worker": "notifier"},
 }
-PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
+PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
 ROUTES = sorted({(method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
                  for method in route.methods} - PUBLIC)
 FOR_THE_ENGINE = [("GET", "/chat/{bot_id}/contacts/{contact_id}/turns"), ("GET", "/chat/{bot_id}/rules"),
@@ -77,8 +77,7 @@ class Engine:
 
     @property
     def auth(self) -> dict:
-        gateway_key = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()["keys"][0]
-        return {"Authorization": f"Bearer {build_token(self.key, self.client_id, GATEWAY_AUDIENCE, gateway_key)}"}
+        return bearer(signed_assertion(self.key, self.client_id))
 
 
 @pytest.fixture
@@ -324,11 +323,12 @@ def test_a_client_does_not_get_its_own_tokens_back(http, acme, operator, bot, ca
     assert "handed to the response engine" not in caplog.text
 
 
-def test_a_token_of_the_engine_is_valid_once(http, engine, bot):
-    headers = engine.auth
+def test_an_assertion_of_the_engine_is_good_once_and_its_access_token_for_many_requests(http, engine, bot):
+    assertion = signed_assertion(engine.key, engine.client_id)
+    headers = bearer(assertion)
 
-    assert http.get(f"/chat/{bot}/tokens", headers=headers).status_code == 200
-    assert http.get(f"/chat/{bot}/tokens", headers=headers).status_code == 401
+    assert request_token(assertion).status_code == 401
+    assert [http.get(f"/chat/{bot}/tokens", headers=headers).status_code for _ in range(2)] == [200, 200]
 
 
 # --- A trace of every time ------------------------------------------------------------------------------------------

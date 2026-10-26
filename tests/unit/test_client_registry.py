@@ -15,9 +15,9 @@ from jwcrypto import jwk
 
 import app as app_module
 from shared.auth import gateway_keys
-from shared.auth.client import build_token, new_signing_key, public_part
+from shared.auth.client import build_assertion, new_signing_key, public_part, token_request
 from classes import Client
-from conftest import Caller, GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE
+from conftest import Caller, GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, access_token_for
 from enums import Role
 from ops import client as ops_client, gateway_key as ops_gateway_key, operator_key as ops_operator_key
 from repository import get_client, operator_client
@@ -47,7 +47,8 @@ def test_the_operator_registers_a_client_that_can_then_call_the_service(http, op
     assert response.status_code == 200
     assert (data["name"], data["role"], data["status"], data["keys"]) == ("acme", "client", "ACT", [key["kid"]])
     # The answer is all the new client needs: who it is, the audience and the key to encrypt to.
-    token = build_token(key, data["uuid"], data["gateway"]["audience"], data["gateway"]["keys"][-1])
+    token = access_token_for(build_assertion(key, data["uuid"], data["gateway"]["audience"],
+                                             data["gateway"]["keys"][-1]))
     mine = http.get("/keys", headers={"Authorization": f"Bearer {token}"})
     assert (mine.status_code, mine.json()["data"]["uuid"]) == (200, data["uuid"])
 
@@ -90,7 +91,7 @@ def test_a_client_cannot_use_the_operator_endpoints(http, register, path, method
 def test_a_client_does_not_become_operator_by_saying_so(http, register):
     """What a caller may do comes from its registry entry: nothing in a token can change it."""
     caller = register("acme")
-    token = caller.token()
+    token = caller.access_token()
 
     assert http.get("/clients", headers={"Authorization": f"Bearer {token}"}).status_code == 403
     assert get_client(caller.client_id).role == Role.CLIENT.value
@@ -310,18 +311,30 @@ def test_the_gateway_key_file_is_made_rotated_and_trimmed(tmp_path):
 
     first = ops_gateway_key.generate(path)
     second = ops_gateway_key.generate(path)
+    signing = ops_gateway_key.generate_signing(path)
 
+    # The signing key is not handed out: only the keys to encrypt to.
     assert [key["kid"] for key in ops_gateway_key.show(path)["keys"]] == [first["kid"], second["kid"]]
-    assert "d" not in first and all("d" not in key for key in ops_gateway_key.show(path)["keys"])
+    assert "d" not in first and "d" not in signing
+    assert all("d" not in key for key in ops_gateway_key.show(path)["keys"])
     left = ops_gateway_key.drop(path, first["kid"])
 
-    assert [key["kid"] for key in left["keys"]] == [second["kid"]]
+    assert [key["kid"] for key in left["keys"]] == [second["kid"], signing["kid"]]
     with pytest.raises(SystemExit):
         ops_gateway_key.drop(path, second["kid"])
     with pytest.raises(SystemExit):
+        ops_gateway_key.drop(path, signing["kid"])
+    with pytest.raises(SystemExit):
         ops_gateway_key.drop(path, "unknown")
     # What is left is a file the service starts with.
-    assert gateway_keys.GatewayKeys.load(path).private(second["kid"]) is not None
+    loaded = gateway_keys.GatewayKeys.load(path)
+    assert loaded.private(second["kid"]) is not None and loaded.signer()[0] == signing["kid"]
+
+
+def test_the_service_does_not_start_without_a_key_of_each_kind(tmp_path):
+    for keys in ([gateway_keys.new_key()], [gateway_keys.new_signing_key()]):
+        with pytest.raises(ValueError):
+            gateway_keys.GatewayKeys(keys)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows has no owner-only file mode")
@@ -384,15 +397,38 @@ def test_the_reference_client_runs_without_the_service_settings(tmp_path):
     from repository import register_client
     client_id = register_client("acme", public_signing_key(public)).uuid
 
-    token = run("token", str(key_file), str(client_id), GATEWAY_AUDIENCE, str(gateway_file))
+    # The assertion, from the reference client; the access token, from the service in this process.
+    assertion = run("assertion", str(key_file), str(client_id), GATEWAY_AUDIENCE, str(gateway_file))
+    token = registered.post("/oauth/token", data=token_request(assertion)).json()["access_token"]
 
     assert registered.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
-    # And adding a second key, with the proof the new one signs.
+    # And adding a second key, with the proof the new one signs for that access token.
     new_key_file = tmp_path / "client-key-2.json"
     second = json.loads(run("new-key", str(new_key_file)))
-    adding = json.loads(run("add-key", str(key_file), str(new_key_file), str(client_id), GATEWAY_AUDIENCE,
-                            str(gateway_file)))
-    added = registered.post("/keys", headers={"Authorization": f"Bearer {adding['token']}"}, json=adding["body"])
+    body = json.loads(run("add-key", str(new_key_file), str(client_id), GATEWAY_AUDIENCE, token))
+    added = registered.post("/keys", headers={"Authorization": f"Bearer {token}"}, json=body)
 
     assert (added.status_code, added.json()["data"]["keys"][-1]) == (200, jwk.JWK(**second).thumbprint())
+
+
+def test_the_reference_client_gets_an_access_token_and_says_why_not(tmp_path, monkeypatch):
+    http = TestClient(app_module.app)
+    monkeypatch.setattr(ops_client.requests, "post",
+                        lambda url, data=None, timeout=None: http.post(url.removeprefix("https://gateway.test"),
+                                                                       data=data))
+    key_file, gateway_file = tmp_path / "key.json", tmp_path / "gateway.json"
+    public = ops_client.new_key(str(key_file))
+    gateway_file.write_text(json.dumps(gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()),
+                            encoding="utf-8")
+    from auth.client_keys import public_signing_key
+    from repository import register_client
+    client_id = register_client("acme", public_signing_key(public)).uuid
+
+    token = ops_client.access_token(str(key_file), str(client_id), GATEWAY_AUDIENCE, str(gateway_file),
+                                    "https://gateway.test/")
+
+    assert http.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    with pytest.raises(SystemExit, match="401"):
+        ops_client.access_token(str(key_file), "00000000-0000-0000-0000-000000000000", GATEWAY_AUDIENCE,
+                                str(gateway_file), "https://gateway.test")

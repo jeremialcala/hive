@@ -23,6 +23,7 @@
 """
 import json
 import sys
+import time
 from typing import Callable
 from uuid import UUID
 
@@ -30,7 +31,7 @@ import requests
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from shared.auth.client import build_token, new_signing_key, public_part
+from shared.auth.client import TOKEN_PATH, build_assertion, new_signing_key, public_part, token_request
 from shared.engine_key_store import EngineKeyStore, KeyStoreUnavailable
 from enums import Worker
 
@@ -60,16 +61,33 @@ def _read(path: str) -> dict:
 
 
 def management_api(settings: EngineKeysSettings) -> Call:
-    """Calls the management API as the operator, with a new token each time: a token is valid once."""
+    """
+        Calls the management API as the operator (ADR-0025): it gets an access token at POST /oauth/token and uses it
+        until a minute before it expires, or until the gateway turns it away.
+    """
     operator_key = _read(settings.operator_key_file)
     # The last gateway key is the newest: while the gateway rotates, that is the one to move to.
     gateway_key = _read(settings.gateway_public_keys_file)["keys"][-1]
     base = settings.gateway_url.rstrip("/")
+    access = {}
+
+    def token(again: bool = False) -> str:
+        if again or not access or time.monotonic() >= access["until"]:
+            assertion = build_assertion(operator_key, settings.operator_client_id, settings.gateway_audience,
+                                        gateway_key)
+            response = requests.post(f"{base}{TOKEN_PATH}", data=token_request(assertion), timeout=TIMEOUT)
+            if response.status_code != 200:
+                raise SystemExit(f"The gateway gave no access token: {response.status_code}")
+            given = response.json()
+            access.update(token=given["access_token"], until=time.monotonic() + given["expires_in"] - 60)
+        return access["token"]
 
     def call(method: str, path: str, body: dict | None = None) -> tuple:
-        token = build_token(operator_key, settings.operator_client_id, settings.gateway_audience, gateway_key)
         response = requests.request(method, f"{base}{path}", json=body, timeout=TIMEOUT,
-                                    headers={"Authorization": f"Bearer {token}"})
+                                    headers={"Authorization": f"Bearer {token()}"})
+        if response.status_code == 401:
+            response = requests.request(method, f"{base}{path}", json=body, timeout=TIMEOUT,
+                                        headers={"Authorization": f"Bearer {token(again=True)}"})
         try:
             return response.status_code, response.json()
         except ValueError:

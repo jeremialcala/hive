@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-    La API de gestión del gateway para un worker del motor. Cada llamada lleva un token nuevo, firmado con la clave
-    que ese worker tiene para el cliente dueño del bot y cifrado para el gateway (`shared.auth.client`,
-    docs/03-implementation/autenticacion.md del gateway). Qué rutas alcanza lo decide el gateway por el worker de la
-    clave: al coordinador le deja las reglas, las herramientas y las vueltas; al notificador, los tokens de Meta.
+    La API de gestión del gateway para un worker del motor, con OAuth 2.0 (ADR-0025 del gateway). Por cada cliente
+    pide un token de acceso a `/oauth/token`, con una aserción firmada con la clave que ese worker tiene para el
+    cliente y cifrada para el gateway (`shared.auth.client`, docs/03-implementation/autenticacion.md del gateway), y
+    lo usa en cada llamada hasta un minuto antes de que caduque. Qué rutas alcanza lo decide el gateway por el worker
+    de la clave: al coordinador le deja las reglas, las herramientas y las vueltas; al notificador, los tokens de Meta.
 
     El token de Meta de cada bot se recuerda unos minutos, para no pedirlo en cada mensaje: cada entrega queda en el
     log del gateway. Si Meta lo rechaza, el notificador lo olvida y se pide otra vez.
@@ -13,7 +14,8 @@
     las reglas tarda eso en llegar a las respuestas. Las vueltas no se recuerdan: cambian con cada mensaje.
 
     La clave privada de cada cliente se lee de Andvari la primera vez que hace falta y se guarda en memoria. Si el
-    gateway la rechaza (401), se vuelve a leer una vez: puede haber cambiado.
+    gateway rechaza la aserción (401), se vuelve a leer una vez: puede haber cambiado. Si rechaza el token de acceso,
+    se pide otro, una vez.
 
     Nada de lo que se envía ni de lo que vuelve llega al log ni a una excepción: solo el tipo de fallo y el código.
 """
@@ -26,13 +28,14 @@ from uuid import UUID
 import requests
 from pydantic import ValidationError
 
-from shared.auth.client import build_token
+from shared.auth.client import TOKEN_PATH, build_assertion, token_request
 from shared.engine_key_store import EngineKeyStore, KeyStoreUnavailable
 from src.domain.models.sobre import MAX_VUELTAS, Persona, Vuelta
 from src.domain.ports.envio import TokensDelBot
 from src.domain.ports.fuente_del_bot import FuenteDelBot, FuenteNoDisponible, NoEncontrado
 
 TIMEOUT = 5            # segundos por llamada
+MARGEN_ACCESO = 60     # segundos antes de que caduque un token de acceso en que se pide otro
 RECORDAR_TOKEN = 600   # segundos que se recuerda el token de Meta de un bot
 RECORDAR_REGLAS = 300  # segundos que se recuerda la persona de un bot con sus reglas
 
@@ -62,6 +65,8 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
         self._verify = ca_file or True
         self._timeout = timeout
         self._claves: dict[UUID, dict] = {}
+        # Por cliente: el token de acceso y hasta cuándo se usa.
+        self._accesos: dict[UUID, tuple[str, float]] = {}
         self._tokens: dict[UUID, tuple[str, float]] = {}
         # Por cliente y bot: la persona de un bot solo vale para el cliente con cuya clave se leyó.
         self._personas: dict[tuple[UUID, UUID], tuple[Persona, float]] = {}
@@ -78,10 +83,45 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
             self._claves[client_id] = clave
         return self._claves[client_id]
 
-    def _get(self, client_id: UUID, path: str) -> dict:
-        respuesta = self._llamar(client_id, path, self._clave(client_id))
+    def _acceso(self, client_id: UUID, otro: bool = False) -> str:
+        """El token de acceso para el cliente: el que se tiene, si le queda más de un minuto, o uno nuevo."""
+        recordado = self._accesos.get(client_id)
+        if recordado and not otro and time.monotonic() < recordado[1]:
+            return recordado[0]
+        respuesta = self._pedir_acceso(client_id, self._clave(client_id))
         if respuesta.status_code == 401:
-            respuesta = self._llamar(client_id, path, self._clave(client_id, otra_vez=True))
+            # La clave puede haber cambiado en Andvari: se lee otra vez, una.
+            respuesta = self._pedir_acceso(client_id, self._clave(client_id, otra_vez=True))
+        if respuesta.status_code != 200:
+            raise FuenteNoDisponible(f"el gateway no dio token de acceso: {respuesta.status_code}")
+        try:
+            datos = respuesta.json()
+            token, dura = datos["access_token"], int(datos["expires_in"])
+        except (ValueError, KeyError, TypeError):
+            raise FuenteNoDisponible("token de acceso inesperado") from None
+        if not isinstance(token, str) or not token:
+            raise FuenteNoDisponible("token de acceso inesperado")
+        self._accesos[client_id] = (token, time.monotonic() + dura - MARGEN_ACCESO)
+        return token
+
+    def _pedir_acceso(self, client_id: UUID, clave: dict) -> requests.Response:
+        try:
+            asercion = build_assertion(clave, client_id, self._audience, self._gateway_key)
+        except Exception as e:  # pylint: disable=broad-except
+            # Una clave mal formada en Andvari: jwcrypto lo dice con varios tipos de error.
+            raise FuenteNoDisponible(f"no se pudo firmar: {type(e).__name__}") from None
+        try:
+            return requests.post(f"{self._url}{TOKEN_PATH}", data=token_request(asercion), timeout=self._timeout,
+                                 verify=self._verify, allow_redirects=False)
+        except (requests.RequestException, OSError) as e:
+            # Solo el tipo: el texto de estas excepciones lleva la dirección y más.
+            raise FuenteNoDisponible(type(e).__name__) from None
+
+    def _get(self, client_id: UUID, path: str) -> dict:
+        respuesta = self._llamar(path, self._acceso(client_id))
+        if respuesta.status_code == 401:
+            # Caducó entre medias, o el gateway rotó su clave de firma: uno nuevo, una vez.
+            respuesta = self._llamar(path, self._acceso(client_id, otro=True))
         if respuesta.status_code == 404:
             raise NoEncontrado(path.rsplit("/", 1)[-1])
         if respuesta.status_code != 200:
@@ -91,12 +131,7 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
         except (ValueError, KeyError, TypeError):
             raise FuenteNoDisponible("respuesta inesperada") from None
 
-    def _llamar(self, client_id: UUID, path: str, clave: dict) -> requests.Response:
-        try:
-            token = build_token(clave, client_id, self._audience, self._gateway_key)
-        except Exception as e:  # pylint: disable=broad-except
-            # Una clave mal formada en Andvari: jwcrypto lo dice con varios tipos de error.
-            raise FuenteNoDisponible(f"no se pudo firmar: {type(e).__name__}") from None
+    def _llamar(self, path: str, token: str) -> requests.Response:
         try:
             return requests.get(f"{self._url}{path}", headers={"Authorization": f"Bearer {token}"},
                                 timeout=self._timeout, verify=self._verify, allow_redirects=False)

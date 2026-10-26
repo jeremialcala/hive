@@ -1,14 +1,16 @@
 # Autenticación: cómo se llama al servicio y cómo se opera
 
 * **Estado:** review
-* **Fecha:** 2026-10-12
+* **Fecha:** 2026-10-26
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 
-Todo endpoint que no sea el webhook de Meta ni `/health` pide un token en la cabecera
-`Authorization: Bearer <token>`. El token es un JWT firmado por el cliente, metido dentro de un JWE cifrado para el
-gateway. Las decisiones están en [ADR-0004](../00-project/adr/0004-firma-en-el-webhook-jwe-en-el-resto.md),
+Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
+`Authorization: Bearer <token>`. Es OAuth 2.0 con la concesión `client_credentials`: el cliente lo pide a
+`POST /oauth/token` con una **aserción**, un JWT que firma con su clave, metido dentro de un JWE cifrado para el
+gateway, y lo usa durante 10 minutos en todas sus peticiones. Las decisiones están en
+[ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md), que supera en parte
 [ADR-0005](../00-project/adr/0005-jwt-firmado-por-el-cliente-dentro-del-jwe.md) y
 [ADR-0009](../00-project/adr/0009-parametros-del-token-de-autenticacion.md); esto es cómo se usan.
 
@@ -16,15 +18,16 @@ gateway. Las decisiones están en [ADR-0004](../00-project/adr/0004-firma-en-el-
 
 | Clave | De quién | Dónde vive la parte privada | Para qué |
 |---|---|---|---|
-| Par P-256 de firma | De cada cliente, operador incluido | Solo en el cliente | Demuestra quién envía. El gateway guarda la parte pública |
-| Par RSA de cifrado | Del gateway | En un fichero del servidor, fuera del repositorio y de la imagen | Que solo el gateway lea el token |
+| Par P-256 de firma | De cada cliente, operador incluido | Solo en el cliente | Firma la aserción: demuestra quién pide el token. El gateway guarda la parte pública |
+| Par RSA de cifrado | Del gateway | En un fichero del servidor, fuera del repositorio y de la imagen | Que solo el gateway lea la aserción |
+| Par P-256 de firma | Del gateway | En el mismo fichero | Firma los tokens de acceso. No se entrega a nadie: solo el gateway los comprueba |
 
 El gateway no guarda ningún secreto de un cliente: si alguien se lleva la base, no se lleva con qué hacerse pasar
 por nadie.
 
 ## Para un cliente
 
-### El token
+### La aserción
 
 1. **Firmar** un JWT con la clave privada, algoritmo `ES256`. La cabecera lleva el `kid` que devolvió el registro.
 2. **Cifrar** ese JWT como JWE compacto para una clave pública del gateway: `RSA-OAEP-256` con `A256CBC-HS512`. La
@@ -32,26 +35,44 @@ por nadie.
 
 | Campo del JWT | Valor |
 |---|---|
-| `iss` | El identificador del cliente (`uuid`) |
+| `iss` y `sub` | El identificador del cliente (`uuid`): el cliente se autentica a sí mismo (RFC 7523) |
 | `aud` | La audiencia del gateway, la que devolvió el registro |
 | `iat`, `exp` | `exp` como máximo 60 segundos después de `iat` |
-| `jti` | Un identificador nuevo en cada token |
+| `jti` | Un identificador nuevo en cada aserción |
 
-Un token vale **una vez y 60 segundos**: hay que construir uno por petición. Cualquier otro algoritmo se rechaza.
-Un token rechazado recibe siempre el mismo `401`, sin decir el motivo; el motivo queda en el log del gateway.
+Una aserción vale **una vez y 60 segundos**. Cualquier otro algoritmo se rechaza.
+
+### El token de acceso
+
+```
+POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer
+&client_assertion=<la aserción>
+```
+
+La respuesta es `{"access_token": "…", "token_type": "Bearer", "expires_in": 600}`. El token vale **10 minutos y
+para todas las peticiones** que se hagan en ellos: se pide otro un poco antes de que caduque. Es un JWT que firma el
+gateway (`typ: at+jwt`), y dice quién es el cliente; el cliente no tiene que leerlo.
+
+Los errores son los de OAuth: `400` con `invalid_request` o `unsupported_grant_type` si la petición no es como se
+acordó, y `401` con `invalid_client` para cualquier aserción que no valga, sin decir el motivo; el motivo queda en el
+log del gateway. Un token de acceso rechazado en una ruta recibe siempre el mismo `401`.
 
 ### Con el cliente de referencia
 
-`src/ops/client.py` hace esos dos pasos y no necesita nada del servicio. Sirve tal cual o como ejemplo para
-hacerlo con otra librería JOSE.
+`src/ops/client.py` hace esos pasos y no necesita nada del servicio. Sirve tal cual o como ejemplo para hacerlo con
+otra librería JOSE y OAuth.
 
 ```bash
 # Una vez: crea la clave. Escribe la privada en el fichero e imprime la pública, que es la que se registra.
 python -m ops.client new-key mi-clave.json
 
-# En cada petición: un token nuevo.
-curl -H "Authorization: Bearer $(python -m ops.client token mi-clave.json <uuid del cliente> <audiencia> gateway-publicas.json)" \
-     https://<gateway>/keys
+# Cada 10 minutos: un token de acceso, para todas las peticiones de esos 10 minutos.
+TOKEN=$(python -m ops.client access-token mi-clave.json <uuid del cliente> <audiencia> gateway-publicas.json https://<gateway>)
+curl -H "Authorization: Bearer $TOKEN" https://<gateway>/keys
 ```
 
 `gateway-publicas.json` es lo que el registro devolvió en `gateway.keys`, guardado como `{"keys": [...]}`. Los
@@ -62,19 +83,20 @@ comandos se ejecutan desde `src/` de este repositorio con `jwcrypto` instalado, 
 Un cliente puede tener dos claves a la vez, para cambiar sin corte:
 
 1. `POST /keys` con la clave pública nueva y la **prueba de que tiene su parte privada**: un JWT que firma la clave
-   nueva (`typ: key-proof+jwt`, `ES256`), con el mismo `iss` y `aud` que el token y el `jti` del token de esa misma
-   petición. Vale una vez y 60 segundos, como el token. Sin ella, o si no casa, la respuesta es `422`
-   `INVALID_KEY_PROOF` y la clave no se añade.
-2. Empezar a firmar con la nueva.
+   nueva (`typ: key-proof+jwt`, `ES256`), con el `iss` y el `aud` de la aserción y el `jti` del token de acceso con el
+   que va esa petición (el campo `jti` del token, que el cliente lee sin comprobarlo). Vale una vez y 60 segundos.
+   Sin ella, o si no casa, o si ya se usó una prueba con ese token, la respuesta es `422` `INVALID_KEY_PROOF` y la
+   clave no se añade.
+2. Empezar a firmar las aserciones con la nueva.
 3. `DELETE /keys/{kid}` con el `kid` de la antigua.
 
 Con el cliente de referencia, el paso 1 es:
 
 ```bash
 python -m ops.client new-key clave-nueva.json
-python -m ops.client add-key mi-clave.json clave-nueva.json <uuid del cliente> <audiencia> gateway-publicas.json > alta.json
-curl -H "Authorization: Bearer $(jq -r .token alta.json)" -H "Content-Type: application/json" \
-     -d "$(jq -c .body alta.json)" https://<gateway>/keys
+TOKEN=$(python -m ops.client access-token mi-clave.json <uuid del cliente> <audiencia> gateway-publicas.json https://<gateway>)
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d "$(python -m ops.client add-key clave-nueva.json <uuid del cliente> <audiencia> $TOKEN)" https://<gateway>/keys
 ```
 
 La prueba impide registrar una clave con la que nadie puede firmar, pero **no frena a quien robó una clave**: se
@@ -90,8 +112,10 @@ Los comandos se ejecutan con la imagen del servicio, en el servidor.
 ### Puesta en marcha
 
 ```bash
-# 1. El par de claves del gateway. La privada se escribe en el fichero, solo para su dueño, y no se imprime.
+# 1. Los dos pares de claves del gateway: el de cifrado y el de firma de los tokens de acceso (ADR-0025). Las
+#    privadas se escriben en el fichero, solo para su dueño, y no se imprimen.
 docker run --rm -v /srv/apps/hive-gateway/keys:/keys <imagen> python -m ops.gateway_key generate /keys/gateway-keys.json
+docker run --rm -v /srv/apps/hive-gateway/keys:/keys <imagen> python -m ops.gateway_key generate-signing /keys/gateway-keys.json
 
 # 2. En el .env: la ruta del fichero dentro del contenedor y la audiencia que pondrán los clientes en sus tokens.
 #    GATEWAY_KEYS_FILE=/run/gateway/gateway-keys.json
@@ -102,7 +126,7 @@ python -m ops.client new-key operador.json > operador-publica.json
 docker compose run --rm -v $PWD/operador-publica.json:/tmp/operador.json:ro gateway python -m ops.operator_key /tmp/operador.json
 ```
 
-Sin el fichero de claves, o con uno que no puede usar, **el servicio no arranca**. El contenedor corre con el
+Sin el fichero de claves, o con uno sin una clave de cada tipo, **el servicio no arranca**. El contenedor corre con el
 usuario `10001`, que tiene que poder leer el fichero: `chown 10001` y `chmod 400`.
 
 El paso 3 existe porque todos los endpoints piden un token y nadie puede firmar uno antes de tener una clave
@@ -124,7 +148,7 @@ del gateway. Solo se acepta una clave pública P-256; una privada se rechaza y n
 
 | Situación | Qué hacer |
 |---|---|
-| Una clave de un cliente está comprometida | Quitar **todas** las claves que el cliente no reconozca, no solo esa: `GET /clients` las lista en `keys` de cada cliente, y cada una se quita con `DELETE /clients/{client_id}/keys/{kid}`, que deja de valer en el acto. Quien tenía la clave pudo añadir otra suya con ella, con su prueba, y quitar la legítima; cada alta de una clave deja una línea de aviso en el log con su `kid`, y cada baja otra. Si el cliente se queda sin ninguna, se le registra la nueva como en la fila siguiente |
+| Una clave de un cliente está comprometida | Quitar **todas** las claves que el cliente no reconozca, no solo esa: `GET /clients` las lista en `keys` de cada cliente, y cada una se quita con `DELETE /clients/{client_id}/keys/{kid}`. Desde ese momento no consigue ningún token de acceso nuevo, pero el que ya tenía vale hasta que caduca, 10 minutos como mucho (ADR-0025). Para cortarlos todos al instante, se rota la clave de firma del gateway (abajo). Quien tenía la clave pudo añadir otra suya con ella, con su prueba, y quitar la legítima; cada alta de una clave deja una línea de aviso en el log con su `kid`, y cada baja otra. Si el cliente se queda sin ninguna, se le registra la nueva como en la fila siguiente |
 | Un cliente perdió su clave | `POST /clients/{client_id}/keys` con la pública nueva |
 | El operador perdió la suya | Repetir el paso 3 de la puesta en marcha |
 
@@ -148,8 +172,9 @@ vaya a servir:
 
 2. Cada worker lee su clave privada de Andvari, en `motor/data/clientes/<client_id>/<worker>` (campo `jwk`), con
    su propio rol de AppRole, `motor-<worker>`. Solo alcanza la suya, la de cualquier cliente.
-3. El worker firma sus tokens con esa clave y pone como emisor el identificador del cliente. El formato es el
-   mismo de cualquier cliente. Qué cliente es lo dice cada mensaje de la cola, en `clientId`.
+3. El worker firma sus aserciones con esa clave, con el identificador del cliente como emisor, y pide su token de
+   acceso a `/oauth/token`, como cualquier cliente. Lo usa hasta un minuto antes de que caduque. Qué cliente es lo
+   dice cada mensaje que atiende, en `clientId`.
 
 #### El comando que da de alta las claves de un cliente
 
@@ -222,21 +247,31 @@ The response engine used key <kid> of client <client_id>, which has no worker: r
 Esa línea es la lista de lo que falta por retirar. Ya no se pueden registrar claves nuevas sin worker: la API
 responde `422`. Al terminar el refactor se borran con `DELETE /clients/{client_id}/service-keys/{kid}`.
 
-### Rotar el par del gateway
+### Rotar el par de cifrado del gateway
 
 1. `python -m ops.gateway_key generate <fichero>` añade un par nuevo; el anterior sigue valiendo.
 2. Reiniciar el servicio, que lee el fichero al arrancar.
 3. Los clientes piden las claves con `GET /gateway/keys` y pasan a cifrar con la nueva, la última de la lista.
 4. Cuando ya nadie cifra con la antigua: `python -m ops.gateway_key drop <fichero> <kid>` y otro reinicio.
 
+### Rotar el par de firma del gateway
+
+1. `python -m ops.gateway_key generate-signing <fichero>` y reiniciar: la nueva firma, y la antigua sigue
+   comprobando los tokens que firmó.
+2. A los 10 minutos ya no queda ninguno: `python -m ops.gateway_key drop <fichero> <kid>` y otro reinicio.
+
+Quitar la antigua sin esperar **corta al instante todos los tokens de acceso** que firmó: es la forma de dejar fuera a
+quien tenía uno de una clave robada. Los clientes, el motor incluido, piden otro con su aserción.
+
 ## Lo que no hace todavía
 
-- **El motor de respuestas no lo usa todavía.** El gateway ya le da paso con una clave por cliente y por worker;
-  pedir la configuración y los tokens es trabajo de su repositorio.
 - **El comando no rota las claves**: da de alta las que faltan. Rotar la de un worker pide escribir una versión
   nueva en Andvari, y la política `motor-claves` no lo permite a propósito. Está pendiente.
-- **No hay límite de tasa.** Los intentos fallidos se registran, pero nada los frena; es RS10, en el borde.
-- **Un cliente no se puede desactivar por la API.** Revocar sus claves lo deja fuera; el estado del cliente solo se
-  cambia en la base.
+- **No hay límite de tasa**, tampoco en `/oauth/token`. Los intentos fallidos se registran, pero nada los frena; es
+  RS10, en el borde.
+- **Un cliente no se puede desactivar por la API.** Revocar sus claves lo deja sin tokens nuevos; el estado del
+  cliente solo se cambia en la base.
+- **El token de acceso no está atado a la clave del cliente** (DPoP, RFC 9449): quien lo robe lo usa hasta que
+  caduque. Queda para cuando haya clientes externos (ADR-0025).
 - **La clave privada del gateway es un fichero.** Pasará a Andvari cuando el gateway se integre con él para el
   cifrado de datos (ADR-0013).

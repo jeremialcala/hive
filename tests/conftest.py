@@ -10,7 +10,7 @@ from shared.auth import gateway_keys  # Needs neither settings nor database.
 
 # A key pair for the gateway, made for this run and thrown away with it.
 GATEWAY_KEYS_FILE = os.path.join(tempfile.mkdtemp(prefix="gateway-keys-"), "gateway-keys.json")
-gateway_keys.write_file(GATEWAY_KEYS_FILE, [gateway_keys.new_key()])
+gateway_keys.write_file(GATEWAY_KEYS_FILE, [gateway_keys.new_key(), gateway_keys.new_signing_key()])
 GATEWAY_AUDIENCE = "https://gateway.test"
 
 # The key service is replaced by a double further down. These only have to be there for the settings to load.
@@ -194,27 +194,61 @@ class Caller:
         self.key = key
         self.kid = client.signingKeys[0]["kid"]
 
-    def token(self, **changes) -> str:
-        from shared.auth.client import build_token
+    def assertion(self, **changes) -> str:
+        """An assertion for POST /oauth/token, built the documented way; `changes` go to build_assertion."""
+        return signed_assertion(self.key, self.client_id, **changes)
 
-        gateway_key = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()["keys"][0]
-        return build_token(self.key, self.client_id, GATEWAY_AUDIENCE, gateway_key, **changes)
+    def access_token(self, **changes) -> str:
+        """An access token from POST /oauth/token, as a client gets it (ADR-0025)."""
+        return access_token_for(self.assertion(**changes))
 
     @property
     def auth(self) -> dict:
-        """A fresh token each time: one is valid for a single request."""
-        return {"Authorization": f"Bearer {self.token()}"}
+        """The headers of a request with a new access token, or with none the API takes if the gateway gave none."""
+        return bearer(self.assertion())
 
     def adding(self, new_key: dict, **proof_changes) -> dict:
         """What POST /keys takes to add `new_key` (private): the headers and the body, with the proof it signs."""
-        from uuid import uuid4
+        from shared.auth.client import access_token_jti, key_proof, public_part
 
-        from shared.auth.client import key_proof, public_part
-
-        jti = str(uuid4())
-        proof = key_proof(new_key, self.client_id, GATEWAY_AUDIENCE, jti, **proof_changes)
-        return {"headers": {"Authorization": f"Bearer {self.token(jti=jti)}"},
+        token = self.access_token()
+        proof = key_proof(new_key, self.client_id, GATEWAY_AUDIENCE, access_token_jti(token), **proof_changes)
+        return {"headers": {"Authorization": f"Bearer {token}"},
                 "json": {"signingKey": public_part(new_key), "proof": proof}}
+
+
+def signed_assertion(key: dict, client_id, **changes) -> str:
+    """An assertion signed with `key` for `client_id`, encrypted to the gateway's key."""
+    from shared.auth.client import build_assertion
+
+    gateway_key = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()["keys"][0]
+    return build_assertion(key, client_id, GATEWAY_AUDIENCE, gateway_key, **changes)
+
+
+def request_token(assertion: str):
+    """What POST /oauth/token answers to that assertion."""
+    from fastapi.testclient import TestClient
+
+    import app as app_module
+    from shared.auth.client import token_request
+
+    return TestClient(app_module.app).post("/oauth/token", data=token_request(assertion))
+
+
+def access_token_for(assertion: str) -> str:
+    response = request_token(assertion)
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
+
+
+def bearer(assertion: str) -> dict:
+    """
+        The headers of a request with the access token that assertion gets. If it gets none, a token the API turns
+        away: a test of a key that is not good expects the 401 of the route, as a client would get it.
+    """
+    response = request_token(assertion)
+    token = response.json()["access_token"] if response.status_code == 200 else "no.access.token"
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture

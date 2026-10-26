@@ -5,18 +5,21 @@
 """
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
+from auth.access_tokens import LIFETIME as ACCESS_LIFETIME
 from auth.client_keys import public_signing_key
 from shared.auth.key_proof import verify_key_proof
 from auth.principal import Principal
-from shared.auth.tokens import InvalidToken
+from shared.auth.tokens import CLOCK_SKEW, InvalidToken
 from shared.auth.gateway_keys import GatewayKeys
 from classes import Client, ClientRequest, OwnedKeyRequest, ResponseData, ServiceKeyRequest, Settings, SigningKeyRequest
 from enums import Status, Worker
 from repository import (Conflict, NotFound, RegisterUnavailable, add_service_key, add_signing_key, delete_client,
-                        get_client, list_clients, register_client, remove_service_key, remove_signing_key)
+                        get_client, list_clients, register_client, remember_token, remove_service_key,
+                        remove_signing_key)
 
 from .erasure_notices import CLIENT, announce
 
@@ -101,6 +104,11 @@ async def ctr_add_own_signing_key(principal: Principal, request: OwnedKeyRequest
     try:
         verify_key_proof(request.proof, key, principal.client_id, settings.gateway_audience, principal.jti,
                          time.time())
+        # A proof is good once. It is bound to the jti of the access token, which serves many requests for ten
+        # minutes (ADR-0025): what is remembered is that a proof for that token was used.
+        if not remember_token(principal.client_id, f"key-proof:{principal.jti}",
+                              datetime.now(timezone.utc) + timedelta(seconds=ACCESS_LIFETIME + CLOCK_SKEW)):
+            raise InvalidToken("key proof already used")
     except InvalidToken as e:
         log.warning(f"Rejected a new signing key for client {principal.client_id}: {e}")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="INVALID_KEY_PROOF") from None

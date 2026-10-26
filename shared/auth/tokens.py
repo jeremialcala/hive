@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-    Verification of an authentication token: a JWT signed by the client (ES256), inside a JWE encrypted to the
-    gateway (RSA-OAEP-256 with A256CBC-HS512). One algorithm per layer and nothing else is accepted.
+    Verification of a client's assertion: a JWT signed by the client (ES256), inside a JWE encrypted to the gateway
+    (RSA-OAEP-256 with A256CBC-HS512). One algorithm per layer and nothing else is accepted. Since ADR-0025 it is
+    only presented to POST /oauth/token, to get an access token (RFC 7523, section 2.2): its `iss` and its `sub` are
+    the client.
 
     Nothing here touches the database: the caller says how to find a client's key, and remembers the jti.
 """
@@ -151,6 +153,9 @@ def verify(raw: str, gateway_keys: GatewayKeys, audience: str,
         raise InvalidToken("bad signature") from None
     if not isinstance(claims, dict) or not _same_client(claims.get("iss"), client_id):
         raise InvalidToken("bad signature")
+    if not _same_client(claims.get("sub"), client_id):
+        # RFC 7523, section 3: a client authenticates as itself, so the subject is the issuer.
+        raise InvalidToken("the subject is not the issuer")
     return check_claims(claims, client_id, audience, now)
 
 

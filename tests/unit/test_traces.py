@@ -143,10 +143,12 @@ def test_the_span_of_a_request_names_its_route_never_its_address(bot, spans):
 def test_the_management_api_and_its_answers_follow_the_rule(acme, bot, spans):
     TenantRepository(acme.client_id).add_contact(bot.uuid, Contact(firstName=NAME, waId=NUMBER))
 
-    HTTP.post("/contacts/search", headers=acme.auth, json={"waId": NUMBER})
-    HTTP.get(f"/chat/{bot.uuid}/contacts", headers=acme.auth, params={"offset": 0, "limit": 5})
+    headers = acme.auth
+    HTTP.post("/contacts/search", headers=headers, json={"waId": NUMBER})
+    HTTP.get(f"/chat/{bot.uuid}/contacts", headers=headers, params={"offset": 0, "limit": 5})
 
-    assert len(by_name(spans, "http.request")) == 2
+    # The two requests and the one for the access token (ADR-0025).
+    assert len(by_name(spans, "http.request")) == 3
     assert_they_follow_the_rule_of_the_logs(spans)
 
 

@@ -1,7 +1,7 @@
 # Contrato OpenAPI de un servicio del gateway (fase 02-design). Refleja la API tal como está construida.
 # Generado con .ai-dlc/scripts/gen_openapi.py: regenerar, no editar a mano.
 # Sin valores por defecto ni ejemplos: en el código son aleatorios y cambian en cada arranque.
-# Declara el token de autenticación (HTTPBearer: un JWT firmado dentro de un JWE). La firma X-Hub-Signature-256
+# Declara la autenticación (OAuth2, client_credentials en /oauth/token, ADR-0025). La firma X-Hub-Signature-256
 # del webhook no aparece: se comprueba en una dependencia que OpenAPI no ve.
 components:
   schemas:
@@ -365,12 +365,15 @@ components:
       title: Worker
       type: string
   securitySchemes:
-    HTTPBearer:
-      bearerFormat: JWE
-      description: A JWT signed by the client (ES256), inside a JWE encrypted to the gateway (RSA-OAEP-256, A256CBC-HS512).
-        It lasts 60 seconds at most and is valid once.
-      scheme: bearer
-      type: http
+    OAuth2:
+      description: 'An access token from POST /oauth/token (ADR-0025): a JWT the gateway signs (ES256, typ at+jwt),
+        sent as `Authorization: Bearer <token>`. It lasts 10 minutes and is good for every request in them. The
+        client authenticates at /oauth/token with a signed assertion (RFC 7523), not with a secret.'
+      flows:
+        clientCredentials:
+          scopes: {}
+          tokenUrl: /oauth/token
+      type: oauth2
 info:
   contact:
     email: jeremialcala@gmail.com
@@ -433,7 +436,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Create Chatbot
       tags:
       - Bot
@@ -465,7 +468,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Chatbot
       tags:
       - Bot
@@ -509,7 +512,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Contacts
       tags:
       - Contacts
@@ -547,7 +550,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Contact
       tags:
       - Contacts
@@ -582,7 +585,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Export Contact
       tags:
       - Contacts
@@ -624,7 +627,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Last Turns
       tags:
       - Contacts
@@ -662,7 +665,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Set Chatbot Credentials
       tags:
       - Chat
@@ -688,7 +691,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Info
       tags:
       - Chat
@@ -714,7 +717,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Chatbot Intents
       tags:
       - Intents
@@ -745,7 +748,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Chatbot Intent
       tags:
       - Intents
@@ -776,7 +779,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Chatbot Intent
       tags:
       - Intents
@@ -806,7 +809,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Intent
       tags:
       - Intents
@@ -842,7 +845,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Update Chatbot Intent
       tags:
       - Intents
@@ -868,7 +871,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Phones
       tags:
       - Chat
@@ -900,7 +903,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Whatsapp Phone
       tags:
       - Chat
@@ -926,7 +929,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Rules
       tags:
       - Chat
@@ -957,7 +960,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Chatbot Rule
       tags:
       - Chat
@@ -989,7 +992,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Tokens
       tags:
       - Chat
@@ -1015,7 +1018,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Tools
       tags:
       - Intents
@@ -1030,7 +1033,7 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Clients
       tags:
       - Clients
@@ -1060,7 +1063,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Register Client
       tags:
       - Clients
@@ -1092,7 +1095,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Client
       tags:
       - Clients
@@ -1126,7 +1129,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Client Key
       tags:
       - Clients
@@ -1161,7 +1164,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove Client Key
       tags:
       - Clients
@@ -1205,7 +1208,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Service Key
       tags:
       - Clients
@@ -1241,7 +1244,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove Service Key
       tags:
       - Clients
@@ -1271,7 +1274,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Search Contacts
       tags:
       - Contacts
@@ -1290,7 +1293,7 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Gateway Keys
       tags:
       - Clients
@@ -1321,7 +1324,7 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List My Keys
       tags:
       - Clients
@@ -1351,7 +1354,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add My Key
       tags:
       - Clients
@@ -1381,10 +1384,84 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove My Key
       tags:
       - Clients
+  /oauth/token:
+    post:
+      description: The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 (ADR-0025),
+        and gets an access token the gateway signs, for every other route.
+      operationId: oauth_token_oauth_token_post
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                client_assertion:
+                  description: A JWT the client signs (ES256, with the kid of its registered key; iss and sub, the
+                    client; aud, the gateway; 60 seconds at most; good once), inside a JWE for a key of GET /gateway/keys
+                    (RSA-OAEP-256, A256CBC-HS512, cty JWT).
+                  type: string
+                client_assertion_type:
+                  enum:
+                  - urn:ietf:params:oauth:client-assertion-type:jwt-bearer
+                  type: string
+                grant_type:
+                  enum:
+                  - client_credentials
+                  type: string
+              required:
+              - grant_type
+              - client_assertion_type
+              - client_assertion
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                  token_type:
+                    enum:
+                    - Bearer
+                    type: string
+                required:
+                - access_token
+                - token_type
+                - expires_in
+                type: object
+          description: An access token, good for 10 minutes.
+        '400':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: invalid_request or unsupported_grant_type.
+        '401':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'invalid_client: the assertion is not good, whatever the reason.'
+      summary: An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)
+      tags:
+      - OAuth
 tags:
 - description: The registry of clients and of the public keys they sign their tokens with.
   name: Clients
