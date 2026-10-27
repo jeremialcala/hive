@@ -20,8 +20,8 @@ cerrada `WORKER_ROUTES` y el texto de las ADR.
 Parte de un borrador de Jeremi del 2026-10-26 que traía capacidades que Hive todavía no tiene: usuarios humanos
 dentro de un cliente, sesión con un IdP, guardrails, versiones de un bot y procesos MCP. Por decisión suya del mismo
 día, la matriz se escribe sobre el Hive real, y lo nuevo del borrador entra como propuesto, con su decisión pendiente.
-Las decisiones D1–D9 las tomó también Jeremi ese día ([Decisiones](#decisiones)). Solo queda, para la ADR de MCP, qué
-worker llama a las herramientas de terceros.
+Las decisiones D1–D9 las tomó también Jeremi ese día ([Decisiones](#decisiones)). La ADR de MCP dirá
+cómo se guardan las credenciales de terceros.
 
 ## Roles
 
@@ -59,7 +59,7 @@ Meta no es un rol: llama al webhook, que se autentica por bot con el `verifyToke
 | ✅ | Permitido y **construido**: lo aplica el código y lo cubren las pruebas |
 | ⛔ | Denegado y **construido** (`403`, o `404` si el recurso es de otro cliente) |
 | ✅ nuevo / ⛔ nuevo | **Decidido** el 2026-10-26 (D1–D9), todavía sin construir |
-| 🟡 ✅ / 🟡 ⛔ | **Propuesto**, pendiente de la ADR de MCP. El símbolo que sigue es el valor sugerido |
+| 🟡 ✅ / 🟡 ⛔ | **Propuesto**, pendiente de decisión. Hoy no queda ninguno |
 | — | No aplica a ese rol |
 
 Columna **Contrato**: ✅ la ruta está en `openapi.yaml` · ⚠️ hay requisito en el PRD, pero no ruta · ❌ no hay
@@ -150,8 +150,8 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Calificar respuestas y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | Borrador (D9; el evaluador de la ADR-0008 del motor) | ❌ |
 | Ver trazas y eventos del bus | ✅ nuevo | ⛔ | ⛔ | — | Mapa de estilo (ADR-0027, D9) | ❌ (hoy, en Tempo) |
 | Configurar los servidores MCP por defecto de la plataforma, con sus permisos declarados | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | D7, D8 | ❌ |
-| Cargar las llaves o credenciales de su cuenta para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | 🟡 ✅ el worker que llame a la herramienta (D8) | D8 | ❌ |
-| Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | 🟡 ✅ el worker que llame a la herramienta (D8) | D8; hoy, los intents (RF02) | ❌ |
+| Cargar las llaves o credenciales de su cuenta para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8 | ❌ |
+| Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8; hoy, los intents (RF02) | ❌ |
 | Ver las integraciones de sus bots (sin sus credenciales) | ⛔ nuevo | ✅ nuevo | ✅ nuevo | — | D8 | ❌ |
 | Reprocesar mensajes que no se pudieron entregar y mantenimiento | ✅ nuevo, con aprobación humana si es destructivo | — | — | — | Borrador (D9) | ❌ |
 | Entrar directamente en los datos de un cliente | ⛔ | — | — | — | RS01, ADR-0012 | — |
@@ -193,15 +193,15 @@ D1–D9, resueltas por Jeremi el 2026-10-26.
 | D5 | ¿El cliente ve la auditoría de lo suyo? | **Sí, `cliente-admin`, solo lectura** | RS14 |
 | D6 | ¿`cliente-analista` ve el `verifyToken`? | **No**: la ficha se lo quita. Es el secreto con el que se suscribe una app de Meta a la URL del bot | `GET /chat/{bot_id}/info` |
 | D7 | ¿Entra MCP? | **Sí, para integrar Hive con servicios de terceros**. Lo que el borrador proponía, procesos del operador sobre datos agregados, no es el motivo | Una ADR de MCP, con D8 |
-| D8 | ¿Quién configura los servidores MCP, quién carga las credenciales y qué integraciones puede añadir el cliente? | **El operador configura los servidores MCP por defecto. `cliente-admin` carga las llaves o credenciales de su cuenta, y configura integraciones con sus propias APIs** para que el agente consulte sus datos y responda mejor. Sigue propuesto, para la ADR: las credenciales, cifradas con la clave de datos del cliente como las de Meta y sin volver a mostrarse; las llama el enlace, solo hacia los destinos permitidos | La ADR de MCP. Una API del cliente es un destino que él escribe (RS16, AB09), y sus respuestas entran al modelo como entrada no confiable (AB08). Hay que decidir si estas integraciones sustituyen a las llamadas de los intents o conviven con ellas |
+| D8 | ¿Quién configura los servidores MCP, quién carga las credenciales y qué integraciones puede añadir el cliente? | **El operador configura los servidores MCP por defecto. `cliente-admin` carga las llaves o credenciales de su cuenta, y configura integraciones con sus propias APIs** para que el agente consulte sus datos y responda mejor. Las llamadas, a una API o a un servidor MCP, las hace el **enlace**, según la intención del mensaje y el contexto de la conversación. Sigue propuesto, para la ADR: las credenciales, cifradas con la clave de datos del cliente como las de Meta y sin volver a mostrarse, y las llamadas solo hacia los destinos permitidos | La ADR de MCP. Una API del cliente es un destino que él escribe (RS16, AB09), y sus respuestas entran al modelo como entrada no confiable (AB08). Hay que decidir si estas integraciones sustituyen a las llamadas de los intents o conviven con ellas |
 | D9 | Las capacidades nuevas del borrador sin requisito: suspender un cliente, editar la persona, editar o borrar reglas, rotar el `verifyToken`, versiones, guardrails, calificar, auditoría de la plataforma, trazas y reproceso. ¿Entran en la v1? | **Sí, entran en la v1**, con los permisos marcados | Un requisito en el PRD para cada una |
 
 ## Próximos pasos
 
 1. Escribir en el PRD los requisitos de las personas (D1–D3, D5) y la ADR de autenticación de personas: el IdP, la
    sesión, la MFA y cómo convive con la credencial de máquina de la ADR-0025.
-2. Escribir la ADR de MCP (D7, D8): el catálogo del operador, las credenciales del cliente, sus integraciones y qué
-   worker las llama.
+2. Escribir la ADR de MCP (D7, D8): el catálogo del operador, las credenciales del cliente y sus integraciones, que
+   llama el enlace.
 3. Escribir en el PRD el requisito de cada capacidad que entró con la D9: suspender un cliente, editar la persona,
    editar o borrar reglas, rotar el `verifyToken`, versiones, guardrails, calificar, auditoría, trazas y reproceso.
 4. Una prueba que compare la matriz con el código: que cada ✅ y ⛔ construido coincida con la dependencia de su ruta

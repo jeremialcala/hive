@@ -139,6 +139,9 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 - `.ai-dlc/scripts/`: generadores del contrato AsyncAPI y del historial del repo.
 
 ### Cambiado
+- **El enlace y el evaluador, definidos** (decisiones de Jeremi del 2026-10-26, en el plan de los workers). El
+  enlace hace las llamadas a las APIs y a los servidores MCP según la intención del mensaje y el contexto de la
+  conversación; el evaluador comprueba que cada respuesta cumpla los criterios del bot antes de enviarla.
 - **El README, al día.** Decía que el motor no estaba desplegado: corre en midgard desde el E7, con cuatro de sus
   seis workers. Ahora cuenta también las confirmaciones de lectura y el «escribiendo…» del notificador, el
   calentamiento del LLM y que hoy solo responde por WhatsApp. El aviso de `architecture.md` nombraba la ADR-0009
