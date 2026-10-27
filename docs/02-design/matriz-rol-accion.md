@@ -20,7 +20,8 @@ cerrada `WORKER_ROUTES` y el texto de las ADR.
 Parte de un borrador de Jeremi del 2026-10-26 que traía capacidades que Hive todavía no tiene: usuarios humanos
 dentro de un cliente, sesión con un IdP, guardrails, versiones de un bot y procesos MCP. Por decisión suya del mismo
 día, la matriz se escribe sobre el Hive real, y lo nuevo del borrador entra como propuesto, con su decisión pendiente.
-Las decisiones D1–D7 las tomó también Jeremi ese día ([Decisiones](#decisiones)); quedan abiertas D8 y D9.
+Las decisiones D1–D8 las tomó también Jeremi ese día ([Decisiones](#decisiones)); queda abierta la D9, y de la D8, lo
+que se deja a la ADR de MCP.
 
 ## Roles
 
@@ -57,8 +58,8 @@ Meta no es un rol: llama al webhook, que se autentica por bot con el `verifyToke
 |---|---|
 | ✅ | Permitido y **construido**: lo aplica el código y lo cubren las pruebas |
 | ⛔ | Denegado y **construido** (`403`, o `404` si el recurso es de otro cliente) |
-| ✅ nuevo / ⛔ nuevo | **Decidido** el 2026-10-26 (D1–D7), todavía sin construir |
-| 🟡 ✅ / 🟡 ⛔ | **Propuesto**, pendiente de decisión (D8, D9). El símbolo que sigue es el valor sugerido |
+| ✅ nuevo / ⛔ nuevo | **Decidido** el 2026-10-26 (D1–D8), todavía sin construir |
+| 🟡 ✅ / 🟡 ⛔ | **Propuesto**, pendiente de decisión (D9, o de la ADR de MCP). El símbolo que sigue es el valor sugerido |
 | — | No aplica a ese rol |
 
 Columna **Contrato**: ✅ la ruta está en `openapi.yaml` · ⚠️ hay requisito en el PRD, pero no ruta · ❌ no hay
@@ -148,7 +149,10 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Definir guardrails y la acción ante una violación | — | 🟡 ✅ | ⛔ nuevo | — | Borrador (D9) | ❌ |
 | Calificar respuestas y ver métricas de cumplimiento | — | 🟡 ✅ | ✅ nuevo | — | Borrador (D9; el evaluador de la ADR-0008 del motor) | ❌ |
 | Ver trazas y eventos del bus | 🟡 ✅ | ⛔ | ⛔ | — | Mapa de estilo (ADR-0027, D9) | ❌ (hoy, en Tempo) |
-| Integrar servicios de terceros por MCP: registrar el servidor, declarar sus permisos y llamarlo | 🟡 ✅ registra y retira servidores (D8) | 🟡 ✅ los activa en sus bots (D8) | ⛔ nuevo | 🟡 ✅ el worker que llame a las herramientas (D8) | D7, D8 | ❌ |
+| Configurar los servidores MCP por defecto de la plataforma, con sus permisos declarados | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | D7, D8 | ❌ |
+| Cargar las llaves o credenciales de su cuenta para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | 🟡 ✅ el worker que llame a la herramienta (D8) | D8 | ❌ |
+| Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | 🟡 ✅ el worker que llame a la herramienta (D8) | D8; hoy, los intents (RF02) | ❌ |
+| Ver las integraciones de sus bots (sin sus credenciales) | ⛔ nuevo | ✅ nuevo | ✅ nuevo | — | D8 | ❌ |
 | Reprocesar mensajes que no se pudieron entregar y mantenimiento | 🟡 ✅ con aprobación humana si es destructivo | — | — | — | Borrador (D9) | ❌ |
 | Entrar directamente en los datos de un cliente | ⛔ | — | — | — | RS01, ADR-0012 | — |
 
@@ -178,7 +182,7 @@ calidad o de un agente de soporte.
 
 ## Decisiones
 
-D1–D7, resueltas por Jeremi el 2026-10-26. D8 y D9 siguen abiertas.
+D1–D8, resueltas por Jeremi el 2026-10-26. La D9 sigue abierta.
 
 | # | Decisión | Resolución | Lleva a |
 |---|---|---|---|
@@ -189,14 +193,15 @@ D1–D7, resueltas por Jeremi el 2026-10-26. D8 y D9 siguen abiertas.
 | D5 | ¿El cliente ve la auditoría de lo suyo? | **Sí, `cliente-admin`, solo lectura** | RS14 |
 | D6 | ¿`cliente-analista` ve el `verifyToken`? | **No**: la ficha se lo quita. Es el secreto con el que se suscribe una app de Meta a la URL del bot | `GET /chat/{bot_id}/info` |
 | D7 | ¿Entra MCP? | **Sí, para integrar Hive con servicios de terceros**. Lo que el borrador proponía, procesos del operador sobre datos agregados, no es el motivo | Una ADR de MCP, con D8 |
-| D8 | ¿Quién registra un servidor MCP, quién lo activa, qué worker lo llama y dónde viven las credenciales del tercero? | **Abierta.** Propuesta: el operador registra y retira servidores en un catálogo, con sus permisos declarados; `cliente-admin` activa en sus bots los que quiera y carga las credenciales de su cuenta, cifradas con su clave de datos como las de Meta; el enlace llama a sus herramientas, solo hacia los destinos permitidos (RS16) | La ADR de MCP |
+| D8 | ¿Quién configura los servidores MCP, quién carga las credenciales y qué integraciones puede añadir el cliente? | **El operador configura los servidores MCP por defecto. `cliente-admin` carga las llaves o credenciales de su cuenta, y configura integraciones con sus propias APIs** para que el agente consulte sus datos y responda mejor. Sigue propuesto, para la ADR: las credenciales, cifradas con la clave de datos del cliente como las de Meta y sin volver a mostrarse; las llama el enlace, solo hacia los destinos permitidos | La ADR de MCP. Una API del cliente es un destino que él escribe (RS16, AB09), y sus respuestas entran al modelo como entrada no confiable (AB08). Hay que decidir si estas integraciones sustituyen a las llamadas de los intents o conviven con ellas |
 | D9 | Las capacidades nuevas del borrador sin requisito: suspender un cliente, editar la persona, editar o borrar reglas, rotar el `verifyToken`, versiones, guardrails, calificar, auditoría de la plataforma, trazas y reproceso. ¿Entran en la v1? | **Abierta.** Propuesta: entran con los permisos marcados, cada una con su requisito en el PRD cuando se priorice | El PRD |
 
 ## Próximos pasos
 
 1. Escribir en el PRD los requisitos de las personas (D1–D3, D5) y la ADR de autenticación de personas: el IdP, la
    sesión, la MFA y cómo convive con la credencial de máquina de la ADR-0025.
-2. Escribir la ADR de MCP (D7) y cerrar con ella la D8.
+2. Escribir la ADR de MCP (D7, D8): el catálogo del operador, las credenciales del cliente, sus integraciones y qué
+   worker las llama.
 3. Cerrar la D9, convertir cada 🟡 en ✅ o ⛔, y pasar este documento a la v1.0.0 en estado `accepted`.
 4. Una prueba que compare la matriz con el código: que cada ✅ y ⛔ construido coincida con la dependencia de su ruta
    y con `WORKER_ROUTES`. Así la matriz no se queda atrás cuando cambie una ruta.

@@ -17,7 +17,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     IdP, guardrails, versiones y procesos MCP.
   - Recoge las decisiones de Jeremi del mismo día. D1–D6: Hive tendrá personas con sesión dentro de cada cliente, con
     un catálogo fijo de dos roles, y la credencial de máquina conserva los permisos de `cliente-admin`. D7: MCP entra,
-    para integrar servicios de terceros. Quedan abiertas D8 (quién registra y activa un servidor MCP) y D9 (las
+    para integrar servicios de terceros. D8: el operador configura los servidores MCP por defecto, y `cliente-admin`
+    carga las credenciales de su cuenta y configura integraciones con sus propias APIs. Queda abierta la D9 (las
     capacidades del borrador sin requisito).
 - **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
   (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
