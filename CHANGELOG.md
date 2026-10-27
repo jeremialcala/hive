@@ -8,7 +8,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
-- **[La matriz rol × acción](docs/02-design/matriz-rol-accion.md) (draft)**, a partir del borrador de Jeremi del
+- **[La matriz rol × acción](docs/02-design/matriz-rol-accion.md) (aceptada)**, a partir del borrador de Jeremi del
   2026-10-26: qué puede cada rol sobre cada recurso de `hive-api`.
   - Los roles son `operador`, `cliente-admin`, `cliente-analista` y el `motor`, worker por worker.
   - Separa lo que el código ya autoriza de lo que se propone. Lo construido sale de `require_operator`,
@@ -18,8 +18,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - Recoge las decisiones de Jeremi del mismo día. D1–D6: Hive tendrá personas con sesión dentro de cada cliente, con
     un catálogo fijo de dos roles, y la credencial de máquina conserva los permisos de `cliente-admin`. D7: MCP entra,
     para integrar servicios de terceros. D8: el operador configura los servidores MCP por defecto, y `cliente-admin`
-    carga las credenciales de su cuenta y configura integraciones con sus propias APIs. Queda abierta la D9 (las
-    capacidades del borrador sin requisito).
+    carga las credenciales de su cuenta y configura integraciones con sus propias APIs. D9: las capacidades del
+    borrador sin requisito entran en la v1. Queda en la v1.0.0, aceptada; la ADR de MCP dirá qué worker llama a
+    las herramientas de terceros.
 - **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
   (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
   Dark Ash / Hive Amber con Meta Blue y WhatsApp Green solo para canales, Geist + JetBrains Mono servidas desde el
