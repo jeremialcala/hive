@@ -7,6 +7,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- `cloudflared` del túnel (`hive-tunel`) pasa de 2026.10.0 a 2026.10.4, fijado por digest: VULN-176088 y
+  TUN-10994. Desplegado a mano en midgard el 2026-10-26.
+
 ### Añadido
 - **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
   (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
