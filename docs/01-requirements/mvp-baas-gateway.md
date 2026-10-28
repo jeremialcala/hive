@@ -1,10 +1,10 @@
 # PRD — MVP del gateway BaaS de mensajería
 
-* **Estado:** approved (Gate 0 del refactor, 2026-10-18)
-* **Fecha:** 2026-10-18
+* **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28)
+* **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.3.0
+* **Versión:** 0.4.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -41,6 +41,12 @@ los requisitos así:
 
 Se añaden además el orden por conversación (RNF08) y la traza de cada mensaje (RNF09, RS19), y seis escenarios de
 abuso (AB17–AB22). Lo demás sigue como se aprobó el 2026-10-12.
+
+### Personas dentro de un cliente (2026-10-28)
+
+Cada cliente deja de ser solo una credencial de máquina: tiene personas que entran al área del cliente. Lo deciden
+la [matriz rol × acción](../02-design/matriz-rol-accion.md) (D1–D3, D5) y la [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md): Zitadel en midgard, MFA para todas las personas, intercambio de tokens en
+`/oauth/token` y un BFF para la sesión. Se añaden RF16–RF18, RS22–RS23 y cinco escenarios de abuso (AB23–AB27).
 
 ## Objetivos / No-objetivos
 
@@ -166,6 +172,11 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB20 | Un servicio comprometido publica en un sujeto ajeno, por ejemplo mensajes como si vinieran del webhook, o lee uno que no le toca | RS20 | Pendiente |
 | AB21 | La credencial robada de un worker alcanza rutas que ese worker no necesita, por ejemplo los tokens de Meta desde el clasificador | RS21 | Mitigado en la API (I6a): cada clave dice su worker y alcanza solo sus rutas; las claves sin worker siguen, con aviso, hasta que el motor se parta |
 | AB22 | La conversación exportada, o el contexto de una conversación, llega a otro cliente o a otra conversación | RS01, RF14 | Pendiente |
+| AB23 | Un `cliente-analista` intenta cambiar la configuración de un bot, cargar credenciales, gestionar personas o exportar un contacto | RS23 | Pendiente |
+| AB24 | Una persona de un cliente usa su sesión, o una invitación, para entrar en los bots o los datos de otro cliente | RS01, RS23 | Pendiente |
+| AB25 | Alguien roba la cookie de sesión del área del cliente o el token de acceso de una persona, por XSS o desde una máquina comprometida | RS22 | Pendiente: el BFF de la ADR-0029 deja los tokens fuera del navegador |
+| AB26 | Una persona dada de baja o bloqueada sigue entrando con la sesión que tenía | RS23 | Pendiente: como mucho 10 minutos, hasta el siguiente intercambio (ADR-0029) |
+| AB27 | Una cuenta de Zitadel sin persona en Hive, o con la contraseña robada pero sin el segundo factor, intenta conseguir un token | RS22, RS23 | Pendiente |
 
 ## Requisitos funcionales
 
@@ -186,6 +197,9 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RF13 | El gateway recibe notificaciones de Instagram (`object=instagram`), firmadas igual que las otras, identifica al contacto por su IGSID y publica cada mensaje como los de los otros dos canales (D4). La cuenta profesional se conecta con *Facebook Login* a través de la página del cliente: el bot usa el mismo token de página que para Messenger | Pendiente (I8 del plan) | Pruebas del canal a través del servicio del webhook |
 | RF14 | El historial de cada conversación, mensajes entrantes y respuestas enviadas, se guarda cifrado con la clave del cliente, se exporta con el contacto y se borra con él. De un adjunto solo se guarda su tipo, nunca la URL de Meta (D6, [ADR-0017](../00-project/adr/0017-contexto-de-conversacion-e-historial.md)) | Construido: los mensajes entrantes (I4) y las respuestas que Meta aceptó (D6a) se guardan cifrados en el historial, los escribe el worker de ingesta, y se exportan y se borran con el contacto, el bot y el cliente. De un adjunto solo se guarda el tipo | — |
 | RF15 | El coordinador del motor obtiene del gateway las 10 últimas vueltas de una conversación cuando su contexto no está, y recibe aviso de cada supresión para borrar el contexto que guarda (D6, [ADR-0017](../00-project/adr/0017-contexto-de-conversacion-e-historial.md)) | Construido del lado del gateway: el motor obtiene las 10 últimas vueltas con `GET /chat/{bot_id}/contacts/{contact_id}/turns` (D6b) y recibe en `SUPRESIONES` un aviso de cada contacto, bot o cliente borrado (D6c). Hasta I6, las vueltas las alcanza cualquier clave del motor, no solo la del coordinador | — |
+| RF16 | El `cliente-admin` invita personas a su cliente por su correo, las bloquea, las da de baja y les cambia el rol, dentro de un catálogo fijo de dos: `cliente-admin` y `cliente-analista` (D1, D2 de la [matriz rol × acción](../02-design/matriz-rol-accion.md); [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | — |
+| RF17 | Una persona inicia sesión en el área del cliente con su IdP (Zitadel), siempre con MFA, y lo que alcanza lo decide su rol en Hive, según la matriz rol × acción ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | — |
+| RF18 | El `cliente-admin` lee la auditoría de su cliente: quién hizo qué y cuándo, sea una persona o la credencial de máquina (D5; completa RS14) | Pendiente | — |
 
 ## Requisitos no funcionales
 
@@ -287,6 +301,23 @@ requirementDiagram
     }
     PermisosPorSujeto - satisfies -> RS20
     ClaveDeOrden - satisfies -> RNF08
+    requirement RS22 {
+      id: RS22
+      text: MFA para toda persona y sesion fuera del navegador
+      risk: high
+      verifymethod: test
+    }
+    requirement RS23 {
+      id: RS23
+      text: El rol y el cliente salen de Hive
+      risk: high
+      verifymethod: test
+    }
+    element IdentidadDePersonas {
+      type: "sin construir"
+    }
+    IdentidadDePersonas - satisfies -> RS22
+    IdentidadDePersonas - satisfies -> RS23
 ```
 *Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08. Los
 elementos "sin construir" no tienen todavía ni componente ni prueba que los verifique; tres de ellos (autorización,
@@ -320,6 +351,8 @@ OWASP Top 10 en su edición 2025.
 | RS19 | Ni las trazas ni los eventos del bus llevan más datos personales que los necesarios: ningún atributo de un span contiene números, texto de mensajes ni nada que mande el llamante, como en los logs (RS07); el contenido de los mensajes en el bus se protege como en la cola (RS08) | Pendiente | V7.1, V8.3 | A09 |
 | RS20 | Cada servicio entra al bus con su propio usuario, por TLS, y solo publica y consume en sus sujetos | Pendiente (R8 del plan) | V4.1, V9.2 | A01 |
 | RS21 | Cada worker del motor tiene su propia credencial, que dice qué rutas de la API de gestión alcanza: el notificador, los tokens de Meta; el clasificador y el coordinador, reglas y herramientas (D3) | Construido en la API (I6a, [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md)): una clave por cliente y por worker, con sus rutas. Las seis claves de un cliente las da de alta `ops.engine_keys` (I6b), con la parte privada en Andvari. Pendiente: los usuarios de Bifröst por worker (I6c) | V4.1, V4.2 | A01 |
+| RS22 | Toda persona entra con MFA, passkey o TOTP. Hive lo exige también en el intercambio del token, por el `amr`. La sesión del área del cliente vive en un BFF y el navegador solo tiene una cookie `__Host-` `HttpOnly`, `Secure` y `SameSite=Lax`, con protección contra CSRF ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | V2.2, V3.4, V3.5 | A07 |
+| RS23 | El cliente y el rol de una persona salen de Hive y no del IdP. Una persona sin registro en Hive, bloqueada o de baja no consigue token. Cada acción de una persona queda atribuida a ella ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | V4.1, V4.2, V7.1 | A01 |
 
 ## Threat assessment inicial
 

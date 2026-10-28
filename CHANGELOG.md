@@ -26,6 +26,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md) (aceptada): las personas de un cliente** (decisiones
+  de Jeremi del 2026-10-28).
+  - Entran con Zitadel, alojado en midgard con su propio PostgreSQL, siempre con MFA (passkey o TOTP).
+  - Hive guarda a cada persona (`ClientUser`), con su cliente, su rol y el correo cifrado, y decide qué alcanza.
+  - El token llega a `hive-api` por un intercambio en `/oauth/token` (RFC 8693): Hive emite su propio token de
+    10 minutos con la persona y el rol.
+  - La PWA guarda la sesión en un BFF, `hive-portal`, y el navegador solo tiene una cookie `HttpOnly`.
+  - El PRD pasa a la v0.4.0, con RF16–RF18, RS22–RS23 y AB23–AB27. La clasificación de datos suma el correo, las
+    credenciales y la sesión de las personas.
 - **[La matriz rol × acción](docs/02-design/matriz-rol-accion.md) (aceptada)**, a partir del borrador de Jeremi del
   2026-10-26: qué puede cada rol sobre cada recurso de `hive-api`.
   - Los roles son `operador`, `cliente-admin`, `cliente-analista` y el `motor`, worker por worker.

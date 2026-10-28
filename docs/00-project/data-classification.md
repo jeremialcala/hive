@@ -1,10 +1,10 @@
 # Clasificación de datos
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18)
-* **Fecha:** 2026-10-12
+* **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project
-* **Versión:** 0.2.0
+* **Versión:** 0.3.0
 * **Owner de datos (DPO):** `<TODO: designar o confirmar que no aplica>`
 * **Regulación aplicable:** GDPR (Reglamento (UE) 2016/679), adoptado como modelo de diseño
 
@@ -48,6 +48,9 @@ Niveles: Público < Interno < Confidencial < Restringido.
 | Credenciales de cada servicio en el bus (NATS) | **Restringido** | Objetivo: Andvari, una por servicio (RS20) | No existen | Una por servicio, con permisos por sujeto | Hasta su rotación |
 | Registro de supresiones | **Interno** | Ficheros en el servidor, fuera de la base (`ERASURES_DIR`) | Identificadores del servicio y fechas, sin nombres ni números; legibles solo por la cuenta del servicio | Tiene que estar en los respaldos del servidor (ADR-0014) | 14 meses |
 | Respaldos de la base | **Restringido** | Los gestiona Atlas; `<TODO: confirmar plan y región>` | Sin comprobar | Cifrados, con acceso restringido y con caducidad | 365 días como máximo (ADR-0014); sin configurar ni comprobar en Atlas |
+| Correo de una persona del cliente (`ClientUser`) | **Confidencial** (personal) | Objetivo: MongoDB y Zitadel, en midgard ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existe todavía | En Hive, cifrado con la clave de datos del cliente y con un índice ciego para buscarlo, como el número de un contacto. En Zitadel, en su PostgreSQL de midgard | Mientras la persona pertenezca al cliente; se borra con su baja definitiva y con el cliente |
+| Credenciales de una persona: contraseña, segundo factor y passkeys | **Restringido** (credencial) | Objetivo: Zitadel, en midgard ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existen todavía | Solo las guarda Zitadel: Hive nunca las ve | Hasta que la persona las cambie o se dé de baja |
+| Sesión del área del cliente: cookie y tokens del BFF | **Restringido** (credencial) | Objetivo: `hive-portal` y una cookie en el navegador ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existe todavía | Los tokens solo del lado del servidor; en el navegador, una cookie `__Host-` `HttpOnly` (RS22) | 30 minutos sin uso, 12 horas como máximo |
 | Código, documentación e imagen | **Público** | GitHub y GHCR | Sin secretos | Igual | Indefinida |
 
 ## Reglas
