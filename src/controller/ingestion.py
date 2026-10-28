@@ -15,7 +15,11 @@
     never published would be skipped on the next delivery and lost. The engine has to bear a duplicate anyway.
 
     Without a bus (development and the tests) the webhook runs this itself, on the event it would have published.
+
+    What waits on MongoDB, the key service or the Graph API runs in a thread (H14): the worker reads two streams in
+    the same event loop, and the client of the bus answers its heartbeats from it.
 """
+import asyncio
 import hashlib
 import json
 import logging
@@ -101,10 +105,10 @@ def incoming(channel: str, item: dict) -> IncomingMessage:
 
 # --- Each step --------------------------------------------------------------------------------------------------------
 
-async def _identify(channel: str, message: IncomingMessage, bot: ChatBot) -> Contact:
+def _identify(channel: str, message: IncomingMessage, bot: ChatBot) -> Contact:
     if channel == "whatsapp":
-        return await ctr_identify_contact_by_wa_id(wa_id=message.sender, name=message.name, _bot=bot)
-    return await ctr_identify_fb_contact(fbId=message.sender, _bot=bot)
+        return ctr_identify_contact_by_wa_id(wa_id=message.sender, name=message.name, _bot=bot)
+    return ctr_identify_fb_contact(fbId=message.sender, _bot=bot)
 
 
 def identified_event(event: dict, item: dict, contact: Contact, message: IncomingMessage) -> dict:
@@ -157,7 +161,7 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
             raise Unprocessable("not an event of version 2")
         try:
             repo = TenantRepository(UUID(event["clientId"]))
-            bot = bot or repo.get_bot(event["botId"])
+            bot = bot or await asyncio.to_thread(repo.get_bot, event["botId"])
         except (NotFound, KeyError, ValueError, TypeError):
             raise Unprocessable("for a chatbot that does not exist") from None
         except Exception as e:
@@ -177,16 +181,16 @@ async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, ite
     """One message of the notification, in a span of its own. Says whether it was ingested, seen or failed."""
     with tracing.span("ingest.message", **{"gateway.bot_id": str(bot.uuid)}) as current:
         try:
-            if repo.has_message(bot.uuid, INCOMING, item["messageId"]):
+            if await asyncio.to_thread(repo.has_message, bot.uuid, INCOMING, item["messageId"]):
                 current.set(**{"gateway.outcome": "seen"})
                 return "seen"
             message = incoming(event["channel"], item)
-            contact = await _identify(event["channel"], message, bot)
+            contact = await asyncio.to_thread(_identify, event["channel"], message, bot)
             await _publish(event, item, contact, message)
             current.set(**{"gateway.contact_id": str(contact._uuid)})
             text, attachments, sent_at = what_was_said(event["channel"], message.content)
-            repo.record_message(contact, INCOMING, item["messageId"], event["channel"], sent_at or received_at,
-                                text=text, attachments=attachments)
+            await asyncio.to_thread(repo.record_message, contact, INCOMING, item["messageId"], event["channel"],
+                                    sent_at or received_at, text=text, attachments=attachments)
             current.set(**{"gateway.outcome": "ingested"})
             return "ingested"
         except RETRY_LATER:
@@ -211,14 +215,14 @@ async def ingest_reply(event: dict, trace: str | None = None) -> dict:
     """
     with tracing.span("ingest.answer", parent=trace, kind=tracing.SpanKind.CONSUMER,
                       **{"messaging.system": "nats", "messaging.destination.name": "RESPUESTAS"}) as current:
-        stored = await _store_reply(event)
+        stored = await asyncio.to_thread(_store_reply, event)
         current.set(**{"gateway.bot_id": event.get("botId"), "gateway.client_id": event.get("clientId"),
                        "gateway.contact_id": event.get("contactId"),
                        "gateway.outcome": "stored" if stored["stored"] else "seen"})
         return stored
 
 
-async def _store_reply(event: dict) -> dict:
+def _store_reply(event: dict) -> dict:
     if not isinstance(event, dict) or event.get("schemaVersion") != SCHEMA_VERSION:
         raise Unprocessable("not an answer of version 2")
     try:

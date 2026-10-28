@@ -32,7 +32,7 @@ class Contact(Document):
     statusDate = DateTimeField(required=True, default=datetime.now)
 
     @staticmethod
-    async def generate_contact_from_fb(botId: str, fbId: str, fb_info: ProfileInfo):
+    def generate_contact_from_fb(botId: str, fbId: str, fb_info: ProfileInfo):
         """`fbId` is the sender of the message: who the contact is does not depend on what the Graph API says."""
         return Contact(
             _uuid=uuid4(),

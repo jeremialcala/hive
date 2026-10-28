@@ -9,7 +9,7 @@ import json
 import pathlib
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 import yaml
@@ -50,8 +50,8 @@ def published(monkeypatch):
 
     contact = SimpleNamespace(firstName="Ana", waId="584120000000", fbId="123456789")
     monkeypatch.setattr(ingestion, "send_message_to_queue", capture)
-    monkeypatch.setattr(ingestion, "ctr_identify_contact_by_wa_id", AsyncMock(return_value=contact))
-    monkeypatch.setattr(ingestion, "ctr_identify_fb_contact", AsyncMock(return_value=contact))
+    monkeypatch.setattr(ingestion, "ctr_identify_contact_by_wa_id", Mock(return_value=contact))
+    monkeypatch.setattr(ingestion, "ctr_identify_fb_contact", Mock(return_value=contact))
 
     def run(payload):
         captured.clear()

@@ -379,6 +379,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **El webhook y la ingesta ya no esperan a MongoDB, a Andvari ni a la API Graph dentro del bucle de eventos**
+  (H14, HIG-31).
+  - En el webhook, la búsqueda del bot y la verificación son funciones, que FastAPI corre en su pool de hilos, y
+    los secretos del bot se abren en un hilo. Un fallo de la caché ya no deja sin respuesta las demás
+    notificaciones ni `/health`.
+  - En la ingesta, la búsqueda del bot, la identificación del contacto, que en Messenger pide el perfil a la API
+    Graph, y la lectura y escritura del historial van en `asyncio.to_thread`. El otro consumidor del worker y los
+    latidos de NATS siguen mientras tanto.
+  - La identificación del contacto pierde el registro de eventos, que nunca se llamaba con un `eventId`.
+  - `tests/unit/test_event_loop.py` lo comprueba con esperas de 1,5 s. Sus 12 pruebas fallan con el código
+    anterior.
 - **La API de gestión se quedaba sin responder, health check incluido, cuando una consulta a Atlas no volvía.** En
   midgard (2026-10-21), `bots-gateway` estuvo seis minutos sin contestar y cuatro mensajes de Hive esperaron entre 6 y
   7 minutos su respuesta. Antes, el token de Meta tardó una vez 70 s.

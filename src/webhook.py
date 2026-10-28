@@ -9,6 +9,7 @@
 from inspect import currentframe
 
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
 from shared import bus
@@ -34,7 +35,9 @@ def database_unavailable(error: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="HTTP_503_SERVICE_UNAVAILABLE")
 
 
-async def get_webhook_bot(bot_id: str) -> ChatBot:
+def get_webhook_bot(bot_id: str) -> ChatBot:
+    # A function and not a coroutine: FastAPI runs it in its pool of threads, and a slow read of the chatbot holds
+    # only its own notification, not the process (H14).
     try:
         # A malformed id is turned away before it costs a database round trip.
         return find_webhook_bot(bot_id)
@@ -82,7 +85,8 @@ async def get_signed_webhook_bot(request: Request, _bot: ChatBot = Depends(get_w
     if not looks_like_signature(header):
         log.warning(f"Rejected webhook for chatbot {_bot.uuid}: missing or invalid {HUB_SIGNATURE}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
-    secret = webhook_secrets(_bot).app_secret or settings.facebook_app_secret
+    # Opening the secrets can wait on MongoDB and the key service: in a thread, not in the event loop (H14).
+    secret = (await run_in_threadpool(webhook_secrets, _bot)).app_secret or settings.facebook_app_secret
     if not is_valid_signature(secret, await request.body(), header):
         log.warning(f"Rejected webhook for chatbot {_bot.uuid}: missing or invalid {HUB_SIGNATURE}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
@@ -94,7 +98,7 @@ app = build(title="Meta webhook", summary="What Meta calls for each chatbot", de
 
 
 @app.get(path="/chat/{bot_id}", tags=["Chat"])
-async def verify(request: Request, bot_id, _bot: ChatBot = Depends(get_webhook_bot)):
+def verify(request: Request, bot_id, _bot: ChatBot = Depends(get_webhook_bot)):
     """The challenge Meta sends when the webhook is subscribed, answered only with the verification token."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
     challenge = request.query_params.get(HUB_CHALLENGE)
