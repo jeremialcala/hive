@@ -23,7 +23,7 @@ settings = Settings()
 log = logging.getLogger(settings.environment)
 
 
-async def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId: str = None) -> Response:
+def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -86,7 +86,7 @@ async def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, ev
     return response
 
 
-async def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
+def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
 
@@ -142,7 +142,7 @@ async def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId:
     return response
 
 
-async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPhoneRequest, eventId: str = None):
+def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPhoneRequest, eventId: str = None):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
 
@@ -161,7 +161,7 @@ async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPh
         headers={CONTENT_TYPE: APPLICATION_JSON}
     )
     try:
-        _chatbot_phone = await ChatbotPhone().generate_chatbot_phone_from_request(req=req)
+        _chatbot_phone = ChatbotPhone().generate_chatbot_phone_from_request(req=req)
         _chatbot_phone.uuid = uuid4()
         _chatbot_phone.status = Status.ACT.value
         repo.add_phone(bot_uuid, _chatbot_phone)
@@ -197,7 +197,7 @@ async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPh
     return response
 
 
-async def ctr_get_chatbot_phones(repo: TenantRepository, bot_uuid: str, environment: str | None, eventId: str = None):
+def ctr_get_chatbot_phones(repo: TenantRepository, bot_uuid: str, environment: str | None, eventId: str = None):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     log.info("Listing the phones of a chatbot")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -315,7 +315,7 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
     return response
 
 
-async def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
 
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)

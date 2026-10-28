@@ -33,7 +33,7 @@ class ChatbotPhone(Document):
         }
 
     @staticmethod
-    async def generate_chatbot_phone_from_request(req: ChatbotPhoneRequest):
+    def generate_chatbot_phone_from_request(req: ChatbotPhoneRequest):
         return ChatbotPhone(
             environment=req.environment if req.environment is not None else Environment.development.name,
             phoneNumber=req.phoneNumber,

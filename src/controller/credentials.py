@@ -22,7 +22,7 @@ settings = Settings()
 log = logging.getLogger(settings.environment)
 
 
-async def ctr_set_bot_credentials(repo: TenantRepository, bot_id: str, request: BotCredentialsRequest) -> JSONResponse:
+def ctr_set_bot_credentials(repo: TenantRepository, bot_id: str, request: BotCredentialsRequest) -> JSONResponse:
     try:
         bot = repo.set_bot_credentials(bot_id, facebookToken=request.facebookToken,
                                        whatsappToken=request.whatsappToken, appSecret=request.appSecret)

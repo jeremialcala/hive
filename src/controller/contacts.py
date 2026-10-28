@@ -10,6 +10,7 @@ import logging
 from uuid import UUID
 
 from fastapi import status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from classes import Contact, ContactSearchRequest, Settings
@@ -76,7 +77,7 @@ def _not_written_down(error: RegisterUnavailable) -> JSONResponse:
     return answer(status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE)
 
 
-async def ctr_list_contacts(repo: TenantRepository, bot_id: str, offset: int, limit: int) -> JSONResponse:
+def ctr_list_contacts(repo: TenantRepository, bot_id: str, offset: int, limit: int) -> JSONResponse:
     def read():
         total, contacts = repo.list_contacts(bot_id, offset, limit)
         return {"total": total, "offset": offset, "limit": limit,
@@ -85,12 +86,12 @@ async def ctr_list_contacts(repo: TenantRepository, bot_id: str, offset: int, li
     return _read(CHATBOT_NOT_FOUND, read)
 
 
-async def ctr_search_contacts(repo: TenantRepository, request: ContactSearchRequest) -> JSONResponse:
+def ctr_search_contacts(repo: TenantRepository, request: ContactSearchRequest) -> JSONResponse:
     return _read(CONTACT_NOT_FOUND, lambda: [contact_info(repo, contact) for contact in
                                              repo.find_contacts(wa_id=request.waId, fb_id=request.fbId)])
 
 
-async def ctr_export_contact(repo: TenantRepository, bot_id: str, contact_id: str) -> JSONResponse:
+def ctr_export_contact(repo: TenantRepository, bot_id: str, contact_id: str) -> JSONResponse:
     return _read(CONTACT_NOT_FOUND, lambda: contact_export(repo, repo.get_contact(bot_id, contact_id)))
 
 
@@ -114,8 +115,9 @@ def ctr_last_turns(repo: TenantRepository, bot_id: str, contact_id: str, engine)
 
 async def ctr_delete_contact(repo: TenantRepository, bot_id: str, contact_id: str) -> JSONResponse:
     try:
-        bot_uuid, copies = repo.contact_copies(bot_id, contact_id)
-        deleted = repo.delete_contact(bot_id, contact_id)
+        # The database and the register of erasures, in a thread (H14): only the notice to the engine is awaited.
+        bot_uuid, copies = await run_in_threadpool(repo.contact_copies, bot_id, contact_id)
+        deleted = await run_in_threadpool(repo.delete_contact, bot_id, contact_id)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, CONTACT_NOT_FOUND)
     except RegisterUnavailable as e:
@@ -130,7 +132,7 @@ async def ctr_delete_contact(repo: TenantRepository, bot_id: str, contact_id: st
 
 async def ctr_delete_chatbot(repo: TenantRepository, bot_id: str) -> JSONResponse:
     try:
-        deleted = repo.delete_bot(bot_id)
+        deleted = await run_in_threadpool(repo.delete_bot, bot_id)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, CHATBOT_NOT_FOUND)
     except RegisterUnavailable as e:

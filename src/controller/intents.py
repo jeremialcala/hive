@@ -53,7 +53,7 @@ def _build_actions(request: IntentRequest) -> list:
     return actions
 
 
-async def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -116,7 +116,7 @@ async def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_
     return response
 
 
-async def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
+def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -167,7 +167,7 @@ async def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = No
     return response
 
 
-async def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
+def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -218,7 +218,7 @@ async def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, ev
     return response
 
 
-async def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str,
+def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str,
                             eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -276,7 +276,7 @@ async def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_
     return response
 
 
-async def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
+def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()

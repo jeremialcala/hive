@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 
 from auth.access_tokens import LIFETIME as ACCESS_LIFETIME
 from auth.client_keys import public_signing_key
@@ -74,7 +75,7 @@ def _not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HTTP_404_NOT_FOUND")
 
 
-async def ctr_register_client(request: ClientRequest, gateway_keys: GatewayKeys) -> ResponseData:
+def ctr_register_client(request: ClientRequest, gateway_keys: GatewayKeys) -> ResponseData:
     key = _validated(request)
     try:
         client = register_client(request.name, key)
@@ -84,18 +85,18 @@ async def ctr_register_client(request: ClientRequest, gateway_keys: GatewayKeys)
     return ResponseData(data={**client_info(client), "gateway": gateway_info(gateway_keys)})
 
 
-async def ctr_list_clients() -> ResponseData:
+def ctr_list_clients() -> ResponseData:
     return ResponseData(data=[client_info(client) for client in list_clients()])
 
 
-async def ctr_get_client(client_id) -> ResponseData:
+def ctr_get_client(client_id) -> ResponseData:
     try:
         return ResponseData(data=client_info(get_client(client_id)))
     except NotFound:
         raise _not_found() from None
 
 
-async def ctr_add_own_signing_key(principal: Principal, request: OwnedKeyRequest) -> ResponseData:
+def ctr_add_own_signing_key(principal: Principal, request: OwnedKeyRequest) -> ResponseData:
     """
         A client adds a key of its own: besides a token signed with a key it has, it proves it holds the new one.
         The operator adds keys without it (ctr_add_signing_key): it is who lets a client back in.
@@ -115,7 +116,7 @@ async def ctr_add_own_signing_key(principal: Principal, request: OwnedKeyRequest
     return _add_signing_key(principal.client_id, key)
 
 
-async def ctr_add_signing_key(client_id, request: SigningKeyRequest) -> ResponseData:
+def ctr_add_signing_key(client_id, request: SigningKeyRequest) -> ResponseData:
     return _add_signing_key(client_id, _validated(request))
 
 
@@ -132,7 +133,7 @@ def _add_signing_key(client_id, key: dict) -> ResponseData:
     return ResponseData(data=client_info(client))
 
 
-async def ctr_remove_signing_key(client_id, kid: str, keep_one: bool) -> ResponseData:
+def ctr_remove_signing_key(client_id, kid: str, keep_one: bool) -> ResponseData:
     try:
         client = remove_signing_key(client_id, kid, keep_one=keep_one)
     except NotFound:
@@ -144,7 +145,7 @@ async def ctr_remove_signing_key(client_id, kid: str, keep_one: bool) -> Respons
     return ResponseData(data=client_info(client))
 
 
-async def ctr_add_service_key(client_id, request: ServiceKeyRequest) -> ResponseData:
+def ctr_add_service_key(client_id, request: ServiceKeyRequest) -> ResponseData:
     key = _validated(request)
     try:
         client = add_service_key(client_id, key, request.worker)
@@ -160,7 +161,7 @@ async def ctr_add_service_key(client_id, request: ServiceKeyRequest) -> Response
     return ResponseData(data=client_info(client))
 
 
-async def ctr_remove_service_key(client_id, kid: str) -> ResponseData:
+def ctr_remove_service_key(client_id, kid: str) -> ResponseData:
     try:
         client = remove_service_key(client_id, kid)
     except NotFound:
@@ -171,8 +172,9 @@ async def ctr_remove_service_key(client_id, kid: str) -> ResponseData:
 
 async def ctr_delete_client(client_id) -> ResponseData:
     try:
-        client = get_client(client_id)
-        deleted = delete_client(client.uuid)
+        # The database and the register of erasures, in a thread (H14): only the notice to the engine is awaited.
+        client = await run_in_threadpool(get_client, client_id)
+        deleted = await run_in_threadpool(delete_client, client.uuid)
     except NotFound:
         raise _not_found() from None
     except Conflict as e:
@@ -188,5 +190,5 @@ async def ctr_delete_client(client_id) -> ResponseData:
     return ResponseData(data={"uuid": str(client.uuid), "deleted": deleted})
 
 
-async def ctr_gateway_keys(gateway_keys: GatewayKeys) -> ResponseData:
+def ctr_gateway_keys(gateway_keys: GatewayKeys) -> ResponseData:
     return ResponseData(data=gateway_info(gateway_keys))
