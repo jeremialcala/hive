@@ -100,7 +100,9 @@ Nada secreto vive en el repositorio. El `.env` lo escribe `generar-secretos.sh` 
 
 ### Zitadel, en la consola
 
-Con `zitadel-admin`, que pide cambiar la contraseña al entrar:
+En `https://hive-auth.higerotech.com/ui/console`, adonde también lleva la raíz del dominio, con `zitadel-admin`, que
+pide cambiar la contraseña al entrar. La página de login abierta sola (`/ui/v2/login`) no vuelve a ninguna aplicación
+y termina en la cuenta del usuario, no en la consola.
 
 - **Correo:** SMTP de Resend. Servidor `smtp.resend.com`, puerto `465` (TLS), usuario `resend`, la contraseña es el
   token de Resend y el remitente `no-reply@higerotech.com`, con el nombre «Hive». Hay que probar un correo.

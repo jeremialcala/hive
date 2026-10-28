@@ -10,9 +10,11 @@
 }
 
 :8080 {
-	# The root of the domain is the login page.
+	# The root of the domain goes to the admin console, which starts its own OIDC flow. The login page opened on its
+	# own has no application to return to and ends in the user's account. People of a client never come in here:
+	# they arrive from hive-portal. 302, so that no browser keeps it.
 	@root path /
-	rewrite @root /ui/v2/login/
+	redir @root /ui/console 302
 
 	handle /ui/v2/login* {
 		reverse_proxy hive-idp-login:3000

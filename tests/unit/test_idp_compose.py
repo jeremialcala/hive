@@ -54,6 +54,14 @@ def test_the_tunnel_reaches_only_the_proxy():
     assert "admin off" in caddyfile and "reverse_proxy h2c://hive-idp:8080" in caddyfile
 
 
+def test_the_root_of_the_domain_goes_to_the_console():
+    """The login page opened on its own ends in the user's account, not in the console (2026-10-28)."""
+    caddyfile = (COMPOSE.parent / "Caddyfile").read_text(encoding="utf-8")
+
+    assert "redir @root /ui/console 302" in caddyfile
+    assert "rewrite @root" not in caddyfile
+
+
 def test_no_secret_is_written_in_the_compose():
     """Every secret comes from the .env that generar-secretos.sh writes on the machine, and is required."""
     text = COMPOSE.read_text(encoding="utf-8")
