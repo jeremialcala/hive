@@ -1,15 +1,11 @@
-# Tests, lint and a throwaway image build of the response engine (engine/, ADR-0023) for every pull request that
-# touches it or the code it shares with the gateway (shared/, which also runs `ci`). The gateway's own workflow,
-# `ci`, leaves engine/ out; the security gates (`Seguridad`) cover both.
+# Tests, lint and a throwaway image build of the response engine (engine/, ADR-0023) for every pull request. The
+# gateway's is `ci`; the security gates (`Seguridad`) cover both.
 name: engine
 
 on:
+  # Every pull request, whatever it touches: its jobs are required checks of develop and main (H15), and a required
+  # check that does not run leaves the pull request waiting for ever.
   pull_request:
-    paths:
-      - "engine/**"
-      - "shared/**"
-      - ".github/workflows/engine.yml"
-      - ".github/workflows/build-engine.yml"
 
 permissions:
   contents: read
@@ -20,6 +16,7 @@ concurrency:
 
 jobs:
   test:
+    name: engine · test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,6 +58,7 @@ jobs:
           NATS_TEST_REQUIRED: "1"
 
   image:
+    name: engine · image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
