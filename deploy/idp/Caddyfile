@@ -1,0 +1,26 @@
+# The proxy in front of Zitadel (docker-compose.yml): what the tunnel reaches on 8080. The login UI lives under
+# /ui/v2/login; everything else is the API, which speaks h2c so that gRPC works.
+{
+	admin off
+	auto_https off
+	servers {
+		# cloudflared is the only client, from the publico network: its X-Forwarded-* are kept.
+		trusted_proxies static private_ranges
+	}
+}
+
+:8080 {
+	# The root of the domain is the login page.
+	@root path /
+	rewrite @root /ui/v2/login/
+
+	handle /ui/v2/login* {
+		reverse_proxy hive-idp-login:3000
+	}
+
+	handle {
+		reverse_proxy h2c://hive-idp:8080
+	}
+
+	header -Server
+}
