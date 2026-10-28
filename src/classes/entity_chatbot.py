@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime
 from uuid import uuid4
 from mongoengine import *
 from inspect import currentframe
@@ -9,6 +8,7 @@ from enums import Status
 from .tool_settings import Settings
 from .tool_database import connect_database
 from .entity_credentials import Credentials
+from .tool_clock import utc_now
 
 
 settings = Settings()
@@ -27,9 +27,9 @@ class ChatBot(Document):
     facebookToken = StringField()
     whatsappToken = StringField()
     appSecret = StringField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)
 
     def chatbot_info(self) -> dict:
         log.info(f"Executing: {currentframe().f_code.co_name}")

@@ -4,10 +4,10 @@ import asyncio
 
 from uuid import UUID
 from inspect import currentframe
-from datetime import datetime
 
 from classes import EventTransport, Event, EventAction, Jwk
 from classes import Settings
+from classes.tool_clock import as_utc, utc_now
 from enums import Status
 from utils import describe
 
@@ -61,7 +61,7 @@ async def ctr_notify_action(_uuid: UUID, event_id: UUID, operation: str = "", me
                 _action = EventAction.get_event_action_by_uuid(_uuid)
                 _action.description = description
                 _action.status = status
-                _action.totalTime = (datetime.now() - _action.createdAt).total_seconds()
+                _action.totalTime = (utc_now() - as_utc(_action.createdAt)).total_seconds()
                 _action.save()
 
         log.info(f"Ending: {currentframe().f_code.co_name}")

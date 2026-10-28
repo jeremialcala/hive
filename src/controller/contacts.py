@@ -14,6 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from classes import Contact, ContactSearchRequest, Settings
+from classes.tool_clock import as_utc
 from crypto.fields import NotEncrypted
 from crypto.key_service import KeyServiceUnavailable
 from enums import Status
@@ -45,8 +46,9 @@ def contact_info(repo: TenantRepository, contact: Contact) -> dict:
         "fbId": contact.fbId,
         "isAdmin": contact.isAdmin,
         "status": Status(contact.status).name,
-        "createdAt": contact.createdAt,
-        "statusDate": contact.statusDate,
+        # Read back without a time zone, as pymongo hands dates over: they are UTC, and the answer says so.
+        "createdAt": as_utc(contact.createdAt),
+        "statusDate": as_utc(contact.statusDate),
     }
 
 

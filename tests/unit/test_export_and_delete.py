@@ -7,6 +7,7 @@
     The tests go through the application with real tokens and signed notifications, and then look at the
     database the way somebody with a copy of it would.
 """
+from datetime import datetime, timedelta
 import hashlib
 import hmac
 import json
@@ -257,6 +258,16 @@ def test_the_export_is_everything_stored_about_the_contact(http, caller, people)
     assert set(contact) == {name.lstrip("_") for name in Contact._fields if name not in internal} | {"botId"}
     assert (contact["firstName"], contact["waId"], contact["isAdmin"], contact["status"]) == (
         ANA, ANA_NUMBER, False, Status.REG.name)
+
+
+def test_the_dates_of_an_exported_contact_say_they_are_utc(http, caller, people):
+    """H10: read back from MongoDB without a time zone, they are UTC, and the answer says so."""
+    contact = contacts_of(http, caller, people)["contacts"][0]
+
+    exported = http.get(f"/chat/{people}/contacts/{contact['uuid']}", headers=caller.auth).json()["data"]
+
+    for name in ("createdAt", "statusDate"):
+        assert datetime.fromisoformat(exported[name]).utcoffset() == timedelta(0), name
 
 
 def test_a_contact_from_messenger_is_exported_with_its_profile(http, caller, people):

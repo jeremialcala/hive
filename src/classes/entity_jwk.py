@@ -3,7 +3,6 @@ import logging
 import os
 from inspect import currentframe
 from jwcrypto import jwk
-from datetime import datetime
 from uuid import uuid4, UUID
 from mongoengine import *
 from enums import Status, KeyTypes
@@ -11,6 +10,7 @@ from enums import Status, KeyTypes
 from .tool_settings import Settings
 from .tool_database import connect_database
 from .entity_event_jwk import EventJwk
+from .tool_clock import utc_now
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -25,9 +25,9 @@ class Jwk(Document):
     use = StringField()
     x5t = StringField()
     x5c = StringField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)
 
     def get_jwk(self) -> jwk.JWK:
         _key = jwk.JWK.from_json(
