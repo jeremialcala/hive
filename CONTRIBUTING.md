@@ -5,6 +5,11 @@
 - El trabajo sale de `develop` en ramas `feature/*` y vuelve a `develop` por pull request.
 - `main` solo recibe pull requests desde `develop`, `release/*` o `hotfix/*`. Lo comprueba el workflow
   `GitFlow guard` y lo exige el ruleset que protege `main`.
+- Para fusionar en `develop` o en `main` tienen que pasar los ocho controles que exigen los rulesets
+  `Protect-DEVELOP` y `Protect-MAIN`: `gateway · test`, `gateway · image`, `gateway · docs`, `engine · test`, `engine · image`, `Fuga de secretos`, `SCA · dependencias vulnerables` y `SAST · CodeQL`. En `main` se exige además
+  `GitFlow: origen permitido hacia main`. Los dos workflows de PR, `ci` y `engine`, corren en todo pull request: un
+  control obligatorio que no corre deja el PR esperando para siempre. Un job nuevo que deba bloquear necesita un
+  nombre que no repita ningún otro y una entrada en los dos rulesets.
 - Un merge a `main` construye la imagen y la despliega: ver la sección Despliegue del [README](README.md).
 
 ## Flujo: Red-Green-Refactor-Secure

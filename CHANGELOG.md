@@ -8,6 +8,11 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **Los controles obligatorios, sin ambigüedad (H15, RD-01).** Desde el monorepo (ADR-0023), el gateway y el motor
+  tenían jobs llamados igual, `test` e `image`, y los rulesets exigían «`test`» sin decir de cuál. En un PR que
+  tocara los dos, uno en verde cumplía la regla aunque el otro estuviera en rojo. Además, `docs` no se exigía.
+  Ahora cada job tiene su nombre (`gateway · test`, `engine · test`…), `ci` y `engine` corren en todo pull request,
+  y `Protect-DEVELOP` y `Protect-MAIN` exigen los ocho.
 - **[ADR-0028](docs/00-project/adr/0028-limite-de-peticiones-en-oauth-token.md) (aceptada): límite de peticiones en
   `/oauth/token`**, en el borde y en la aplicación (decisiones de Jeremi del 2026-10-28; RS10, parcial).
   - En `hive-api` (`src/auth/token_limits.py`) hay tres límites: 20 peticiones por minuto por origen, 10 aserciones

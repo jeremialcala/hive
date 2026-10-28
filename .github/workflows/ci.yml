@@ -5,13 +5,9 @@
 name: ci
 
 on:
+  # Every pull request, whatever it touches: its jobs are required checks of develop and main (H15), and a required
+  # check that does not run leaves the pull request waiting for ever. The engine has its own workflow, `engine`.
   pull_request:
-    # The response engine has its own workflow, `engine` (ADR-0023). A pull request that also touches the gateway
-    # still runs this one: paths-ignore only skips it when every change is under engine/.
-    paths-ignore:
-      - "engine/**"
-      - ".github/workflows/engine.yml"
-      - ".github/workflows/build-engine.yml"
 
 permissions:
   contents: read
@@ -22,6 +18,7 @@ concurrency:
 
 jobs:
   test:
+    name: gateway · test
     runs-on: ubuntu-latest
     # The client of the key service is tested against a real one, in development mode: it starts unsealed and
     # with a known root token, which the tests use to set it up like the one in production.
@@ -88,6 +85,7 @@ jobs:
           NATS_TEST_REQUIRED: "1"
 
   image:
+    name: gateway · image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -104,6 +102,7 @@ jobs:
   # The page of the management API's contract (ADR-0026): it builds, it serves the page and nothing else, and its
   # Content-Security-Policy lets in nothing from outside.
   docs:
+    name: gateway · docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
