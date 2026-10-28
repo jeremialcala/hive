@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **ID:** ADR-0029
 * **Supersede:** —
 * **Controles OWASP afectados:** A07 (autenticación de personas, MFA obligatoria), A01 (el rol y el cliente salen de
@@ -13,7 +13,7 @@
 Decisiones de Jeremi del 2026-10-28, sobre las D1, D2, D3 y D5 de la
 [matriz rol × acción](../../02-design/matriz-rol-accion.md):
 
-- el IdP es Zitadel, alojado en midgard;
+- el IdP es Zitadel, autoalojado; la enmienda del mismo día lo lleva a Nidavellir;
 - la identidad llega a `hive-api` por un intercambio en `/oauth/token`;
 - la MFA es obligatoria para todas las personas;
 - la PWA guarda la sesión en un BFF, con una cookie.
@@ -37,9 +37,11 @@ Tres condiciones pesan en la decisión:
 
 ## Decisión
 
-1. **Zitadel, alojado en midgard,** con su propio PostgreSQL. Sus contenedores son `hive-idp` y `hive-idp-db`, en una
-   red propia, y el túnel los publica (ADR-0024). Zitadel autentica a la persona: su contraseña, su MFA, sus passkeys,
-   la verificación del correo y la recuperación de la cuenta. Ni el rol ni el cliente viven en Zitadel.
+1. **Zitadel, alojado en Nidavellir** (`hgtech002`), con su propio PostgreSQL. Así lo decidió la enmienda del
+   2026-10-28, abajo; la primera versión decía midgard. Sus contenedores son `hive-idp` y `hive-idp-db`, en una red
+   propia, publicados por un túnel propio en `hive-auth.higerotech.com`. Zitadel autentica a la persona: su
+   contraseña, su MFA, sus passkeys, la verificación del correo y la recuperación de la cuenta. Ni el rol ni el
+   cliente viven en Zitadel.
 2. **Hive guarda a sus personas.** Hay una entidad nueva, `ClientUser`, con estos campos:
    - el cliente al que pertenece;
    - el `iss` y el `sub` de la persona en Zitadel;
@@ -84,7 +86,7 @@ Tres condiciones pesan en la decisión:
 
 | Opción | Pros | Contras |
 |---|---|---|
-| **Zitadel en midgard** (elegida) | Escrito en Go; necesita 512 MB–1 GB más su PostgreSQL ([docs](https://zitadel.com/docs/guides/deploy/overview), [requisitos](https://help.zitadel.com/what-are-zitadel-minimum-self-hosted-specs)). OIDC, MFA, passkeys y organizaciones. Los datos no salen de casa, y no depende de que un SaaS atienda desde Venezuela | La operación, las actualizaciones y los respaldos son nuestros. Si cae midgard, cae también el inicio de sesión, igual que el resto de Hive |
+| **Zitadel autoalojado** (elegida; en Nidavellir, por la enmienda) | Escrito en Go; necesita 512 MB–1 GB más su PostgreSQL ([docs](https://zitadel.com/docs/guides/deploy/overview), [requisitos](https://help.zitadel.com/what-are-zitadel-minimum-self-hosted-specs)). OIDC, MFA, passkeys y organizaciones. Los datos no salen de casa, y no depende de que un SaaS atienda desde Venezuela | La operación, las actualizaciones y los respaldos son nuestros. Si cae midgard, cae también el inicio de sesión, igual que el resto de Hive |
 | Keycloak en midgard | Es el más maduro y el más conocido | Necesita 1,25–2 GB ([Red Hat, Keycloak 26](https://docs.redhat.com/es/documentation/red_hat_build_of_keycloak/26.0/html/high_availability_guide/concepts-memory-and-cpu-sizing-)); con lo que ocupan los otros proyectos de midgard, va justo |
 | Auth0, gestionado | Sin operación propia | El plan gratis llega a 25 000 MAU, pero limita la MFA y los roles; el B2B parte de unos 150 USD al mes. Son cifras de agregadores ([1](https://ssojet.com/blog/auth0-pricing-growth-penalty), [2](https://blog.logto.io/es/auth0-pricing-explain)), sin confirmar en auth0.com. Los correos van a Okta, y hay que comprobar que atiende desde Venezuela |
 | Un inicio de sesión propio en `hive-api` | Ningún componente nuevo | Contraseñas, MFA, recuperación y passkeys hechos a mano: el lugar donde más se equivoca uno solo |
@@ -98,11 +100,13 @@ disponibilidad desde Venezuela y de la memoria de midgard.
 
 ## Consecuencias
 
-- **Tres componentes nuevos en midgard:** `hive-idp`, `hive-idp-db` y `hive-portal`. Calculo entre 1,5 y 2 GB en
-  total; hay que medirlo al desplegar. El PostgreSQL de Zitadel entra en los respaldos nocturnos.
-- **Dos nombres más en el túnel:** el de Zitadel y el del portal. Se proponen `hive-auth.higerotech.com` y
-  `hive-app.higerotech.com`, y los decide Jeremi al desplegar.
-- **Zitadel necesita un SMTP** para los correos de alta y de recuperación.
+- **Tres componentes nuevos:**
+  - en Nidavellir, `hive-idp` y `hive-idp-db`;
+  - en midgard, `hive-portal`, junto a `hive-api`.
+
+  Hay que medir la memoria al desplegar.
+- **Dos nombres públicos:** `hive-auth.higerotech.com`, para Zitadel, y `hive-app.higerotech.com`, para el portal.
+- **Los correos de Zitadel salen por Resend,** por SMTP. Resend pasa a ser un subencargado.
 - **`/oauth/token` admite dos grants:** `client_credentials`, para las máquinas, y `token-exchange`, para el BFF. El
   límite de la ADR-0028 cuenta los dos.
 - **Si Zitadel cae,** las personas no pueden entrar, pero las credenciales de máquina y el motor siguen funcionando.
@@ -110,9 +114,40 @@ disponibilidad desde Venezuela y de la memoria de midgard.
 - **La matriz rol × acción** pasa a construirse sobre esto. La fila «Iniciar y cerrar sesión una persona» deja de
   ser solo una decisión.
 
+## Enmienda del 2026-10-28: Zitadel en Nidavellir
+
+Jeremi pidió evaluar Nidavellir (`hgtech002`, 192.168.10.2) y lo aceptó con dos condiciones. La evaluación
+completa está en HIG-91.
+
+- **Por qué:**
+  - tiene unos 11,9 GB libres de 13,4, frente a los ~4 GB de midgard, y solo corre Bragi;
+  - aísla la identidad: quien comprometa midgard no se lleva la base de credenciales, y al revés;
+  - ya tiene el reconciliador de despliegue continuo de Yggdrasil.
+- **Condición 1, estabilidad:** el 25 de octubre tuvo cuelgues duros, mitigados con `processor.max_cstate=1` y el
+  watchdog `sp5100_tco`. Ninguna persona de verdad entra hasta que lleve **14 días seguidos sin colgarse**. Mientras
+  no existan la PWA y el BFF, nadie depende de Zitadel: se despliega y se mide.
+- **Condición 2, vigilancia y respaldos**, que es donde está el foco:
+  - **Vigilancia:**
+    - el vigía reinicia el contenedor que Docker marca `unhealthy`, y avisa;
+    - Yggdrasil sondea desde fuera `https://hive-auth.higerotech.com` y alerta si no responde;
+    - se vigilan además la memoria y el disco de Nidavellir, y que la máquina siga viva, para detectar un
+      cuelgue.
+  - **Respaldos en el NAS:**
+    - un volcado del PostgreSQL de Zitadel cada noche, cifrado antes de salir de la máquina, porque lleva los
+      hashes de las credenciales y el NAS exporta por NFSv3 sin autenticación;
+    - con caducidad;
+    - con una restauración de prueba antes de dar el componente por bueno.
+- **Cómo hablan las máquinas:** `hive-api`, en midgard, lee las claves públicas de Zitadel por su nombre público, con
+  TLS, y no por la LAN sin cifrar. El BFF va en midgard, junto a `hive-api`.
+- **Correo:** Resend, por SMTP, decidido por Jeremi. Antes de usarlo:
+  - verificar el dominio `higerotech.com` en Resend, con sus registros de SPF y DKIM en Cloudflare, y un DMARC;
+  - guardar la clave de API como un secreto, nunca en el repositorio;
+  - confirmar que sus términos permiten el uso desde Venezuela.
+
 ## Condiciones de revisión
 
-- midgard se queda sin memoria, o Zitadel exige más de lo previsto.
+- Nidavellir vuelve a colgarse, o Zitadel exige más de lo previsto.
+- Resend deja de aceptar el uso desde Venezuela.
 - Un cliente pide entrar con su propio IdP (SSO empresarial). Zitadel puede federarlo, pero la decisión es otra.
 - Se confirman los precios de los IdP gestionados y cambia la cuenta.
 - Hive deja de operar desde Venezuela.
