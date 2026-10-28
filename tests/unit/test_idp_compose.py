@@ -29,10 +29,12 @@ def test_every_container_drops_its_capabilities_and_cannot_gain_privileges(name)
     assert "mem_limit" in service and "cpus" in service
 
 
-def test_only_the_database_entrypoint_gets_capabilities_back():
+def test_only_the_database_entrypoint_and_the_caddy_binary_get_capabilities_back():
+    """The database entrypoint drops to its user; the caddy binary carries cap_net_bind_service, without which it
+    cannot even be executed. Nothing else gets any back."""
     added = {name: service.get("cap_add") for name, service in SERVICES.items() if service.get("cap_add")}
 
-    assert added == {"db": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]}
+    assert added == {"db": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"], "proxy": ["NET_BIND_SERVICE"]}
 
 
 def test_nothing_is_published_on_a_port_of_the_machine():
