@@ -26,6 +26,13 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[ADR-0030](docs/00-project/adr/0030-alimentacion-de-midgard-y-nidavellir.md) (propuesta): un SAI para midgard y
+  Nidavellir, con apagado ordenado.**
+  - El 2026-10-28 hubo cuatro cortes de luz, y con cada uno Hive cayó entero: unas 8 h 13 min.
+  - Tras el último, otros 77 min sin bus, porque el SSD de Bifröst llegó tarde al arranque.
+  - Propone un SAI interactivo de línea con AVR y USB, unos 20 min de autonomía y NUT: midgard es el primario,
+    Nidavellir el secundario, y al final midgard ordena al SAI que corte su salida.
+  - Quedan abiertos el presupuesto, qué equipos entran, los minutos en batería, el consumo medido y el modelo.
 - **[Zitadel en Nidavellir](deploy/idp/README.md): el despliegue del IdP de las personas** (HIG-91, HIG-96; ADR-0029,
   enmienda). Se despliega a mano desde `develop`, como el gateway en midgard.
   - Cinco contenedores en `deploy/idp/docker-compose.yml`: PostgreSQL 17.11, la API y el login de Zitadel v4.19.4,
