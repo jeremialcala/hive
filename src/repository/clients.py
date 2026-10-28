@@ -3,12 +3,12 @@
     The registry of clients: who they are and which public keys they sign their tokens with. It is the operator's
     side of the data layer, and what authentication looks a signer up in.
 """
-from datetime import datetime
 from uuid import UUID, uuid4
 
 from mongoengine.errors import NotUniqueError
 
 from classes import Client
+from classes.tool_clock import utc_now
 from enums import Role, Status, Worker
 
 from . import data_keys, erasures
@@ -29,7 +29,7 @@ def operator_client() -> Client:
     """
     client = Client.objects(name=OPERATOR_NAME).first()
     if client is None:
-        now = datetime.now()
+        now = utc_now()
         client = Client.objects(name=OPERATOR_NAME).upsert_one(
             set_on_insert__uuid=uuid4(),
             set_on_insert__role=Role.OPERATOR.value,
@@ -148,7 +148,7 @@ def erase_client(client_id: UUID) -> dict:
         it down first, and for making again the deletions the register holds.
     """
     Client.objects(uuid=client_id).update_one(set__signingKeys=[], set__serviceKeys=[],
-                                              set__status=Status.DIS.value, set__statusDate=datetime.now())
+                                              set__status=Status.DIS.value, set__statusDate=utc_now())
     deleted = TenantRepository(client_id).erase_all()
     forget_tokens(client_id)
     Client.objects(uuid=client_id).delete()

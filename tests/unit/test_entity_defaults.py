@@ -5,14 +5,15 @@
     process start time as its creation date, and every queue message shared one `_uuid`.
 """
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from classes import ChatBot, ChatbotPhone, Contact, Event, EventAction, Intent, Jwk, QueueMessage, ResponseData, Rule
+from classes import ChatBot, ChatbotPhone, Client, Contact, Event, EventAction, Intent, Jwk, QueueMessage, ResponseData, Rule
 from classes.entity_credentials import Credentials
+from classes.tool_clock import as_utc
 
-ENTITIES = [ChatBot, ChatbotPhone, Contact, Event, EventAction, Intent, Jwk, QueueMessage, Rule, Credentials]
+ENTITIES = [ChatBot, ChatbotPhone, Client, Contact, Event, EventAction, Intent, Jwk, QueueMessage, Rule, Credentials]
 IDENTIFIER = {Contact: "_uuid", QueueMessage: "_uuid", Jwk: "kid"}
 
 
@@ -34,11 +35,15 @@ def test_creation_date_is_the_moment_the_document_is_created(entity):
     assert document.statusDate.timestamp() > before
 
 
-def test_a_queue_message_is_dated_with_its_time_zone():
-    # Without one, the date in the envelope shifts by the offset of whatever machine created it.
-    message = QueueMessage()
+@pytest.mark.parametrize("entity", [e for e in ENTITIES if e is not Credentials], ids=lambda entity: entity.__name__)
+def test_every_document_is_dated_in_utc_and_says_so(entity):
+    """
+        H10: MongoDB reads every date as UTC. One without a time zone, written by a machine whose clock is not in
+        UTC, lands shifted by that machine's offset: four hours early on one in Venezuela.
+    """
+    document = entity()
 
-    assert message.createdAt.utcoffset() == message.statusDate.utcoffset() == timedelta(0)
+    assert document.createdAt.utcoffset() == document.statusDate.utcoffset() == timedelta(0)
 
 
 def test_each_credential_gets_its_own_signing_key():
@@ -52,8 +57,22 @@ def test_credentials_do_not_share_the_header_dictionary():
     assert second._header == {"alg": "HS256"}
 
 
-def test_response_timestamp_is_the_moment_of_the_response():
-    before = datetime.now()
+def test_response_timestamp_is_the_moment_of_the_response_in_utc():
+    before = datetime.now(timezone.utc)
     time.sleep(0.002)
+    timestamp = ResponseData().timestamp
 
-    assert ResponseData().timestamp > before
+    assert timestamp > before
+    assert timestamp.utcoffset() == timedelta(0)
+
+
+@pytest.mark.parametrize("read,utc", [
+    (datetime(2026, 10, 28, 2, 0), datetime(2026, 10, 28, 2, 0, tzinfo=timezone.utc)),
+    (datetime(2026, 10, 27, 22, 0, tzinfo=timezone(timedelta(hours=-4))),
+     datetime(2026, 10, 28, 2, 0, tzinfo=timezone.utc)),
+    (None, None),
+])
+def test_a_date_read_back_is_given_its_time_zone(read, utc):
+    """pymongo hands UTC dates over without a time zone: read back, they are told they are UTC."""
+    assert as_utc(read) == utc
+    assert read is None or as_utc(read).utcoffset() == timedelta(0)

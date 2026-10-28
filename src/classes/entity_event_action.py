@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import logging
 from asyncio import ensure_future
-from datetime import datetime
 from uuid import uuid4, UUID
 from mongoengine import *
 from enums import Status
 from .tool_settings import Settings
 from .tool_database import connect_database
+from .tool_clock import utc_now
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -21,9 +21,9 @@ class EventAction(Document):
     step = IntField()
     description = StringField()
     totalTime = IntField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)
 
     @staticmethod
     def get_event_action_by_uuid(_uuid: UUID):

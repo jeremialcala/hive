@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime, timezone
 
 from mongoengine import *
 
 from .tool_settings import Settings
 from .tool_database import connect_database
+from .tool_clock import utc_now
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -14,9 +14,6 @@ connect_database(settings)
 
 INCOMING, OUTGOING = "in", "out"
 
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class ConversationMessage(Document):

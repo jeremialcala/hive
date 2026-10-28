@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime
 from uuid import uuid4
 
 from mongoengine import *
@@ -8,6 +7,7 @@ from mongoengine import *
 from enums import Status, Role
 from .tool_settings import Settings
 from .tool_database import connect_database
+from .tool_clock import utc_now
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -30,6 +30,6 @@ class Client(Document):
     serviceKeys = ListField(DictField())
     # Not used yet: the client's data key, wrapped by the master key.
     wrappedDataKey = StringField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)

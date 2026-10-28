@@ -379,6 +379,14 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **Las fechas de los documentos se guardan en UTC y lo dicen** (H10, HIG-23).
+  - Las entidades y el campo `timestamp` de las respuestas usaban `datetime.now`, una hora local sin zona, que
+    MongoDB toma por UTC: en una máquina de Venezuela quedaban cuatro horas antes.
+  - Ahora usan `utc_now` (`src/classes/tool_clock.py`), igual que el historial y el sobre de la cola.
+  - Las fechas leídas de la base, que pymongo entrega sin zona, se marcan como UTC con `as_utc` antes de
+    compararlas o de devolverlas. La exportación de un contacto y la ficha de un número las dan con `+00:00`.
+  - En midgard la imagen ya corría en UTC. Comprobado en Atlas: los 918 documentos con fecha tienen el
+    `createdAt` igual a la hora UTC de su `_id`, así que no hay datos que migrar.
 - **El webhook y la ingesta ya no esperan a MongoDB, a Andvari ni a la API Graph dentro del bucle de eventos**
   (H14, HIG-31).
   - En el webhook, la búsqueda del bot y la verificación son funciones, que FastAPI corre en su pool de hilos, y
