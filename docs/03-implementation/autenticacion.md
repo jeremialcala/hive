@@ -61,6 +61,17 @@ Los errores son los de OAuth: `400` con `invalid_request` o `unsupported_grant_t
 acordó, y `401` con `invalid_client` para cualquier aserción que no valga, sin decir el motivo; el motivo queda en el
 log del gateway. Un token de acceso rechazado en una ruta recibe siempre el mismo `401`.
 
+Hay un límite de peticiones ([ADR-0028](../00-project/adr/0028-limite-de-peticiones-en-oauth-token.md)). Pasarlo da
+`429` con `{"error": "temporarily_unavailable"}` y una cabecera `Retry-After` con los segundos que hay que esperar.
+Se pasa de tres maneras:
+
+- con más de 20 peticiones por minuto desde una misma dirección;
+- con 10 aserciones rechazadas en 10 minutos desde una dirección, que queda bloqueada hasta que el primer rechazo
+  cumple los 10 minutos;
+- con más de 30 tokens en una hora para una misma clave.
+
+Un cliente que reutiliza su token durante sus 10 minutos pide unos 6 por hora y no llega a ninguno de los tres.
+
 ### Con el cliente de referencia
 
 `src/ops/client.py` hace esos pasos y no necesita nada del servicio. Sirve tal cual o como ejemplo para hacerlo con
@@ -263,12 +274,31 @@ responde `422`. Al terminar el refactor se borran con `DELETE /clients/{client_i
 Quitar la antigua sin esperar **corta al instante todos los tokens de acceso** que firmó: es la forma de dejar fuera a
 quien tenía uno de una clave robada. Los clientes, el motor incluido, piden otro con su aserción.
 
+### El límite de `/oauth/token` en Cloudflare
+
+Es la primera barrera de la ADR-0028. Va por delante de los límites de `hive-api` y frena las ráfagas antes de que
+lleguen a midgard. Se da de alta una vez, en el panel de Cloudflare, en la zona `higerotech.com`: **Security → WAF
+→ Rate limiting rules → Create rule**.
+
+| Campo | Valor |
+|---|---|
+| Nombre | `hive-oauth-token` |
+| Si las peticiones cumplen | URI Path `equals` `/oauth/token` |
+| Con las mismas características | IP |
+| Cuando pasan de | 10 peticiones en 10 segundos |
+| Entonces | Block, durante 10 segundos |
+
+Es la única regla de límite del plan Free, que solo cuenta por IP y en ventanas de 10 segundos. El motor no pasa por
+ella, porque llama a `hive-api` por la red interna. Se comprueba desde fuera: once peticiones seguidas desde la misma
+máquina, y la undécima recibe la respuesta de bloqueo de Cloudflare, no la de `hive-api`.
+
 ## Lo que no hace todavía
 
 - **El comando no rota las claves**: da de alta las que faltan. Rotar la de un worker pide escribir una versión
   nueva en Andvari, y la política `motor-claves` no lo permite a propósito. Está pendiente.
-- **No hay límite de tasa**, tampoco en `/oauth/token`. Los intentos fallidos se registran, pero nada los frena; es
-  RS10, en el borde.
+- **Solo `/oauth/token` tiene límite de peticiones** (ADR-0028). El resto de rutas no lo tiene: cada una pide un
+  token, y un token solo se consigue con la clave de un cliente. Los contadores están en memoria: con más de un
+  worker de `hive-api`, cada uno lleva los suyos.
 - **Un cliente no se puede desactivar por la API.** Revocar sus claves lo deja sin tokens nuevos; el estado del
   cliente solo se cambia en la base.
 - **El token de acceso no está atado a la clave del cliente** (DPoP, RFC 9449): quien lo robe lo usa hasta que

@@ -491,7 +491,8 @@ Se configura en [src/logging_config.yaml](src/logging_config.yaml) y lo aplica a
 - **Logs** — no se escribe nada de lo que envía quien llama, ni de lo que Meta envía sobre una persona: ni números, ni nombres, ni mensajes, ni tokens. Cada petición deja una línea con su método, la ruta tal como está declarada y los identificadores bien formados de su dirección; de un fallo se escribe su tipo y su línea, nunca su texto. El log de accesos de Uvicorn, que escribe la query string, está apagado.
 - **Errores** — un fallo inesperado responde `500` sin su texto, y un `422` dice dónde está el error sin repetir lo enviado.
 - **Documentación** — la API no sirve `/docs`, `/redoc` ni `/openapi.json` fuera de `development`. La documentación pública es una página estática aparte, con una CSP estricta y nada cargado de fuera ([ADR-0026](docs/00-project/adr/0026-documentacion-publica-de-la-api.md)).
-- **Pendiente** — no hay límite de tasa, y la API de gestión está publicada en internet por el túnel ([ADR-0024](docs/00-project/adr/0024-el-producto-se-llama-hive.md)), así que la única barrera es el token. El texto del mensaje va en claro dentro del bus y de la cola heredada: el sobre no se cifra como JWE.
+- **Límite de peticiones** — `/oauth/token` tiene un límite en Cloudflare, por IP, y otro en `hive-api`: 20 peticiones por minuto por origen, 10 aserciones rechazadas en 10 minutos y 30 tokens por hora para cada clave. Pasarlo da `429` con `Retry-After` ([ADR-0028](docs/00-project/adr/0028-limite-de-peticiones-en-oauth-token.md)).
+- **Pendiente** — el resto de rutas no tiene límite propio, y la API de gestión está publicada en internet por el túnel ([ADR-0024](docs/00-project/adr/0024-el-producto-se-llama-hive.md)), así que su barrera es el token. El texto del mensaje va en claro dentro del bus y de la cola heredada: el sobre no se cifra como JWE.
 
 Para firmar a mano una notificación de prueba:
 

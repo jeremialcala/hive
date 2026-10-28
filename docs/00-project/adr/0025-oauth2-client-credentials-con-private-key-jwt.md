@@ -118,11 +118,13 @@ firma de nuevo en cada petición, que es justo lo que se quita. Queda para cuand
   TLS, y no queda en el log.
 - **Revocar una clave tarda hasta 10 minutos** en cerrar el paso a quien ya tenía un token. Si hace falta cortar al
   instante, se rota la clave de firma del gateway: todos los tokens dejan de valer.
-- **No hay límite de tasa** en `/oauth/token`, como en el resto (RS10).
+- **No hay límite de tasa** en `/oauth/token`, como en el resto (RS10). *Resuelto el 2026-10-28 por la [ADR-0028](0028-limite-de-peticiones-en-oauth-token.md), en el
+  borde y en la aplicación.*
 - **El contrato OpenAPI** declara el esquema `oauth2` con el flujo `clientCredentials`.
 
 ## Condiciones de revisión
 
-- Llegan clientes externos: DPoP (RFC 9449) y un límite de tasa en `/oauth/token`.
+- Llegan clientes externos: DPoP (RFC 9449) y un límite de tasa en `/oauth/token`. El límite llegó con la [ADR-0028](0028-limite-de-peticiones-en-oauth-token.md);
+  DPoP sigue pendiente.
 - Hace falta revocar al instante: tokens opacos o una lista de revocación.
 - Un cliente pide un estándar distinto, como `tls_client_auth` (RFC 8705).

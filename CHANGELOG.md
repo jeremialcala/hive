@@ -8,6 +8,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **[ADR-0028](docs/00-project/adr/0028-limite-de-peticiones-en-oauth-token.md) (aceptada): límite de peticiones en
+  `/oauth/token`**, en el borde y en la aplicación (decisiones de Jeremi del 2026-10-28; RS10, parcial).
+  - En `hive-api` (`src/auth/token_limits.py`) hay tres límites: 20 peticiones por minuto por origen, 10 aserciones
+    rechazadas en 10 minutos por origen, que lo bloquean, y 30 tokens por hora para cada clave de cliente.
+  - Se comprueban antes de descifrar nada. Pasarlos da `429` con `Retry-After` y `temporarily_unavailable`.
+  - Los fallos se cuentan por origen, nunca por cliente, para que nadie pueda bloquear a un cliente en su nombre.
+  - El origen es `CF-Connecting-IP`, o la dirección del par en las redes privadas. Una IPv6 cuenta por su /64.
+  - En Cloudflare, una regla de 10 peticiones por IP cada 10 segundos (`docs/03-implementation/autenticacion.md`).
+  - El contrato OpenAPI declara el `429`. DPoP queda para otra tarea.
 - `cloudflared` del túnel (`hive-tunel`) pasa de 2026.10.0 a 2026.10.4, fijado por digest: VULN-176088 y
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 

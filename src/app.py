@@ -18,6 +18,7 @@ from fastapi.security.utils import get_authorization_scheme_param
 from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE
 from shared.auth.gateway_keys import GatewayKeys
 from auth.principal import Principal, authenticate, exchange
+from auth import token_limits
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ContactSearchRequest, IntentRequest, OwnedKeyRequest, ResponseData, RulesRequest,
@@ -153,6 +154,12 @@ def _oauth_error(code: int, error: str) -> JSONResponse:
     return JSONResponse(status_code=code, content={"error": error}, headers=headers)
 
 
+def _too_many(retry_after: int) -> JSONResponse:
+    """RFC 6585: 429, and when to ask again."""
+    return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"error": "temporarily_unavailable"},
+                        headers={**NO_STORE, "Retry-After": str(retry_after)})
+
+
 def _form(body: bytes) -> dict | None:
     """The parameters of the token request, each once; None if the body is not a form of them."""
     try:
@@ -189,6 +196,10 @@ TOKEN_CONTRACT = {
                            "expires_in": {"type": "integer"}}}),
         "400": _oauth_answer("invalid_request or unsupported_grant_type.", OAUTH_ERROR),
         "401": _oauth_answer("invalid_client: the assertion is not good, whatever the reason.", OAUTH_ERROR),
+        "429": {**_oauth_answer("temporarily_unavailable: too many requests from this origin, too many rejected "
+                                "assertions from it, or too many tokens for this key in the last hour (ADR-0028). "
+                                "Retry-After says in how many seconds to ask again.", OAUTH_ERROR),
+                "headers": {"Retry-After": {"description": "Seconds to wait.", "schema": {"type": "integer"}}}},
     },
 }
 
@@ -198,6 +209,19 @@ TOKEN_CONTRACT = {
           description="The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 "
                       "(ADR-0025), and gets an access token the gateway signs, for every other route.")
 async def oauth_token(request: Request):
+    # Before anything of the request is read (ADR-0028): an origin that asks too often, or failed too often, waits.
+    origin = token_limits.origin_of(request.headers, request.client.host if request.client else None)
+    refusal = token_limits.LIMITS.admit(origin)
+    if refusal is not None:
+        log.warning(f"Turned away a request for an access token: too many {refusal.reason} from its origin")
+        return _too_many(refusal.retry_after)
+    response = await _token_answer(request)
+    if response.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_401_UNAUTHORIZED):
+        token_limits.LIMITS.failed(origin)
+    return response
+
+
+async def _token_answer(request: Request) -> JSONResponse:
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != FORM:
         return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
     body = await request.body()
@@ -215,6 +239,12 @@ async def oauth_token(request: Request):
     except InvalidToken as e:
         log.warning(f"Rejected a request for an access token: {e}")
         return _oauth_error(status.HTTP_401_UNAUTHORIZED, "invalid_client")
+    # The assertion is good and spent; the token it was exchanged for is only handed over if the key has room.
+    refusal = token_limits.LIMITS.issue(caller.client_id, caller.kid)
+    if refusal is not None:
+        log.warning(f"Turned away a request for an access token: client {caller.client_id}, key {caller.kid} got "
+                    f"its share of tokens this hour")
+        return _too_many(refusal.retry_after)
     log.info(f"Access token for client {caller.client_id}, key {caller.kid}, worker {caller.worker_name}")
     return JSONResponse(status_code=status.HTTP_200_OK, headers=NO_STORE,
                         content={"access_token": token, "token_type": "Bearer", "expires_in": lifetime})

@@ -383,10 +383,12 @@ info:
     \ it is\n  with an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's\
     \ `kid`), with\n  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted\
     \ to a public key of\n  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for\
-    \ 60 seconds at most.\n* The access token lasts 10 minutes and is good for every request in them.\n\n### A client\
-    \ and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with everything\
-    \ stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials are\
-    \ loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.\n\
+    \ 60 seconds at most.\n* The access token lasts 10 minutes and is good for every request in them. Ask for a\
+    \ new one shortly before it\n  expires, not for every request: each key gets a bounded number of tokens an hour,\
+    \ and an address that asks too\n  often, or keeps sending assertions that are not good, gets a 429 with `Retry-After`.\n\
+    \n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with\
+    \ everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials\
+    \ are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.\n\
     * /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=` gives the last one of\
     \ it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the persona of the chatbot and its rules, as data.\n*\
     \ /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.\n\
@@ -1457,6 +1459,24 @@ paths:
                 - error
                 type: object
           description: 'invalid_client: the assertion is not good, whatever the reason.'
+        '429':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'temporarily_unavailable: too many requests from this origin, too many rejected assertions
+            from it, or too many tokens for this key in the last hour (ADR-0028). Retry-After says in how many seconds
+            to ask again.'
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
       summary: An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)
       tags:
       - OAuth

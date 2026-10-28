@@ -186,6 +186,19 @@ def register_of_erasures(tmp_path):
     return directory
 
 
+@pytest.fixture(autouse=True)
+def token_limits(monkeypatch):
+    """
+        Each test gets its own counters of POST /oauth/token (ADR-0028): the whole suite asks for tokens from the same
+        test client, and would otherwise run into the limit. Returns them.
+    """
+    from auth import token_limits
+
+    limits = token_limits.TokenLimits()
+    monkeypatch.setattr(token_limits, "LIMITS", limits)
+    return limits
+
+
 class Caller:
     """A registered client and its private key: everything needed to call the service as that client."""
 
