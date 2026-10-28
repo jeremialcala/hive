@@ -299,6 +299,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **ADR-0029, enmendada:** Zitadel va en Nidavellir y no en midgard (decisión de Jeremi del 2026-10-28), con dos
+  condiciones. Una, 14 días sin cuelgues antes de que entren personas de verdad. Otra, vigilancia y respaldos
+  cifrados en el NAS. Los nombres públicos son `hive-auth.higerotech.com` y `hive-app.higerotech.com`, y los
+  correos salen por Resend, que entra como subencargado en la clasificación de datos.
 - **El README ya no lleva el correo ni la web personal de Jeremi** en la sección Licencia (decisión de Jeremi del
   2026-10-26): el mantenedor se nombra con su perfil de GitHub, como en el README del motor.
 - **El README, al día con lo que hay en `develop`.** Contaba el gateway de antes de Bifröst y de la ADR-0025. Ahora
