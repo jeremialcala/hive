@@ -26,6 +26,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[Zitadel en Nidavellir](deploy/idp/README.md): el despliegue del IdP de las personas** (HIG-91, HIG-96; ADR-0029,
+  enmienda). Se despliega a mano desde `develop`, como el gateway en midgard.
+  - Cinco contenedores en `deploy/idp/docker-compose.yml`: PostgreSQL 17.11, la API y el login de Zitadel v4.19.4,
+    Caddy delante (sin el socket de Docker) y un túnel propio en `hive-auth.higerotech.com`. Imágenes por digest, sin
+    capacidades, sin puertos publicados y la base sola en una red interna.
+  - Los secretos los escribe `generar-secretos.sh` en la máquina, con root y 0600, sin imprimirlos.
+  - El vigía de midgard reinicia los contenedores `unhealthy` y avisa por ntfy.
+  - Respaldo nocturno en el NAS, cifrado con `age` antes de salir de la máquina, guardado 30 días sin borrar nunca el
+    último bueno, con métricas para Thor y aviso si falla. Una restauración de prueba en un PostgreSQL sin red.
+  - Pruebas: `tests/unit/test_idp_compose.py` (lo que el compose no puede perder) y
+    `tests/unit/test_hive_idp_respaldo.py` (el respaldo con un docker y un age de mentira).
 - **[ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md) (aceptada): las personas de un cliente** (decisiones
   de Jeremi del 2026-10-28).
   - Entran con Zitadel, alojado en midgard con su propio PostgreSQL, siempre con MFA (passkey o TOTP).

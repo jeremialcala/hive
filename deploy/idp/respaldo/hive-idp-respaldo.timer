@@ -1,0 +1,12 @@
+# /etc/systemd/system/hive-idp-respaldo.timer
+[Unit]
+Description=Hive: respaldo de Zitadel cada noche
+
+[Timer]
+# 03:30 UTC, 23:30 en Venezuela: nadie entra a esa hora. Si Nidavellir estaba apagada, se hace al arrancar.
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

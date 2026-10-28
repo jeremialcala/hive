@@ -1,0 +1,16 @@
+# /etc/systemd/system/hive-idp-respaldo.service
+[Unit]
+Description=Hive: respaldo cifrado del PostgreSQL de Zitadel en el NAS
+After=network-online.target docker.service
+Wants=network-online.target
+# El NAS se monta por automount: tocar el directorio lo monta.
+RequiresMountsFor=/mnt/nas/respaldos
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hive-idp-respaldo.sh
+TimeoutStartSec=900
+# Root: lee de docker y escribe en el NAS y en el directorio de Thor.
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
