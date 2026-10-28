@@ -5,7 +5,7 @@ import hmac
 import json
 import os
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pika
@@ -199,7 +199,7 @@ def test_health_answers_without_token_nor_database(client):
 @pytest.fixture
 def whatsapp_message(monkeypatch):
     monkeypatch.setattr(ingestion, "ctr_identify_contact_by_wa_id",
-                        AsyncMock(return_value=SimpleNamespace(firstName="Ana", waId="584120000000")))
+                        Mock(return_value=SimpleNamespace(firstName="Ana", waId="584120000000")))
     return FacebookRequest(**WHATSAPP_PAYLOAD)
 
 
