@@ -403,6 +403,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **El proxy de Zitadel arranca** (HIG-91). La imagen de Caddy trae `/usr/bin/caddy` con la capacidad de fichero
+  `cap_net_bind_service`, y con `cap_drop: ALL` el kernel se negaba a ejecutarlo («operation not permitted»).
+  `hive-idp-proxy` recupera solo `NET_BIND_SERVICE`. El runbook de `deploy/idp/` dice ahora dónde generar la clave de
+  `age` (fuera del repositorio y de OneDrive), cómo llamar al compose sin `cd` y que `config` va siempre con `-q`.
 - **Las fechas de los documentos se guardan en UTC y lo dicen** (H10, HIG-23).
   - Las entidades y el campo `timestamp` de las respuestas usaban `datetime.now`, una hora local sin zona, que
     MongoDB toma por UTC: en una máquina de Venezuela quedaban cuatro horas antes.

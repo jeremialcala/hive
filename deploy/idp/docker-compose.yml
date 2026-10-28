@@ -129,6 +129,9 @@ services:
     <<: *hardening
     image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
     container_name: hive-idp-proxy
+    # The image ships /usr/bin/caddy with the file capability cap_net_bind_service=ep. Without it in the bounding set
+    # the kernel refuses the exec ("operation not permitted"), even though Caddy only listens on 8080.
+    cap_add: [NET_BIND_SERVICE]
     read_only: true
     tmpfs: [/tmp, /data, /config]
     volumes:
