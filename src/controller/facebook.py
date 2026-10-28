@@ -1,19 +1,21 @@
 # -*- coding: utf8 -*-
+"""
+    Who wrote: the contact behind each message the ingestion worker takes. These are functions and not coroutines:
+    they wait on MongoDB, the key service and the Graph API, and the ingestion runs them in a thread (H14), so that
+    a slow answer holds only the message that asked for it.
+"""
 import logging
-from asyncio import ensure_future
 from inspect import currentframe
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 import requests
 from fastapi import status
 
 from classes import ChatBot, Contact, ProfileInfo
 from classes import Settings
-from enums import Status
 from crypto.key_service import KeyServiceUnavailable
 from repository import TenantRepository, database_failed
 from utils import describe
-from .events import ctr_notify_action
 
 __all__ = ["ctr_get_contact_from_facebook_id", "ctr_identify_fb_contact", "ctr_identify_contact_by_wa_id"]
 
@@ -21,23 +23,12 @@ settings = Settings()
 log = logging.getLogger(settings.environment)
 
 
-async def ctr_get_contact_from_facebook_id(fb_id: str, _bot: ChatBot, eventId: str = None) -> Contact:
+def ctr_get_contact_from_facebook_id(fb_id: str, _bot: ChatBot) -> Contact:
     """
-
-    :param fb_id:
-    :param _bot:
-    :param eventId:
-    :return:
+        A new Messenger contact, with the profile the Graph API gives for it. Without the profile, the contact is
+        stored all the same, known only by its identifier.
     """
     log.info(f"Starting: {currentframe().f_code.co_name}")
-    _action = uuid4()
-    if eventId is not None:
-        ensure_future(ctr_notify_action(
-            _uuid=_action,
-            event_id=UUID(eventId),
-            operation="",
-            method=currentframe().f_code.co_name
-        ))
     try:
         _token = TenantRepository(_bot.clientId).bot_secrets(_bot).facebook_token
         url = settings.facebook_graph_url.format(fb_id=fb_id, ACCESSTOKEN=_token)
@@ -53,16 +44,7 @@ async def ctr_get_contact_from_facebook_id(fb_id: str, _bot: ChatBot, eventId: s
 
         _profile = ProfileInfo(**resp.json())
         log.info(f"Ending: {currentframe().f_code.co_name}")
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description="This process completed the way we needed",
-                status=Status.COM.value
-            ))
-        return await Contact.generate_contact_from_fb(_bot.uuid, fb_id, _profile)
+        return Contact.generate_contact_from_fb(_bot.uuid, fb_id, _profile)
 
     except KeyServiceUnavailable:
         raise
@@ -71,137 +53,48 @@ async def ctr_get_contact_from_facebook_id(fb_id: str, _bot: ChatBot, eventId: s
         if database_failed(e):
             # The token of the page could not be read. Not the same as the Graph API not giving the profile.
             raise
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description=describe(e),
-                status=Status.ERR.value
-            ))
         log.error(f"No profile from the Graph API, the contact is stored without it: {describe(e)}")
         # The message does not depend on the name: whoever wrote is known by its identifier. The Graph API
         # refuses profiles for reasons that asking again does not change, such as a permission the page lacks.
         return Contact(_uuid=uuid4(), fbId=fb_id)
 
 
-async def ctr_identify_fb_contact(fbId: str, _bot: ChatBot, eventId: str = None) -> Contact:
-    """
-
-    :param fbId:
-    :param _bot:
-    :param eventId:
-    :return:
-    """
+def ctr_identify_fb_contact(fbId: str, _bot: ChatBot) -> Contact:
+    """The Messenger contact who wrote, found or stored under the client that owns the chatbot."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
-    contact = None
-    _action = uuid4()
-    if eventId is not None:
-        ensure_future(ctr_notify_action(
-            _uuid=_action,
-            event_id=UUID(eventId),
-            operation="",
-            method=currentframe().f_code.co_name
-        ))
     try:
-        # The contact is stored under the client that owns the chatbot.
         repo = TenantRepository(_bot.clientId)
         contact = repo.find_contact_by_fb_id(_bot.uuid, fbId)
         if contact is None:
-            contact = await ctr_get_contact_from_facebook_id(fb_id=fbId, _bot=_bot)
+            contact = ctr_get_contact_from_facebook_id(fb_id=fbId, _bot=_bot)
             repo.add_contact(_bot.uuid, contact)
         log.info(f"Contact {contact._uuid} identified")
-
     except KeyServiceUnavailable:
         # Not a failure of this message: Meta has to be told to send it again.
         raise
-
     except Exception as e:
         log.error(describe(e))
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description=describe(e),
-                status=Status.ERR.value
-            ))
-
         raise
-
     finally:
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description="This process completed the way we needed",
-                status=Status.COM.value
-            ))
         log.info(f"Ending: {currentframe().f_code.co_name}")
-    # Outside the finally: from inside it, the return swallowed whatever had been raised.
     return contact
 
 
-async def ctr_identify_contact_by_wa_id(wa_id: str, name: str, _bot: ChatBot, eventId: str = None):
-    """
-
-    :param wa_id:
-    :param name:
-    :param _bot:
-    :param eventId
-    :return:
-    """
+def ctr_identify_contact_by_wa_id(wa_id: str, name: str, _bot: ChatBot) -> Contact:
+    """The WhatsApp contact who wrote, found by its number or stored under the client that owns the chatbot."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
-
-    _action = uuid4()
-    if eventId is not None:
-        ensure_future(ctr_notify_action(
-            _uuid=_action,
-            event_id=UUID(eventId),
-            operation="",
-            method=currentframe().f_code.co_name
-        ))
-
-    contact = None
     try:
-        # The contact is stored under the client that owns the chatbot.
         repo = TenantRepository(_bot.clientId)
         contact = repo.find_contact_by_wa_id(_bot.uuid, wa_id)
         if contact is None:
             contact = repo.add_contact(_bot.uuid, Contact(_uuid=uuid4(), firstName=name, waId=wa_id))
         log.info(f"Contact {contact._uuid} identified")
-
     except KeyServiceUnavailable:
         # Not a failure of this message: Meta has to be told to send it again.
         raise
-
     except Exception as e:
         log.error(describe(e))
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description=describe(e),
-                status=Status.ERR.value
-            ))
         raise
-
     finally:
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                operation="",
-                method=currentframe().f_code.co_name,
-                description="This process completed the way we needed",
-                status=Status.COM.value
-            ))
         log.info(f"Ending: {currentframe().f_code.co_name}")
-    # Outside the finally: from inside it, the return swallowed whatever had been raised.
     return contact
