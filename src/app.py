@@ -251,11 +251,11 @@ async def _token_answer(request: Request) -> JSONResponse:
 
 
 @app.post(path="/bot", tags=["Bot"], response_model=BotResponse)
-async def create_chatbot(chatbot: ChatbotRequest, request: Request,
+def create_chatbot(chatbot: ChatbotRequest, request: Request,
                          repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_create_chatbot(repo, request=chatbot, eventId=request.state.event_id)
+        response = ctr_create_chatbot(repo, request=chatbot, eventId=request.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -272,11 +272,11 @@ async def delete_chatbot(bot_id: str, repo: TenantRepository = Depends(get_repos
 
 
 @app.post(path="/chat/{bot_id}/phones", tags=["Chat"])
-async def add_whatsapp_phone(bot_id: str, chatbot: ChatbotPhoneRequest, request: Request,
+def add_whatsapp_phone(bot_id: str, chatbot: ChatbotPhoneRequest, request: Request,
                              repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_add_phone_chatbot(repo, bot_uuid=bot_id, req=chatbot, eventId=request.state.event_id)
+        response = ctr_add_phone_chatbot(repo, bot_uuid=bot_id, req=chatbot, eventId=request.state.event_id)
 
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
@@ -286,10 +286,10 @@ async def add_whatsapp_phone(bot_id: str, chatbot: ChatbotPhoneRequest, request:
 
 
 @app.get(path="/chat/{bot_id}/phones", tags=["Chat"])
-async def get_chatbot_phones(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def get_chatbot_phones(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_get_chatbot_phones(repo, bot_uuid=bot_id,
+        response = ctr_get_chatbot_phones(repo, bot_uuid=bot_id,
                                                 environment=req.query_params.get("environment"))
 
         log.info(f"Ending: {currentframe().f_code.co_name}")
@@ -299,10 +299,10 @@ async def get_chatbot_phones(bot_id, req: Request, repo: TenantRepository = Depe
 
 
 @app.get(path="/chat/{bot_id}/info", tags=["Chat"])
-async def get_chatbot_info(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def get_chatbot_info(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_get_chatbot_from_uuid(repo, bot_id, eventId=req.state.event_id)
+        response = ctr_get_chatbot_from_uuid(repo, bot_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -310,27 +310,27 @@ async def get_chatbot_info(bot_id, req: Request, repo: TenantRepository = Depend
 
 
 @app.put(path="/chat/{bot_id}/credentials", tags=["Chat"], response_model=ResponseData)
-async def set_chatbot_credentials(bot_id: str, credentials: BotCredentialsRequest,
+def set_chatbot_credentials(bot_id: str, credentials: BotCredentialsRequest,
                                   repo: TenantRepository = Depends(get_repository)):
     """
         Loads or rotates the Meta credentials of a chatbot: the page token, the WhatsApp token and the App
         Secret. The ones sent replace the stored ones. The answer says which are loaded, never their values.
     """
-    return await ctr_set_bot_credentials(repo, bot_id, credentials)
+    return ctr_set_bot_credentials(repo, bot_id, credentials)
 
 
 @app.get(path="/chat/{bot_id}/contacts", tags=["Contacts"], response_model=ResponseData)
-async def list_contacts(bot_id: str, offset: int = Query(default=0, ge=0),
+def list_contacts(bot_id: str, offset: int = Query(default=0, ge=0),
                         limit: int = Query(default=100, ge=1, le=500),
                         repo: TenantRepository = Depends(get_repository)):
     """The contacts of a chatbot, oldest first, a page at a time, with everything stored about each."""
-    return await ctr_list_contacts(repo, bot_id, offset, limit)
+    return ctr_list_contacts(repo, bot_id, offset, limit)
 
 
 @app.get(path="/chat/{bot_id}/contacts/{contact_id}", tags=["Contacts"], response_model=ResponseData)
-async def export_contact(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
+def export_contact(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
     """Everything the service stores about a contact, the history of its messages included."""
-    return await ctr_export_contact(repo, bot_id, contact_id)
+    return ctr_export_contact(repo, bot_id, contact_id)
 
 
 @app.delete(path="/chat/{bot_id}/contacts/{contact_id}", tags=["Contacts"], response_model=ResponseData)
@@ -343,12 +343,12 @@ async def delete_contact(bot_id: str, contact_id: str, repo: TenantRepository = 
 
 
 @app.post(path="/contacts/search", tags=["Contacts"], response_model=ResponseData)
-async def search_contacts(search: ContactSearchRequest, repo: TenantRepository = Depends(get_repository)):
+def search_contacts(search: ContactSearchRequest, repo: TenantRepository = Depends(get_repository)):
     """
         Finds a person among the contacts of all the chatbots of the client, by WhatsApp number or by
         Messenger id. It is how a request from somebody for their data starts.
     """
-    return await ctr_search_contacts(repo, search)
+    return ctr_search_contacts(repo, search)
 
 
 @app.get(path="/chat/{bot_id}/tokens", tags=["Chat"], response_model=ResponseData)
@@ -384,11 +384,11 @@ def get_chatbot_rules(bot_id, req: Request, repo: TenantRepository = Depends(get
 
 
 @app.post(path="/chat/{bot_id}/rules", tags=["Chat"])
-async def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
+def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
                            repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_create_chatbot_rules(repo, request=rules, bot_id=bot_id, eventId=req.state.event_id)
+        response = ctr_create_chatbot_rules(repo, request=rules, bot_id=bot_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -396,11 +396,11 @@ async def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
 
 
 @app.post(path="/chat/{bot_id}/intents", tags=["Intents"])
-async def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
+def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
                              repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_create_intent(repo, request=intent, bot_id=bot_id, eventId=req.state.event_id)
+        response = ctr_create_intent(repo, request=intent, bot_id=bot_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -408,10 +408,10 @@ async def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
 
 
 @app.get(path="/chat/{bot_id}/intents", tags=["Intents"])
-async def list_chatbot_intents(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def list_chatbot_intents(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_get_intents(repo, bot_id=bot_id, eventId=req.state.event_id)
+        response = ctr_get_intents(repo, bot_id=bot_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -419,10 +419,10 @@ async def list_chatbot_intents(bot_id, req: Request, repo: TenantRepository = De
 
 
 @app.get(path="/chat/{bot_id}/intents/{intent_id}", tags=["Intents"])
-async def get_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def get_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_get_intent(repo, bot_id=bot_id, intent_id=intent_id, eventId=req.state.event_id)
+        response = ctr_get_intent(repo, bot_id=bot_id, intent_id=intent_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -430,11 +430,11 @@ async def get_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantReposi
 
 
 @app.put(path="/chat/{bot_id}/intents/{intent_id}", tags=["Intents"])
-async def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentRequest,
+def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentRequest,
                                 repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_update_intent(repo, request=intent, bot_id=bot_id, intent_id=intent_id,
+        response = ctr_update_intent(repo, request=intent, bot_id=bot_id, intent_id=intent_id,
                                            eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
@@ -443,10 +443,10 @@ async def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentR
 
 
 @app.delete(path="/chat/{bot_id}/intents/{intent_id}", tags=["Intents"])
-async def delete_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def delete_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = await ctr_delete_intent(repo, bot_id=bot_id, intent_id=intent_id, eventId=req.state.event_id)
+        response = ctr_delete_intent(repo, bot_id=bot_id, intent_id=intent_id, eventId=req.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -465,46 +465,46 @@ def get_chatbot_tools(bot_id, req: Request, repo: TenantRepository = Depends(get
 
 
 @app.get(path="/gateway/keys", tags=["Clients"], response_model=ResponseData)
-async def gateway_keys(_principal: Principal = Depends(get_principal)):
+def gateway_keys(_principal: Principal = Depends(get_principal)):
     """
         The audience and the public keys a client encrypts its tokens to. A client that is already in asks here
         for the new key when the gateway rotates its own.
     """
-    return await ctr_gateway_keys(GATEWAY_KEYS)
+    return ctr_gateway_keys(GATEWAY_KEYS)
 
 
 @app.get(path="/keys", tags=["Clients"], response_model=ResponseData)
-async def list_my_keys(principal: Principal = Depends(get_principal)):
-    return await ctr_get_client(principal.client_id)
+def list_my_keys(principal: Principal = Depends(get_principal)):
+    return ctr_get_client(principal.client_id)
 
 
 @app.post(path="/keys", tags=["Clients"], response_model=ResponseData)
-async def add_my_key(key: OwnedKeyRequest, principal: Principal = Depends(get_principal)):
+def add_my_key(key: OwnedKeyRequest, principal: Principal = Depends(get_principal)):
     """
         A client registers a second public key to rotate: both work until it removes the old one. The new key
         signs a proof for the token of this same request, so nobody registers a key they cannot sign with.
     """
-    return await ctr_add_own_signing_key(principal, key)
+    return ctr_add_own_signing_key(principal, key)
 
 
 @app.delete(path="/keys/{kid}", tags=["Clients"], response_model=ResponseData)
-async def remove_my_key(kid: str, principal: Principal = Depends(get_principal)):
+def remove_my_key(kid: str, principal: Principal = Depends(get_principal)):
     """A client revokes one of its keys. It cannot remove the last one: only the operator can let it back in."""
-    return await ctr_remove_signing_key(principal.client_id, kid, keep_one=True)
+    return ctr_remove_signing_key(principal.client_id, kid, keep_one=True)
 
 
 @app.post(path="/clients", tags=["Clients"], response_model=ResponseData)
-async def register_client(client: ClientRequest, _operator: Principal = Depends(require_operator)):
+def register_client(client: ClientRequest, _operator: Principal = Depends(require_operator)):
     """
         The operator registers a client with its first public key. The answer carries what the client needs to
         call the service: its identifier, the audience and the gateway's public keys.
     """
-    return await ctr_register_client(client, GATEWAY_KEYS)
+    return ctr_register_client(client, GATEWAY_KEYS)
 
 
 @app.get(path="/clients", tags=["Clients"], response_model=ResponseData)
-async def list_clients(_operator: Principal = Depends(require_operator)):
-    return await ctr_list_clients()
+def list_clients(_operator: Principal = Depends(require_operator)):
+    return ctr_list_clients()
 
 
 @app.delete(path="/clients/{client_id}", tags=["Clients"], response_model=ResponseData)
@@ -517,12 +517,12 @@ async def delete_client(client_id: str, _operator: Principal = Depends(require_o
 
 
 @app.post(path="/clients/{client_id}/keys", tags=["Clients"], response_model=ResponseData)
-async def add_client_key(client_id: str, key: SigningKeyRequest, _operator: Principal = Depends(require_operator)):
-    return await ctr_add_signing_key(client_id, key)
+def add_client_key(client_id: str, key: SigningKeyRequest, _operator: Principal = Depends(require_operator)):
+    return ctr_add_signing_key(client_id, key)
 
 
 @app.post(path="/clients/{client_id}/service-keys", tags=["Clients"], response_model=ResponseData)
-async def add_service_key(client_id: str, key: ServiceKeyRequest, _operator: Principal = Depends(require_operator)):
+def add_service_key(client_id: str, key: ServiceKeyRequest, _operator: Principal = Depends(require_operator)):
     """
         The operator lets a worker of the response engine act for a client: it registers the public key that
         worker signs with for that client. With it the worker reaches the chatbots of that client and of nobody
@@ -530,16 +530,16 @@ async def add_service_key(client_id: str, key: ServiceKeyRequest, _operator: Pri
         the tools and the last turns; the classifier, the responder and the evaluator, the rules; the link,
         the tools. Two keys at most per worker and client, to rotate without a gap.
     """
-    return await ctr_add_service_key(client_id, key)
+    return ctr_add_service_key(client_id, key)
 
 
 @app.delete(path="/clients/{client_id}/service-keys/{kid}", tags=["Clients"], response_model=ResponseData)
-async def remove_service_key(client_id: str, kid: str, _operator: Principal = Depends(require_operator)):
+def remove_service_key(client_id: str, kid: str, _operator: Principal = Depends(require_operator)):
     """Takes the response engine's key for a client away: it stops reaching that client's chatbots at once."""
-    return await ctr_remove_service_key(client_id, kid)
+    return ctr_remove_service_key(client_id, kid)
 
 
 @app.delete(path="/clients/{client_id}/keys/{kid}", tags=["Clients"], response_model=ResponseData)
-async def remove_client_key(client_id: str, kid: str, _operator: Principal = Depends(require_operator)):
+def remove_client_key(client_id: str, kid: str, _operator: Principal = Depends(require_operator)):
     """Revoking a key is deleting it: the tokens signed with it stop being accepted at once."""
-    return await ctr_remove_signing_key(client_id, kid, keep_one=False)
+    return ctr_remove_signing_key(client_id, kid, keep_one=False)

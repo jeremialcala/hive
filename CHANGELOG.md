@@ -390,6 +390,13 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - La identificación del contacto pierde el registro de eventos, que nunca se llamaba con un `eventId`.
   - `tests/unit/test_event_loop.py` lo comprueba con esperas de 1,5 s. Sus 12 pruebas fallan con el código
     anterior.
+- **La API de gestión tampoco espera dentro del bucle de eventos** (H14, HIG-31).
+  - Corre un solo worker, y unas 24 rutas eran corrutinas que llamaban a controladores que esperan a MongoDB y a
+    Andvari: una lectura lenta retenía todas las peticiones, `/health` incluido.
+  - Las rutas y sus controladores pasan a ser funciones. Los tres borrados siguen siendo corrutinas, porque
+    esperan el aviso al motor por el bus, pero borran en un hilo.
+  - `tests/unit/test_management_event_loop.py` fija qué rutas pueden ser corrutinas y comprueba con esperas de
+    1,5 s que `/health` responde mientras tanto. Sus 4 pruebas fallan con el código anterior.
 - **La API de gestión se quedaba sin responder, health check incluido, cuando una consulta a Atlas no volvía.** En
   midgard (2026-10-21), `bots-gateway` estuvo seis minutos sin contestar y cuatro mensajes de Hive esperaron entre 6 y
   7 minutos su respuesta. Antes, el token de Meta tardó una vez 70 s.
