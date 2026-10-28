@@ -90,8 +90,9 @@ async def free_while(work) -> float:
     slow = asyncio.create_task(work)
     await asyncio.sleep(0.3)
     took = time.monotonic() - started
+    await asyncio.wait({slow})
     with pytest.raises(ingestion.Unprocessable):
-        await slow
+        slow.result()
     return took
 
 
