@@ -80,7 +80,7 @@ está construido.
 | Ver sus claves de firma | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `GET /keys` |
 | Añadir una clave propia (con prueba de posesión) | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `POST /keys` |
 | Revocar una clave propia (nunca la última) | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `DELETE /keys/{kid}` |
-| Iniciar y cerrar sesión una persona (IdP, MFA) | ✅ nuevo | ✅ nuevo | ✅ nuevo | — | D1 | ❌ |
+| Iniciar y cerrar sesión una persona (IdP, MFA) | ✅ nuevo | ✅ nuevo | ✅ nuevo | — | D1, [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md), RF17 | ⚠️ |
 
 ### 2. Registro de clientes y paso al motor
 
