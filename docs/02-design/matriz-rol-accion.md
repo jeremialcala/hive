@@ -58,7 +58,7 @@ Meta no es un rol: llama al webhook, que se autentica por bot con el `verifyToke
 |---|---|
 | ✅ | Permitido y **construido**: lo aplica el código y lo cubren las pruebas |
 | ⛔ | Denegado y **construido** (`403`, o `404` si el recurso es de otro cliente) |
-| ✅ nuevo / ⛔ nuevo | **Decidido** el 2026-10-26 (D1–D9), todavía sin construir |
+| ✅ nuevo / ⛔ nuevo | **Decidido** el 2026-10-26 y el 2026-10-27 (D1–D10), todavía sin construir |
 | 🟡 ✅ / 🟡 ⛔ | **Propuesto**, pendiente de decisión. Hoy no queda ninguno |
 | — | No aplica a ese rol |
 
@@ -140,7 +140,19 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Borrar un contacto (registro de supresiones) | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF09 | ✅ `DELETE /chat/{bot_id}/contacts/{contact_id}` |
 | Leer las últimas 10 vueltas de una conversación | ⛔ | ⛔ | ⛔ | ✅ solo el coordinador | RF15 | ✅ `GET …/contacts/{contact_id}/turns` |
 
-### 7. Lo que el borrador añade y Hive no tiene
+### 7. Mensajes a contactos (D10)
+
+Solo WhatsApp en la v1, y solo a contactos que ya existen: personas que escribieron alguna vez al bot.
+
+| Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
+|---|---|---|---|---|---|---|
+| Enviar un texto a un contacto, dentro de la ventana de 24 horas | ⛔ | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el notificador | D10 | ❌ |
+| Enviar una plantilla aprobada de Meta a un contacto, dentro o fuera de la ventana | ⛔ | ✅ nuevo | ✅ nuevo | ✅ nuevo, solo el notificador | D10 | ❌ |
+| Enviar a un número que no es un contacto | ⛔ | ⛔ nuevo | ⛔ nuevo | ⛔ nuevo | D10 | — |
+| Ver las plantillas de la cuenta de WhatsApp del bot y su estado | ⛔ | ✅ nuevo | ✅ nuevo | — | D10 | ❌ |
+| Crear, editar o borrar plantillas, por la API de Hive hacia Meta | ⛔ | ✅ nuevo | ⛔ nuevo | — | D10 | ❌ |
+
+### 8. Lo que el borrador añade y Hive no tiene
 
 | Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
 |---|---|---|---|---|---|---|
@@ -173,16 +185,16 @@ siempre del cliente para el que tiene la clave.
 Una clave del motor registrada antes de que las claves dijeran su worker (ADR-0016) alcanza las cinco rutas, y cada
 uso deja un aviso en el log. Esas claves se retiran cuando cada worker tenga la suya.
 
-## Perfil de `cliente-analista` (D1, D2, D6)
+## Perfil de `cliente-analista` (D1, D2, D6, D10)
 
 Lee lo de su cliente: bots, números, reglas, intents, herramientas, qué credenciales están cargadas y contactos.
-Califica respuestas cuando exista la evaluación. No crea ni cambia configuración, no toca credenciales, no ve el
-`verifyToken`, no gestiona usuarios ni claves, y no exporta ni borra contactos. Es el perfil de un analista de
-calidad o de un agente de soporte.
+Califica respuestas cuando exista la evaluación y envía plantillas aprobadas a los contactos, pero no texto libre. No
+crea ni cambia configuración, no toca credenciales, no ve el `verifyToken`, no gestiona usuarios ni claves, y no
+exporta ni borra contactos. Es el perfil de un analista de calidad o de un agente de soporte.
 
 ## Decisiones
 
-D1–D9, resueltas por Jeremi el 2026-10-26.
+D1–D9, resueltas por Jeremi el 2026-10-26, y D10, el 2026-10-27.
 
 | # | Decisión | Resolución | Lleva a |
 |---|---|---|---|
@@ -195,6 +207,7 @@ D1–D9, resueltas por Jeremi el 2026-10-26.
 | D7 | ¿Entra MCP? | **Sí, para integrar Hive con servicios de terceros**. Lo que el borrador proponía, procesos del operador sobre datos agregados, no es el motivo | Una ADR de MCP, con D8 |
 | D8 | ¿Quién configura los servidores MCP, quién carga las credenciales y qué integraciones puede añadir el cliente? | **El operador configura los servidores MCP por defecto. `cliente-admin` carga las llaves o credenciales de su cuenta, y configura integraciones con sus propias APIs** para que el agente consulte sus datos y responda mejor. Las llamadas, a una API o a un servidor MCP, las hace el **enlace**, según la intención del mensaje y el contexto de la conversación. Sigue propuesto, para la ADR: las credenciales, cifradas con la clave de datos del cliente como las de Meta y sin volver a mostrarse, y las llamadas solo hacia los destinos permitidos | La ADR de MCP. Una API del cliente es un destino que él escribe (RS16, AB09), y sus respuestas entran al modelo como entrada no confiable (AB08). Hay que decidir si estas integraciones sustituyen a las llamadas de los intents o conviven con ellas |
 | D9 | Las capacidades nuevas del borrador sin requisito: suspender un cliente, editar la persona, editar o borrar reglas, rotar el `verifyToken`, versiones, guardrails, calificar, auditoría de la plataforma, trazas y reproceso. ¿Entran en la v1? | **Sí, entran en la v1**, con los permisos marcados | Un requisito en el PRD para cada una |
+| D10 | ¿Puede el cliente escribir a sus contactos por iniciativa propia, y cómo? | **Sí, solo a contactos que ya existen y solo por WhatsApp en la v1.** Fuera de la ventana de 24 horas, con plantillas de Meta, que el `cliente-admin` crea y gestiona por la API de Hive desde la PWA. El `cliente-analista` solo envía plantillas aprobadas (decisiones de Jeremi del 2026-10-27) | Una ADR de los mensajes salientes y sus requisitos en el PRD |
 
 ## Próximos pasos
 

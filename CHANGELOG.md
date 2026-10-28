@@ -21,6 +21,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     carga las credenciales de su cuenta y configura integraciones con sus propias APIs. D9: las capacidades del
     borrador sin requisito entran en la v1. Queda en la v1.0.0, aceptada; las llamadas a APIs y a servidores MCP las
     hace el enlace, y el evaluador comprueba que cada respuesta cumpla los criterios del bot.
+    D10, del 2026-10-27: el cliente escribe a sus contactos por WhatsApp, con plantillas de Meta fuera de la
+    ventana de 24 horas; el `cliente-analista` solo envía plantillas aprobadas.
 - **[ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (aceptada): el mapa de estilo de Hive**
   (decisiones de Jeremi del 2026-10-26). Concepto "Pragmatismo Técnico", oscuro por defecto, paleta Slate Black /
   Dark Ash / Hive Amber con Meta Blue y WhatsApp Green solo para canales, Geist + JetBrains Mono servidas desde el
