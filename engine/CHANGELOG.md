@@ -219,6 +219,11 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
   mensajes después, quedan menos de diez vueltas: el gateway cuenta las diez desde el último.
 
 ### Seguridad
+- **`pylint` 4.0.9** (era 3.2.3), con `astroid` 4.0.4, por CVE-2026-114608 (GHSA-22qq-2fwx-7p67, moderada,
+  publicada el 2026-10-27): `pylint` guardaba su caché de estadísticas como pickle en `PYLINT_HOME` y la cargaba con
+  `pickle.load`, así que quien pudiera escribir en ese directorio ejecutaba código. Desde la 4.0.9 la caché es JSON.
+  Solo es una herramienta del CI y del desarrollo, no va en la imagen. La 4.0.9 se publicó el 2026-09-23. El lock
+  solo cambia esos dos paquetes, y el código sigue en 10/10.
 - **OpenTelemetry sube a 1.45.1** en los locks del motor, como en los del gateway: CVE-2026-114603 de
   `opentelemetry-api` (2026-10-22).
 - **Siete dependencias con vulnerabilidades conocidas pasan a versiones corregidas**, todas con más de dos semanas:
