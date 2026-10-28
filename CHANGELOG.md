@@ -7,6 +7,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- `cloudflared` del túnel (`hive-tunel`) pasa de 2026.10.0 a 2026.10.4, fijado por digest: VULN-176088 y
+  TUN-10994. Desplegado a mano en midgard el 2026-10-26.
+
 ### Añadido
 - **[La matriz rol × acción](docs/02-design/matriz-rol-accion.md) (aceptada)**, a partir del borrador de Jeremi del
   2026-10-26: qué puede cada rol sobre cada recurso de `hive-api`.
