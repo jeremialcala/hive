@@ -410,6 +410,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **La raíz de `hive-auth.higerotech.com` lleva a la consola de Zitadel** (HIG-91). Llevaba a la página de login, que
+  abierta sola no vuelve a ninguna aplicación y terminaba en la cuenta del usuario. Ahora `/` redirige con un 302 a
+  `/ui/console`, que arranca su propio flujo OIDC.
 - **El proxy de Zitadel arranca** (HIG-91). La imagen de Caddy trae `/usr/bin/caddy` con la capacidad de fichero
   `cap_net_bind_service`, y con `cap_drop: ALL` el kernel se negaba a ejecutarlo («operation not permitted»).
   `hive-idp-proxy` recupera solo `NET_BIND_SERVICE`. El runbook de `deploy/idp/` dice ahora dónde generar la clave de
