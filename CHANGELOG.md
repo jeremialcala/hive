@@ -26,6 +26,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) (propuesta): los tokens de acceso van atados
+  por DPoP a la clave que los pidió** (HIG-89).
+  - **La clave:** una credencial de máquina, de un cliente o de un worker del motor, firma cada prueba con su clave
+    registrada. El BFF usa un par suyo, que vive solo en memoria.
+  - **Cada petición** lleva `Authorization: DPoP` y una prueba de un solo uso. La prueba dice el método, la URL y la
+    hora (60 segundos, y posterior al arranque de `hive-api`), y lleva el hash del token.
+  - **El `jti`** se guarda en memoria, no en Atlas. Sin `DPoP-Nonce` en la v1.
+  - **El motor también,** y el cambio es de golpe: decisiones de Jeremi del 2026-10-29.
+  - **Medido en midgard,** con media CPU: firmar una prueba cuesta 0,9 ms y verificarla, 1,7 ms.
+  - **En el PRD** (0.8.0): RS30 y AB50–AB51, y RS02 ampliado. La ADR-0025 da DPoP por resuelto.
 - **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (propuesta): los servicios de terceros
   entran por un catálogo MCP del operador, y solo el enlace los llama** (HIG-79).
   - **El catálogo:** servidores remotos por Streamable HTTP. Cada herramienta está aprobada por la huella de su

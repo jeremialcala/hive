@@ -125,6 +125,6 @@ firma de nuevo en cada petición, que es justo lo que se quita. Queda para cuand
 ## Condiciones de revisión
 
 - Llegan clientes externos: DPoP (RFC 9449) y un límite de tasa en `/oauth/token`. El límite llegó con la [ADR-0028](0028-limite-de-peticiones-en-oauth-token.md);
-  DPoP sigue pendiente.
+  DPoP, con la [ADR-0033](0033-dpop-en-los-tokens-de-acceso.md).
 - Hace falta revocar al instante: tokens opacos o una lista de revocación.
 - Un cliente pide un estándar distinto, como `tls_client_auth` (RFC 8705).

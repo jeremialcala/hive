@@ -1,11 +1,11 @@
 # PRD — MVP del gateway BaaS de mensajería
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28). Las
-  capacidades de la D9, los mensajes salientes (D10) y las integraciones (D7, D8), en review desde el 2026-10-29
+  capacidades de la D9, los mensajes salientes (D10), las integraciones (D7, D8) y DPoP, en review desde el 2026-10-29
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.7.0
+* **Versión:** 0.8.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -228,6 +228,8 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB47 | Un cliente usa un `authRef` o una integración para que el enlace llame con la credencial de otro cliente | RS01, RS28 | Pendiente: el almacén es por cliente, y el enlace solo alcanza el del cliente de su clave |
 | AB48 | Se piden en OAuth más permisos de los que declara el catálogo, o se secuestra el flujo (CSRF en la redirección, código robado) | RS28, RF33 | Pendiente: los permisos los fija el catálogo, con PKCE y `state` |
 | AB49 | Datos personales de la respuesta de una herramienta quedan en el historial, los logs o las trazas | RS07, RS19, RNF05 | Pendiente: solo viven en el contexto de la conversación, 24 horas |
+| AB50 | Alguien roba un token de acceso, del notificador o de un cliente, y lo usa desde otra máquina antes de que caduque | RS30 | Pendiente: sin una prueba firmada con la clave que lo pidió, no sirve |
+| AB51 | Alguien captura una petición con su prueba DPoP y la repite, o usa la prueba en otra ruta, con otro método o con otro token | RS30 | Pendiente: el `jti` es de un solo uso, y la prueba dice método, URL, hora y hash del token |
 
 ## Requisitos funcionales
 
@@ -450,9 +452,19 @@ requirementDiagram
     }
     EnlaceDelMotor - satisfies -> RS28
     EnlaceDelMotor - satisfies -> RS29
+    requirement RS30 {
+      id: RS30
+      text: Token de acceso atado por DPoP a la clave que lo pidio
+      risk: high
+      verifymethod: test
+    }
+    element PruebaDPoP {
+      type: "sin construir"
+    }
+    PruebaDPoP - satisfies -> RS30
 ```
 *Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08; desde
-la D9, RS24–RS26; desde la D10, RS27 y RF31; desde la D7 y la D8, RS28 y RS29. Los
+la D9, RS24–RS26; desde la D10, RS27 y RF31; desde la D7 y la D8, RS28 y RS29; con DPoP, RS30. Los
 elementos "sin construir" no tienen todavía ni componente ni prueba que los verifique; tres de ellos (autorización,
 cifrado y derechos) se construyeron en el Gate 2 y el diagrama no se ha vuelto a trazar.*
 
@@ -464,7 +476,7 @@ OWASP Top 10 en su edición 2025.
 | ID | Requisito | Estado | ASVS | OWASP Top 10 |
 |---|---|---|---|---|
 | RS01 | Un cliente solo accede a los elementos de su propio registro: sus claves, sus bots, sus contactos y sus credenciales; todo lo demás se deniega por defecto | Construido | V4.1, V4.2 | A01 |
-| RS02 | Todo endpoint que no sea el webhook se autentica con un JWT firmado por el cliente y metido dentro de un JWE ([ADR-0004](../00-project/adr/0004-firma-en-el-webhook-jwe-en-el-resto.md), [ADR-0005](../00-project/adr/0005-jwt-firmado-por-el-cliente-dentro-del-jwe.md)): el gateway verifica la firma con la clave pública registrada del cliente, y el token caduca y no se puede reutilizar | Construido, también para el motor de respuestas, que se autentica con una clave por cliente ([ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md)) | V2.10, V3.5, V6.2 | A07 |
+| RS02 | Todo endpoint que no sea el webhook se autentica con un JWT firmado por el cliente y metido dentro de un JWE ([ADR-0004](../00-project/adr/0004-firma-en-el-webhook-jwe-en-el-resto.md), [ADR-0005](../00-project/adr/0005-jwt-firmado-por-el-cliente-dentro-del-jwe.md)): el gateway verifica la firma con la clave pública registrada del cliente, y el token caduca y no se puede reutilizar. Desde la [ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md), el token de acceso va atado por DPoP a la clave que lo pidió (RS30) | Construido, también para el motor de respuestas, que se autentica con una clave por cliente ([ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md)) | V2.10, V3.5, V6.2 | A07 |
 | RS03 | Solo se procesan notificaciones con `X-Hub-Signature-256` válida sobre el cuerpo crudo | Construido | V2.10, V9.2 | A08 |
 | RS04 | El token de verificación se compara en tiempo constante, y un bot sin token no se puede verificar | Construido | V2.10 | A07 |
 | RS05 | El número de teléfono de un contacto y el número de WhatsApp de un bot se guardan cifrados con una clave propia del cliente dueño del bot, y el contacto se puede localizar sin guardar el número en claro | Construido | V6.2, V8.3 | A04 |
@@ -492,6 +504,7 @@ OWASP Top 10 en su edición 2025.
 | RS27 | Los envíos a contactos tienen límite: 60 por minuto por bot y 1 000 al día por cliente, de texto y de plantilla juntos, que el operador puede subir para un cliente. Pasarlos responde `429` con `Retry-After`. Cada envío queda en la auditoría del cliente, sin su texto (decisión del 2026-10-29, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente | V11.1, V7.2 | A06, A09 |
 | RS28 | Las credenciales de integración de un cliente, claves y tokens de OAuth, se guardan cifradas con su clave de datos. No vuelven a nadie salvo al enlace, que las pide por una ruta suya y deja registro. El secreto de cada aplicación OAuth de Hive vive en Andvari ([ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | V6.4, V8.3 | A04 |
 | RS29 | Ninguna herramienta llega al modelo sin estar en el catálogo con la misma huella, y su clase la decide el operador, no el servidor. Lo que responde entra como dato no confiable, recortado, y no se guarda fuera del contexto de la conversación. Lo que tiene efectos solo se ejecuta con la confirmación del usuario final ([ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | V4.1, V5.2, V10.3 | A05, A06, A08 |
+| RS30 | Todo token de acceso de Hive va atado por DPoP (RFC 9449) a una clave. Para una credencial de máquina, de un cliente o de un worker, es la clave registrada que firmó su aserción; para el BFF, la suya. Cada petición lleva una prueba de un solo uso para su método y su URL, de los últimos 60 segundos, con el hash del token. Un token sin su prueba se rechaza ([ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md)) | Pendiente | V3.5, V2.10 | A07 |
 
 ## Threat assessment inicial
 
@@ -668,6 +681,14 @@ control construido y una prueba que lo verifica.
 | Integraciones e intents | Conviven: las APIs del cliente siguen siendo las llamadas de los intents, MCP es solo para el catálogo del operador, y las dos comparten el almacén de credenciales | RF33, RF34, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
 | Quién autoriza lo que tiene efectos | El usuario final, con un botón en la conversación | RF35, RS29, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
 | Cómo se conecta la cuenta del cliente a un servicio | Con claves fijas o, si el servicio lo exige, por OAuth, ya en la v1 | RF33, RS28, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
+
+### Tomadas el 2026-10-29 para DPoP (Jeremi Alcala)
+
+| Decisión | Resultado | Dónde queda |
+|---|---|---|
+| A qué clave se ata el token de una credencial de máquina | A la clave registrada que firmó su aserción | RS30, [ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) |
+| Si el motor también usa DPoP | Sí: el token del notificador alcanza los tokens de Meta | RS30, [ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) |
+| Cómo se pasa a DPoP | De golpe, como en la ADR-0025 | [ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) |
 
 ### Por decidir en el diseño (D9)
 
