@@ -317,6 +317,13 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **Runbook de Zitadel (`deploy/idp/README.md`): la configuración en la consola, con las trampas del 2026-10-28.**
+  - La MFA obligatoria va después de registrar un TOTP en cada administrador. Activarla antes deja la consola
+    rechazando todas las sesiones (`AUTHZ-Kl3p0`), porque el login no obliga a registrar el segundo factor. Se
+    explica también cómo salir por `loginname` y `mfa/set`.
+  - El nombre de usuario completo del administrador, y su correo, que es de un dominio que no existe.
+  - Solo `IAM_OWNER` para las personas.
+  - El SMTP de Resend en el puerto 2465 y cómo reconocer un problema de MTU por el túnel PIA.
 - **ADR-0029, enmendada:** Zitadel va en Nidavellir y no en midgard (decisión de Jeremi del 2026-10-28), con dos
   condiciones. Una, 14 días sin cuelgues antes de que entren personas de verdad. Otra, vigilancia y respaldos
   cifrados en el NAS. Los nombres públicos son `hive-auth.higerotech.com` y `hive-app.higerotech.com`, y los
