@@ -26,6 +26,19 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (propuesta): los servicios de terceros
+  entran por un catálogo MCP del operador, y solo el enlace los llama** (HIG-79).
+  - **El catálogo:** servidores remotos por Streamable HTTP. Cada herramienta está aprobada por la huella de su
+    descripción y su esquema, y es de lectura o de escritura según decide el operador, no las anotaciones. Una
+    herramienta nueva o cambiada no se ofrece.
+  - **Las APIs del cliente** siguen siendo las llamadas de los intents.
+  - **Un almacén de credenciales por cliente,** cifrado con su clave de datos. El `authRef` apunta a él, y solo el
+    enlace lo lee.
+  - **OAuth en la v1,** con PKCE, permisos fijados por el catálogo, renovación y revocación.
+  - **Lo que tiene efectos** lo confirma el usuario final con un botón.
+  - **Lo que responde una herramienta** es dato no confiable y no sale del contexto de la conversación.
+  - **En el PRD** (0.7.0): RF32–RF35, RS28–RS29 y AB43–AB49. En la matriz (1.3.0), la sección 8 apunta a sus
+    requisitos.
 - **[ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md) (aceptada el 2026-10-29): el cliente escribe a sus contactos por
   WhatsApp, y solo el notificador envía** (HIG-82).
   - **El camino:** `hive-api` valida y publica un `PedidoDeEnvio` en Bifröst, el notificador envía y lo enviado vuelve

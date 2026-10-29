@@ -1,11 +1,11 @@
 # PRD — MVP del gateway BaaS de mensajería
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28). Las
-  capacidades de la D9 y los mensajes salientes (D10), en review desde el 2026-10-29
+  capacidades de la D9, los mensajes salientes (D10) y las integraciones (D7, D8), en review desde el 2026-10-29
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.6.0
+* **Versión:** 0.7.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -69,6 +69,13 @@ Con la D10, el cliente escribe por iniciativa propia a los contactos que ya le e
 dentro de la ventana de 24 horas, y plantillas de Meta dentro o fuera de ella ([ADR-0031](../00-project/adr/0031-mensajes-salientes.md)). Se añaden RF29–RF31,
 RS27 y siete escenarios de abuso (AB36–AB42), y RS06 se matiza: la API de gestión usa el token del bot para
 gestionar las plantillas, sin devolverlo.
+
+### Integraciones con servicios de terceros (D7, D8, 2026-10-29)
+
+Con la D7 y la D8, el agente consulta servicios de terceros y las APIs del propio cliente al responder. Los
+servicios de terceros entran por un catálogo MCP del operador ([ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)). Las APIs del cliente siguen siendo las
+llamadas declaradas de los intents. Las dos comparten un almacén de credenciales, y solo el enlace del motor las
+llama. Se añaden RF32–RF35, RS28–RS29 y siete escenarios de abuso (AB43–AB49).
 
 ## Objetivos / No-objetivos
 
@@ -214,6 +221,13 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB40 | Una plantilla lleva contenido que Meta prohíbe, o se envía una que Meta no aprobó o pausó | RF30 | Pendiente: Meta revisa cada plantilla, y Hive solo envía las `APPROVED` |
 | AB41 | Un `cliente-analista` envía texto libre, o crea o cambia plantillas | RS23 | Pendiente |
 | AB42 | Quien tiene acceso al log o a la auditoría lee el texto que se envió | RS07 | Pendiente: el texto solo va cifrado al historial |
+| AB43 | Un servidor del catálogo cambia la descripción de una herramienta para meter instrucciones al modelo, o añade una herramienta nueva | RS29 | Pendiente: solo se ofrece lo aprobado, con su huella |
+| AB44 | Lo que responde una herramienta trae instrucciones para que el modelo llame a otra o saque datos | RS26, RS29 | Pendiente: entra como dato no confiable, recortado y por la base de guardrails |
+| AB45 | Una inyección de instrucciones hace que el bot cancele un pedido o haga una reserva sin que el usuario lo quiera | RS29, RF35 | Pendiente: sin la confirmación del usuario con un botón, no se ejecuta |
+| AB46 | Alguien roba las credenciales o los tokens de OAuth de las integraciones de un cliente | RS28 | Pendiente |
+| AB47 | Un cliente usa un `authRef` o una integración para que el enlace llame con la credencial de otro cliente | RS01, RS28 | Pendiente: el almacén es por cliente, y el enlace solo alcanza el del cliente de su clave |
+| AB48 | Se piden en OAuth más permisos de los que declara el catálogo, o se secuestra el flujo (CSRF en la redirección, código robado) | RS28, RF33 | Pendiente: los permisos los fija el catálogo, con PKCE y `state` |
+| AB49 | Datos personales de la respuesta de una herramienta quedan en el historial, los logs o las trazas | RS07, RS19, RNF05 | Pendiente: solo viven en el contexto de la conversación, 24 horas |
 
 ## Requisitos funcionales
 
@@ -250,6 +264,10 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RF29 | El `cliente-admin`, o la credencial de máquina, envía a un contacto que ya existe un texto, dentro de la ventana de 24 horas desde su último mensaje, o una plantilla aprobada, dentro o fuera de ella. El `cliente-analista` solo envía plantillas aprobadas. En la v1, solo por WhatsApp, y nunca a un número que no sea un contacto del cliente. Envía el notificador: la API responde `202` con el id del pedido, y la misma `Idempotency-Key` no envía dos veces. Lo enviado queda en el historial, cifrado y con su autor (RF14), y en la auditoría del cliente (D10, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente (HIG-83, HIG-84) | — |
 | RF30 | El `cliente-admin` crea, edita, borra y lista las plantillas de la cuenta de WhatsApp de un bot por la API de Hive. Hive las gestiona en Meta con el token del bot y guarda una copia de cada una con su estado; el `cliente-analista` las lista. Solo se envía una plantilla aprobada y, en la v1, solo de las categorías `MARKETING` y `UTILITY` (D10, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente (HIG-85, HIG-86) | — |
 | RF31 | El `cliente-admin`, o la credencial de máquina, registra y retira el consentimiento de un contacto para recibir mensajes del cliente: sus categorías, la fecha y el origen. Una plantilla fuera de la ventana solo sale con el consentimiento vigente para su categoría. El consentimiento se ve en la ficha del contacto y se exporta y se borra con él (RF09) (decisión del 2026-10-29, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente | — |
+| RF32 | El operador mantiene el catálogo de servidores MCP de la plataforma: remotos, por Streamable HTTP y `https`. De cada servidor guarda la lista cerrada de herramientas que se pueden ofrecer y, de cada herramienta, la huella de su descripción y de su esquema y su clase, lectura o escritura, que decide él y no el servidor. Guarda también cómo se autentica la cuenta del cliente y, con OAuth, los permisos mínimos. Una herramienta nueva o cambiada no se ofrece hasta que la apruebe otra vez (D7, D8, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | — |
+| RF33 | El `cliente-admin` guarda las credenciales de su cliente para las integraciones: claves fijas, o su cuenta conectada por OAuth desde la PWA, con los permisos del catálogo. Se guardan cifradas con su clave de datos y no vuelven a mostrarse. El `authRef` de un intent apunta a una de ellas por su nombre. Al desconectar una, se revoca en el servicio si este lo admite. Se borran con el cliente, y solo el enlace las obtiene (D8, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | — |
+| RF34 | El `cliente-admin` activa en cada bot los servidores del catálogo que quiere y qué herramientas de cada uno, además de las llamadas a sus propias APIs que declaran sus intents (RF02). El `cliente-analista` ve las integraciones de cada bot, sin sus credenciales. Cada cambio crea una versión del bot (RF26) (D8, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | — |
+| RF35 | El enlace del motor hace las llamadas que pide el modelo, a las herramientas activas del bot o a las acciones de sus intents: como mucho tres por mensaje, y con los destinos comprobados al llamar (RS16). Una herramienta de escritura, o una acción con un método distinto de `GET`, solo se ejecuta si el usuario final la confirma con un botón en la conversación antes de 10 minutos. Cada llamada queda en la auditoría del cliente, sin argumentos ni respuesta (decisión del 2026-10-29, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente (E9 del motor) | — |
 
 ## Requisitos no funcionales
 
@@ -415,9 +433,26 @@ requirementDiagram
     }
     EnvioPorElNotificador - satisfies -> RS27
     EnvioPorElNotificador - satisfies -> RF31
+    requirement RS28 {
+      id: RS28
+      text: Credenciales de integracion cifradas y solo para el enlace
+      risk: high
+      verifymethod: test
+    }
+    requirement RS29 {
+      id: RS29
+      text: Herramientas aprobadas por huella y efectos confirmados
+      risk: high
+      verifymethod: test
+    }
+    element EnlaceDelMotor {
+      type: "sin construir"
+    }
+    EnlaceDelMotor - satisfies -> RS28
+    EnlaceDelMotor - satisfies -> RS29
 ```
 *Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08; desde
-la D9, RS24–RS26; desde la D10, RS27 y RF31. Los
+la D9, RS24–RS26; desde la D10, RS27 y RF31; desde la D7 y la D8, RS28 y RS29. Los
 elementos "sin construir" no tienen todavía ni componente ni prueba que los verifique; tres de ellos (autorización,
 cifrado y derechos) se construyeron en el Gate 2 y el diagrama no se ha vuelto a trazar.*
 
@@ -455,6 +490,8 @@ OWASP Top 10 en su edición 2025.
 | RS25 | La auditoría y las versiones de un bot son de solo añadir: ninguna persona ni credencial las edita ni las borra. Solo desaparecen al caducar o con la baja de su bot o su cliente (RF10). La auditoría del operador no lleva datos de los contactos ni contenido de mensajes (RF20) | Pendiente | V7.2, V7.3 | A09 |
 | RS26 | La base de guardrails de la plataforma se aplica a todo bot, ningún cliente la desactiva, y falla cerrado: si el filtro no responde, el mensaje se trata como bloqueado (RF27) | Parcial: el rail fijo del clasificador falla cerrado (ADR-0005 del motor); falta que la base y los temas del cliente sean por bot | V5.2, V11.1 | A05, A06 |
 | RS27 | Los envíos a contactos tienen límite: 60 por minuto por bot y 1 000 al día por cliente, de texto y de plantilla juntos, que el operador puede subir para un cliente. Pasarlos responde `429` con `Retry-After`. Cada envío queda en la auditoría del cliente, sin su texto (decisión del 2026-10-29, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente | V11.1, V7.2 | A06, A09 |
+| RS28 | Las credenciales de integración de un cliente, claves y tokens de OAuth, se guardan cifradas con su clave de datos. No vuelven a nadie salvo al enlace, que las pide por una ruta suya y deja registro. El secreto de cada aplicación OAuth de Hive vive en Andvari ([ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | V6.4, V8.3 | A04 |
+| RS29 | Ninguna herramienta llega al modelo sin estar en el catálogo con la misma huella, y su clase la decide el operador, no el servidor. Lo que responde entra como dato no confiable, recortado, y no se guarda fuera del contexto de la conversación. Lo que tiene efectos solo se ejecuta con la confirmación del usuario final ([ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md)) | Pendiente | V4.1, V5.2, V10.3 | A05, A06, A08 |
 
 ## Threat assessment inicial
 
@@ -623,6 +660,14 @@ control construido y una prueba que lo verifica.
 |---|---|---|
 | El consentimiento que Meta exige fuera de la ventana | Lo guarda Hive, por contacto y por categoría, con fecha y origen. Sin él, ninguna plantilla sale fuera de la ventana | RF31, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md) |
 | Los límites de Hive, además de los de Meta | 60 envíos por minuto por bot y 1 000 al día por cliente, que el operador puede subir | RS27, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md) |
+
+### Tomadas el 2026-10-29 para las integraciones (Jeremi Alcala)
+
+| Decisión | Resultado | Dónde queda |
+|---|---|---|
+| Integraciones e intents | Conviven: las APIs del cliente siguen siendo las llamadas de los intents, MCP es solo para el catálogo del operador, y las dos comparten el almacén de credenciales | RF33, RF34, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
+| Quién autoriza lo que tiene efectos | El usuario final, con un botón en la conversación | RF35, RS29, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
+| Cómo se conecta la cuenta del cliente a un servicio | Con claves fijas o, si el servicio lo exige, por OAuth, ya en la v1 | RF33, RS28, [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md) |
 
 ### Por decidir en el diseño (D9)
 
