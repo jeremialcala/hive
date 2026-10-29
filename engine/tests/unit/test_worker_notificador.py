@@ -95,6 +95,9 @@ class Meta(CanalDeMeta):
             raise respuesta
         return respuesta
 
+    async def enviar_plantilla(self, token, cuenta, destinatario, nombre, idioma, valores):
+        raise AssertionError("aquí no se envían plantillas")
+
     async def marcar_leido(self, token, cuenta, message_id, escribiendo):
         raise AssertionError("el consumidor de las respuestas no marca nada como leído")
 

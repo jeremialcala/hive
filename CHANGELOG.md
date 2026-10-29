@@ -46,6 +46,23 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **El notificador envía lo que el cliente escribe a sus contactos** (HIG-84,
+  [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md)).
+  - **El consumidor:** lee cada `PedidoDeEnvio` de `SALIENTES` con su consumidor `notifier` y envía por la Cloud API.
+    Un texto va con `type: text`; una plantilla, con su nombre, su idioma y sus valores como parámetros del cuerpo.
+  - **Sin duplicados:** apunta cada pedido en `enviados`, así que una reentrega no sale dos veces.
+  - **Al historial:** publica lo enviado en `RESPUESTAS` con `origin: client`, quién lo pidió (`sentBy`) y el pedido
+    (`requestId`), sin `inReplyTo`. La ingesta lo guarda con su origen y su autor, y la exportación lo muestra.
+  - **Lo que Meta rechaza para siempre** se descarta, con su código en el log: la ventana cerrada (131047), una
+    plantilla en pausa (132015), desactivada (132016) o con otros valores (132000), y el límite de marketing por
+    persona (131049). Lo que puede ir más tarde (límite de tasa, gateway caído) se reintenta.
+  - **El pedido lleva el número del contacto** y el `phone_number_id` desde el que se envía, como un mensaje de
+    `MOTOR` (decisión de Jeremi del 2026-10-29). El envío sale del número del bot al que el contacto escribió por
+    última vez, que la ingesta guarda cifrado en el contacto (`lastPhoneId`, RS05). Para un contacto de antes, del
+    primer número del bot; sin ninguno, la ruta responde `422 NO_WHATSAPP`.
+  - **Contrato:** `asyncapi-v2.yaml` y `shared/contract.py` ganan el `PedidoDeEnvio` como modelo, con `to` y
+    `phoneId`. `RespuestaEnviada` gana `origin`, `sentBy` y `requestId`, y `inReplyTo` deja de ser obligatorio.
+  - **La ADR-0031** queda corregida en lo del número y en desde qué número se envía.
 - **Escribir a un contacto por WhatsApp** (HIG-83, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF29,
   RF31, RS27). Nueva ruta, `POST /chat/{bot_id}/contacts/{contact_id}/messages`, para un texto o una plantilla. Antes
   de publicar comprueba, en este orden:

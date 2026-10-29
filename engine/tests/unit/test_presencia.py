@@ -89,6 +89,9 @@ class Meta(CanalDeMeta):
     async def enviar_texto(self, token, cuenta, destinatario, texto):
         raise AssertionError("aquí no se envía ninguna respuesta")
 
+    async def enviar_plantilla(self, token, cuenta, destinatario, nombre, idioma, valores):
+        raise AssertionError("aquí no se envían plantillas")
+
     async def marcar_leido(self, token, cuenta, message_id, escribiendo):
         self.marcados.append((token, cuenta, message_id, escribiendo))
         respuesta = self._respuestas.pop(0) if len(self._respuestas) > 1 else self._respuestas[0]

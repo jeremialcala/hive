@@ -92,8 +92,11 @@ lee con su propio consumidor. El orden respecto a una respuesta del bot a la mis
 stream, no está garantizado entre los dos. Para un mensaje que el cliente envía por iniciativa propia basta: no
 responde a nada.*
 
-   - **El pedido no lleva el número del contacto,** solo su identificador. El notificador lo resuelve igual que con las
-     respuestas del motor.
+   - **El pedido lleva el número del contacto** y el `phone_number_id` desde el que se envía, como un mensaje de
+     `MOTOR`: así lo resuelve el notificador con las respuestas del motor. Decisión de Jeremi del 2026-10-29, al
+     construir el notificador (HIG-84); la primera versión de esta ADR decía que no lo llevaba.
+   - **Sale desde el número del bot al que el contacto escribió por última vez,** que la ingesta guarda cifrado en el
+     contacto (RS05). Para un contacto de antes, desde el primer número del bot (decisión de Jeremi del 2026-10-29).
    - **El pedido lleva quién lo hizo:** una persona (`sub` de Hive) o la credencial de máquina.
    - **El texto viaja como en el resto del bus** (RS08, RS19).
    - **El sujeto es nuevo, en un stream propio.** Solo `hive-api` publica en él y solo el notificador lo consume

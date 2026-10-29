@@ -43,6 +43,9 @@ class Contact(Document):
     statusDate = DateTimeField(required=True, default=utc_now)
     # It goes with the contact: exported and deleted with it.
     consent = EmbeddedDocumentField(Consent)
+    # The phone_number_id of the bot's number the contact last wrote to: a client's message goes from there (ADR-0031).
+    # Encrypted with the client's data key, like the bot's numbers themselves (RS05).
+    lastPhoneId = StringField()
 
     @staticmethod
     def generate_contact_from_fb(botId: str, fbId: str, fb_info: ProfileInfo):

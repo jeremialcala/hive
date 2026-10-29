@@ -509,3 +509,38 @@ def test_the_worker_acknowledges_an_answer_and_drops_one_it_cannot_store(ana):
     assert asyncio.run(ingest.handle(stored, ingest.ANSWERS)) == "acknowledged"
     assert asyncio.run(ingest.handle(unknown, ingest.ANSWERS)) == "dropped"
     assert (stored.done, unknown.done) == ("ack", "term")
+
+
+# --- What a client's message needs (ADR-0031) -------------------------------------------------------------------------
+
+def test_the_number_of_the_bot_the_contact_wrote_to_is_remembered_encrypted(bot, repo, bifrost, queue):
+    ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+
+    contact = Contact.objects.get()
+    assert repo.last_phone_id(contact) == METADATA["phone_number_id"]
+    # Stored like the bot's numbers themselves: not in clear (RS05).
+    assert METADATA["phone_number_id"] not in contact.lastPhoneId
+
+
+def test_a_message_to_the_same_number_writes_nothing_more(bot, repo, bifrost, queue, another):
+    ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+    sealed = Contact.objects.get().lastPhoneId
+
+    ingest_now(event_of(bot, whatsapp_message("wamid.B")))
+
+    assert Contact.objects.get().lastPhoneId == sealed
+
+
+def test_what_the_client_sent_goes_to_the_history_with_its_origin_and_who_asked(bot, repo, bifrost, queue):
+    ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+    contact = Contact.objects.get()
+    sent = {"schemaVersion": 2, "botId": str(bot.uuid), "clientId": str(repo.client_id),
+            "contactId": str(contact._uuid), "channel": "whatsapp", "messageId": "wamid.CLIENTE",
+            "sentAt": "2026-10-29T19:00:00+00:00", "text": "Su cita es mañana", "origin": "client",
+            "sentBy": "key abc", "requestId": str(uuid4())}
+
+    assert asyncio.run(ingestion.ingest_reply(sent)) == {"stored": True}
+
+    stored = [message for message in repo.history(contact) if message["direction"] == "out"]
+    assert [(m["origin"], m["sentBy"], m["inReplyTo"], m["text"]) for m in stored] == \
+        [("client", "key abc", None, "Su cita es mañana")]

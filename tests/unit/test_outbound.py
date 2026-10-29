@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 import app as app_module
-from classes import ChatBot, Contact, MessageTemplate, OutboundRequest
+from classes import ChatBot, ChatbotPhone, Contact, MessageTemplate, OutboundRequest
 from classes.entity_conversation_message import INCOMING
 from controller import outbound, send_limits
 from controller.ingestion import partition
@@ -73,9 +73,14 @@ def repo(caller):
     return TenantRepository(caller.client_id)
 
 
+PHONE_ID = "100000000000001"
+
+
 @pytest.fixture
 def bot(repo):
-    return repo.add_bot(ChatBot(name="Bot", role="Sales Assistant", description="A test chatbot", tone="helpful"))
+    made = repo.add_bot(ChatBot(name="Bot", role="Sales Assistant", description="A test chatbot", tone="helpful"))
+    repo.add_phone(made.uuid, ChatbotPhone(phoneNumber="12025550101", phoneId=PHONE_ID))
+    return made
 
 
 @pytest.fixture
@@ -121,8 +126,27 @@ def test_a_text_inside_the_window_is_taken_and_published_for_the_notifier(http, 
     REQUEST.validate(published.request)
     assert (published.request["kind"], published.request["text"], published.request["contactId"]) == \
         ("text", TEXT["text"], str(ana._uuid))
-    # The notifier looks the number up: it does not travel in the request.
-    assert NUMBER not in json.dumps(published.request)
+    # Where it goes and where from, as a message of MOTOR carries them: the bot's first number, here.
+    assert (published.request["to"], published.request["phoneId"]) == (NUMBER, PHONE_ID)
+
+
+def test_it_goes_from_the_number_the_contact_last_wrote_to(http, caller, repo, bot, ana, bifrost):
+    wrote(repo, ana, hours_ago=1)
+    repo.remember_phone(ana, "200000000000002")
+
+    send(http, caller, bot, ana, TEXT)
+
+    assert bifrost.kept[0].request["phoneId"] == "200000000000002"
+
+
+def test_a_chatbot_without_a_number_cannot_send(http, caller, repo, ana, bifrost):
+    lonely = repo.add_bot(ChatBot(name="Lonely", role="Sales Assistant", description="No phone", tone="helpful"))
+    contact = repo.add_contact(lonely.uuid, Contact(firstName="Ana", waId=NUMBER))
+    wrote(repo, contact, hours_ago=1)
+
+    response = send(http, caller, lonely, contact, TEXT)
+
+    assert (response.status_code, response.json()["message"].split(":")[0]) == (422, "NO_WHATSAPP")
 
 
 @pytest.mark.parametrize("hours_ago", [25, None], ids=["the window closed", "the contact never wrote"])

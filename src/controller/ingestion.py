@@ -107,7 +107,13 @@ def incoming(channel: str, item: dict) -> IncomingMessage:
 
 def _identify(channel: str, message: IncomingMessage, bot: ChatBot) -> Contact:
     if channel == "whatsapp":
-        return ctr_identify_contact_by_wa_id(wa_id=message.sender, name=message.name, _bot=bot)
+        contact = ctr_identify_contact_by_wa_id(wa_id=message.sender, name=message.name, _bot=bot)
+        # Which of the bot's numbers it wrote to: a message of the client goes from there (ADR-0031).
+        metadata = message.content.get("metadata")
+        phone_id = _text(metadata.get("phone_number_id")) if isinstance(metadata, dict) else None
+        if phone_id and phone_id.isdigit() and isinstance(getattr(contact, "clientId", None), UUID):
+            TenantRepository(contact.clientId).remember_phone(contact, phone_id)
+        return contact
     return ctr_identify_fb_contact(fbId=message.sender, _bot=bot)
 
 
@@ -239,8 +245,11 @@ def _store_reply(event: dict) -> dict:
     attachments = tuple(each["type"] for each in event.get("attachments") or []
                         if isinstance(each, dict) and _text(each.get("type")))
     try:
+        origin = "client" if event.get("origin") == "client" else "engine"
+        sent_by = _text(event.get("sentBy")) if origin == "client" else None
         stored = repo.record_message(contact, OUTGOING, message_id, channel, sent_at, text=event.get("text"),
-                                     attachments=attachments, in_reply_to=event.get("inReplyTo"))
+                                     attachments=attachments, in_reply_to=event.get("inReplyTo"), origin=origin,
+                                     sent_by=sent_by)
     except NotFound:
         raise Unprocessable("for a contact deleted in the meantime") from None
     except Exception as e:

@@ -25,7 +25,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from shared import bus, tracing
-from shared.contract import outbound_subject
+from shared.contract import OutboundRequest as PedidoDeEnvio, TemplateToSend, outbound_subject
 from classes import ConsentRequest, OutboundMessageRequest, OutboundRequest, Settings
 from classes.entity_outbound import APPROVED, CATEGORIES, IDEMPOTENCY_WINDOW
 from classes.tool_clock import as_utc
@@ -89,39 +89,49 @@ def _accepted(record: OutboundRequest) -> JSONResponse:
 
 def _check(repo: TenantRepository, bot_id: str, contact_id: str, request: OutboundMessageRequest,
            now: datetime):
-    """The contact, and the template if there is one; or the answer that turns the request away."""
+    """
+        The contact, the template if there is one, and where it goes from and to; or the answer that turns the request
+        away. It goes from the bot's number the contact last wrote to, or from the bot's first number.
+    """
     contact = repo.get_contact(bot_id, contact_id)
+    route = (repo.contact_number(contact), repo.last_phone_id(contact) or repo.first_phone_id(contact.botId))
+    if not all(route):
+        return None, None, None, _refused("NO_WHATSAPP", "the contact has no WhatsApp number, or the chatbot no number "
+                                                         "to send from")
     last = repo.last_incoming_at(contact)
     inside = last is not None and now - as_utc(last) < WINDOW
     if request.type == "text":
         if not inside:
-            return None, None, _refused("OUTSIDE_WINDOW", "outside the 24 hours since the contact last wrote, "
-                                                          "only an approved template can be sent")
-        return contact, None, None
+            return None, None, None, _refused("OUTSIDE_WINDOW", "outside the 24 hours since the contact last "
+                                                                "wrote, only an approved template can be sent")
+        return contact, None, route, None
     wanted = request.template
     template = repo.find_template(contact.botId, wanted.name, wanted.language)
     if template is None or template.status != APPROVED or template.category not in CATEGORIES:
-        return None, None, _refused("TEMPLATE_NOT_APPROVED", "this chatbot has no approved template with that name "
-                                                             "and language")
+        return None, None, None, _refused("TEMPLATE_NOT_APPROVED", "this chatbot has no approved template with "
+                                                                   "that name and language")
     if len(wanted.parameters) != template.parameters:
-        return None, None, _refused("TEMPLATE_PARAMETERS", f"the template takes {template.parameters} values")
+        return None, None, None, _refused("TEMPLATE_PARAMETERS", f"the template takes {template.parameters} values")
     if not inside and not _consents(contact, template.category):
-        return None, None, _refused("NO_CONSENT", f"outside the window, the contact has to have agreed to "
-                                                  f"{template.category} messages")
-    return contact, template, None
+        return None, None, None, _refused("NO_CONSENT", f"outside the window, the contact has to have agreed to "
+                                                        f"{template.category} messages")
+    return contact, template, route, None
 
 
-def _envelope(record: OutboundRequest, request: OutboundMessageRequest, template, now: datetime) -> dict:
-    """The PedidoDeEnvio of asyncapi-v2.yaml: identifiers, and what to send. No number: the notifier looks it up."""
-    sent = {"schemaVersion": SCHEMA_VERSION, "uuid": str(record.uuid), "clientId": str(record.clientId),
-            "botId": str(record.botId), "contactId": str(record.contactId), "channel": "whatsapp",
-            "kind": record.kind, "sentBy": record.sentBy, "requestedAt": now.isoformat()}
-    if request.type == "text":
-        sent["text"] = request.text
-    else:
-        sent["template"] = {"name": template.name, "language": template.language, "category": template.category,
-                            "parameters": list(request.template.parameters)}
-    return sent
+def _envelope(record: OutboundRequest, request: OutboundMessageRequest, template, route: tuple,
+              now: datetime) -> bytes:
+    """
+        The PedidoDeEnvio of asyncapi-v2.yaml, built with the model the notifier reads it with: what to send, to which
+        number and from which of the bot's.
+    """
+    to, phone_id = route
+    sent = PedidoDeEnvio(
+        schemaVersion=SCHEMA_VERSION, uuid=record.uuid, clientId=record.clientId, botId=record.botId,
+        contactId=record.contactId, channel="whatsapp", kind=record.kind, sentBy=record.sentBy, requestedAt=now,
+        to=to, phoneId=phone_id, text=request.text if request.type == "text" else None,
+        template=TemplateToSend(name=template.name, language=template.language, category=template.category,
+                                parameters=list(request.template.parameters)) if template is not None else None)
+    return sent.model_dump_json(exclude_none=True).encode()
 
 
 async def ctr_send_message(repo: TenantRepository, bot_id: str, contact_id: str, request: OutboundMessageRequest,
@@ -139,7 +149,8 @@ async def ctr_send_message(repo: TenantRepository, bot_id: str, contact_id: str,
             if seen.fingerprint != fingerprint:
                 return _refused("IDEMPOTENCY_KEY_REUSED", "that key went with another request")
             return _accepted(seen)
-        contact, template, refusal = await run_in_threadpool(_check, repo, bot_id, contact_id, request, now)
+        contact, template, route, refusal = await run_in_threadpool(_check, repo, bot_id, contact_id, request,
+                                                                    now)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, CONTACT_NOT_FOUND)
     except KeyServiceUnavailable as e:
@@ -175,7 +186,7 @@ async def ctr_send_message(repo: TenantRepository, bot_id: str, contact_id: str,
     with tracing.span("outbound.publish", **{"gateway.client_id": str(repo.client_id),
                                              "gateway.bot_id": str(contact.botId)}):
         try:
-            await bus.publisher().publish(subject, json.dumps(_envelope(record, request, template, now)).encode(),
+            await bus.publisher().publish(subject, _envelope(record, request, template, route, now),
                                           str(record.uuid), headers={"traceparent": traceparent()})
         except bus.BusUnavailable as e:
             await run_in_threadpool(repo.forget_outbound, record)

@@ -18,6 +18,10 @@
     - **Messenger e Instagram llegan en el E10**: hasta entonces su respuesta se descarta.
     - **A la vez, marca como leído lo que llega y muestra «escribiendo…»** mientras se prepara la respuesta, con dos
       consumidores más (src/workers/presencia.py, ADR-0011).
+    - **Y envía lo que el cliente escribe por iniciativa propia** (ADR-0031 del gateway): lee cada `PedidoDeEnvio` de
+      `SALIENTES` con su consumidor `notifier`, envía el texto o la plantilla, no envía dos veces el mismo pedido, y
+      publica lo enviado en `RESPUESTAS` con su origen, `client`, y quién lo pidió. Lo que Meta rechaza (la ventana se
+      cerró, la plantilla está en pausa) se descarta con su código en el log.
 
     El log no lleva el texto, el número, el token ni los ids de los mensajes.
 """
@@ -25,8 +29,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from shared import bus, tracing
-from shared.contract import SCHEMA_VERSION, SentReply, reply_subject
+from shared.contract import SCHEMA_VERSION, OutboundRequest, SentReply, reply_subject
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
 from src.domain.models.sobre import MensajeRespondido
@@ -46,6 +52,8 @@ log = logging.getLogger(__name__)
 
 NOMBRE = Worker.NOTIFIER.value
 STREAM, CONSUMIDOR = "MOTOR", NOMBRE
+# Lo que el cliente pide enviar (ADR-0031 del gateway): su stream y el consumidor del notificador en él.
+SALIENTES, CONSUMIDOR_SALIENTES = "SALIENTES", NOMBRE
 
 
 class _Esperar(Exception):
@@ -157,6 +165,112 @@ class Notificar:
         return Resultado.CONFIRMADO
 
 
+class Salientes:
+    """Lo que hace el worker con cada pedido de envío del cliente."""
+
+    def __init__(self, tokens: TokensDelBot, canal: CanalDeMeta, enviados: Enviados, publisher: bus.EventPublisher,
+                 max_deliver: int):
+        self._tokens = tokens
+        self._canal = canal
+        self._enviados = enviados
+        self._publisher = publisher
+        self._max_deliver = max_deliver
+
+    async def __call__(self, mensaje) -> Resultado:
+        try:
+            pedido = OutboundRequest.model_validate_json(mensaje.data)
+        except (ValidationError, ValueError):
+            log.warning("Un pedido de envío de %s se descarta: no es un PedidoDeEnvio de la versión 2", SALIENTES)
+            return Resultado.DESCARTADO
+        traza = (mensaje.headers or {}).get("traceparent")
+        with tracing.span("engine.notifier.outbound", parent=traza, kind=tracing.SpanKind.CONSUMER, **{
+                "gateway.bot_id": str(pedido.botId), "gateway.client_id": str(pedido.clientId),
+                "gateway.channel": pedido.channel, "messaging.system": "nats"}) as current:
+            try:
+                resultado = await self._atender(pedido)
+            except _Esperar as e:
+                if 0 < self._max_deliver <= entregas(mensaje):
+                    log.error("El pedido de envío %s del bot %s no se pudo enviar en la última entrega: %s",
+                              pedido.uuid, pedido.botId, e)
+                    resultado = Resultado.DESCARTADO
+                else:
+                    log.warning("El pedido de envío %s del bot %s se intentará otra vez: %s", pedido.uuid,
+                                pedido.botId, e)
+                    resultado = Resultado.EN_ESPERA
+            current.set(**{"gateway.outcome": resultado.value})
+            return resultado
+
+    async def _atender(self, pedido: OutboundRequest) -> Resultado:
+        # Lo que ya salió se apunta por el pedido: una reentrega de Bifröst no lo envía otra vez.
+        clave = f"pedido:{pedido.uuid}"
+        try:
+            envio = await self._enviados.enviado(pedido.botId, clave)
+        except RegistroNoDisponible as e:
+            raise _Esperar(f"enviados: {e}") from None
+        if envio is None:
+            envio = await self._enviar(pedido)
+            if isinstance(envio, Resultado):
+                return envio
+            try:
+                await self._enviados.apuntar(pedido.botId, clave, envio)
+            except RegistroNoDisponible as e:
+                log.error("El pedido de envío %s del bot %s salió, pero no se pudo apuntar: %s", pedido.uuid,
+                          pedido.botId, e)
+        else:
+            log.info("El pedido de envío %s del bot %s ya había salido: se publica sin enviarlo otra vez",
+                     pedido.uuid, pedido.botId)
+        return await self._publicar(pedido, envio)
+
+    async def _mandar(self, token: str, pedido: OutboundRequest) -> str:
+        if pedido.kind == "text":
+            return await self._canal.enviar_texto(token, pedido.phoneId, pedido.to, pedido.text)
+        plantilla = pedido.template
+        return await self._canal.enviar_plantilla(token, pedido.phoneId, pedido.to, plantilla.name,
+                                                  plantilla.language, list(plantilla.parameters))
+
+    async def _enviar(self, pedido: OutboundRequest) -> Envio | Resultado:
+        if (pedido.kind == "text") != (pedido.text is not None) or (pedido.kind == "template") != (
+                pedido.template is not None):
+            log.warning("El pedido de envío %s del bot %s se descarta: no trae lo que dice su tipo", pedido.uuid,
+                        pedido.botId)
+            return Resultado.DESCARTADO
+        try:
+            token = await self._tokens.token_de_whatsapp(pedido.clientId, pedido.botId)
+            try:
+                enviado = await self._mandar(token, pedido)
+            except TokenRechazado:
+                self._tokens.olvidar(pedido.botId)
+                enviado = await self._mandar(await self._tokens.token_de_whatsapp(pedido.clientId, pedido.botId),
+                                             pedido)
+        except NoEncontrado as e:
+            log.warning("El pedido de envío %s del bot %s se descarta: sin %s", pedido.uuid, pedido.botId, e)
+            return Resultado.DESCARTADO
+        except EnvioRechazado as e:
+            # La ventana se cerró, la plantilla está en pausa o desactivada... no irá nunca así.
+            log.warning("Meta no acepta el pedido de envío %s del bot %s: %s", pedido.uuid, pedido.botId, e)
+            return Resultado.DESCARTADO
+        except (FuenteNoDisponible, EnvioFallido) as e:
+            raise _Esperar(str(e)) from None
+        return Envio(message_id=enviado, sent_at=datetime.now(timezone.utc))
+
+    async def _publicar(self, pedido: OutboundRequest, envio: Envio) -> Resultado:
+        # De una plantilla, el historial guarda su nombre y sus valores: es lo que la persona recibió.
+        texto = pedido.text if pedido.kind == "text" else " | ".join(
+            [f"[{pedido.template.name}]", *pedido.template.parameters])
+        evento = SentReply(schemaVersion=SCHEMA_VERSION, botId=pedido.botId, clientId=pedido.clientId,
+                           contactId=pedido.contactId, channel=pedido.channel, messageId=envio.message_id,
+                           sentAt=envio.sent_at, text=texto[:4096], origin="client", sentBy=pedido.sentBy,
+                           requestId=pedido.uuid)
+        traza = tracing.traceparent()
+        try:
+            await self._publisher.publish(reply_subject(pedido.botId), evento.model_dump_json().encode(),
+                                          f"{pedido.botId}:{envio.message_id}", {"traceparent": traza} if traza else {})
+        except bus.BusUnavailable as e:
+            raise _Esperar(f"Bifröst: {e}") from None
+        log.info("Pedido de envío %s del bot %s enviado (%s)", pedido.uuid, pedido.botId, pedido.kind)
+        return Resultado.CONFIRMADO
+
+
 def piezas(settings: NotifierSettings, store: EngineKeyStore | None = None) -> tuple[ApiDelGateway, WhatsAppCloud]:
     """
         La API del gateway, para los tokens, y la Cloud API de WhatsApp. Las comparten los tres consumidores del
@@ -202,9 +316,18 @@ def main() -> None:
     async def escribiendo(_max_deliver, conexion):
         return presencia.Escribiendo(tokens, canal, EnviadosEnBifrost(conexion.jetstream())), _nada
 
+    async def salientes(max_deliver, conexion):
+        publisher = publicador(settings, NOMBRE)
+
+        async def cerrar() -> None:
+            await publisher.close()
+
+        return Salientes(tokens, canal, EnviadosEnBifrost(conexion.jetstream()), publisher, max_deliver), cerrar
+
     asyncio.run(ejecutar(NOMBRE, settings, STREAM, CONSUMIDOR,
                          lambda max_deliver, conexion: preparar(settings, max_deliver, conexion, tokens, canal),
-                         ademas=[("MENSAJES", presencia.LEIDO, leido), ("MOTOR", presencia.ESCRIBIENDO, escribiendo)]))
+                         ademas=[("MENSAJES", presencia.LEIDO, leido), ("MOTOR", presencia.ESCRIBIENDO, escribiendo),
+                                 (SALIENTES, CONSUMIDOR_SALIENTES, salientes)]))
 
 
 if __name__ == "__main__":
