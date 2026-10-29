@@ -8,7 +8,7 @@
         POST   {graph}/{version}/{template_id}                            edit: every component is replaced
         DELETE {graph}/{version}/{waba_id}/message_templates?hsm_id=...&name=...
 
-    Of an answer of Meta that is not good, only its code is kept: its message can carry what the template said
+    Of an answer of Meta that is not good, only its code and its subcode are kept: its message can carry what the template said
     (developers.facebook.com, «Template management» and «Error codes», read on 2026-10-29). Neither the token
     nor the body of a template goes to the log.
 """
@@ -28,16 +28,24 @@ PERMISSION = {10, 190, 200}
 META_ID = re.compile(r"^[0-9]{1,30}$")
 
 
+def _number(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 class MetaUnavailable(Exception):
     """Meta could not be reached, or is too busy: it may work later. It carries the kind of failure."""
 
 
 class MetaRefused(Exception):
-    """Meta said no to what was asked: it carries Meta's code, never its message."""
+    """Meta said no to what was asked: it carries Meta's code and subcode, never its message."""
 
-    def __init__(self, code):
+    def __init__(self, code, subcode: int | None = None):
         super().__init__(f"Meta {code}")
-        self.code = code
+        self.code, self.subcode = code, subcode
+
+    @property
+    def reason(self) -> str:
+        return f"{self.code}/{self.subcode}" if self.subcode is not None else str(self.code)
 
 
 class MetaPermission(MetaRefused):
@@ -61,20 +69,23 @@ class MetaTemplates:
                 return response.json()
             except ValueError:
                 raise MetaUnavailable("an answer that is not JSON") from None
-        code = self._code(response)
+        code, subcode = self._code(response)
         if response.status_code >= 500 or response.status_code == 429 or code in (1, 2, 4, 80008):
             raise MetaUnavailable(f"Meta {code if code is not None else response.status_code}")
         if code in PERMISSION or response.status_code in (401, 403):
-            raise MetaPermission(code if code is not None else response.status_code)
-        raise MetaRefused(code if code is not None else response.status_code)
+            raise MetaPermission(code if code is not None else response.status_code, subcode)
+        raise MetaRefused(code if code is not None else response.status_code, subcode)
 
     @staticmethod
-    def _code(response) -> int | None:
+    def _code(response) -> tuple[int | None, int | None]:
+        """Meta's code and subcode, when they are numbers: nothing else of the error is read."""
         try:
-            code = response.json()["error"]["code"]
+            error = response.json()["error"]
         except (ValueError, KeyError, TypeError):
-            return None
-        return code if isinstance(code, int) and not isinstance(code, bool) else None
+            return None, None
+        if not isinstance(error, dict):
+            return None, None
+        return _number(error.get("code")), _number(error.get("error_subcode"))
 
     def create(self, waba_id: str, token: str, template: dict) -> dict:
         """Meta's id of the new template, its state (in review, most of the time) and its category."""

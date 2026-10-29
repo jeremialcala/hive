@@ -561,6 +561,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **Un no de Meta a las plantillas dice también su subcódigo** (HIG-85). Con solo el código, el `100` del primer
+  sync en producción (2026-10-29) no distinguía una cuenta equivocada de un token sin permiso. Ahora la respuesta
+  y el log llevan `código/subcódigo`, solo si son números. El `100/33` explica qué revisar: el `wabaId` y el
+  permiso `whatsapp_business_management`. El mensaje de Meta sigue sin guardarse.
 - **El vigía ya no arranca lo que alguien paró** (`deploy/vigia/hive-vigia.sh`, HIG-96). Docker marca `unhealthy`
   también un contenedor parado, y el vigía le hacía `docker restart`, que lo arranca. El 2026-10-28 deshizo en 23 s el
   `docker stop hive-idp-proxy` de la prueba de aceptación de HIG-96, y lo mismo habría hecho en medio de una

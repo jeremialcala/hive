@@ -38,6 +38,8 @@ PENDING = "PENDING"
 EDITABLE = ("APPROVED", "REJECTED", "PAUSED")
 # What Meta does not let be deleted.
 DISABLED = "DISABLED"
+# What Meta answers for an object that does not exist, or that the token cannot see: the same, on purpose.
+NOT_THERE = (100, 33)
 # What a state or a category of Meta looks like: anything else is not stored as one.
 WORD = re.compile(r"^[A-Z_]{1,30}$")
 NAME = re.compile(r"^[a-z0-9_]{1,512}$")
@@ -71,13 +73,18 @@ def _account(repo: TenantRepository, bot) -> tuple[str, str] | JSONResponse:
 
 def _meta_failed(error: Exception, bot, doing: str) -> JSONResponse:
     if isinstance(error, MetaPermission):
-        log.warning(f"Meta turned the WhatsApp token of chatbot {bot.uuid} away to {doing} templates: {error.code}")
+        log.warning(f"Meta turned the WhatsApp token of chatbot {bot.uuid} away to {doing} templates: "
+                    f"{error.reason}")
         return answer(status.HTTP_502_BAD_GATEWAY,
                       "META_PERMISSION: Meta did not take the chatbot's WhatsApp token to manage its templates: it "
                       "needs the permission whatsapp_business_management, on the chatbot's WhatsApp Business Account")
     if isinstance(error, MetaRefused):
-        log.info(f"Meta did not {doing} a template of chatbot {bot.uuid}: {error.code}")
-        return _refused("META_REFUSED", f"Meta did not take it, with its code {error.code}")
+        log.info(f"Meta did not {doing} a template of chatbot {bot.uuid}: {error.reason}")
+        if (error.code, error.subcode) == NOT_THERE:
+            return _refused("META_REFUSED", f"Meta did not take it, with its code {error.reason}: the WhatsApp "
+                                            "Business Account wabaId is not one this token reaches, or the token "
+                                            "lacks the permission whatsapp_business_management")
+        return _refused("META_REFUSED", f"Meta did not take it, with its code {error.reason}")
     log.error(f"Meta could not be reached to {doing} templates of chatbot {bot.uuid}: {error}")
     return answer(status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE)
 

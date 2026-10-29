@@ -261,7 +261,7 @@ Cómo se atiende con ellos a quien pide sus datos, y qué no alcanza el borrado,
 
 ### Plantillas — etiqueta `Templates`
 
-Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código. Si Meta no responde, `503`.
+Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código y su subcódigo (`100/33`: la cuenta no existe para ese token, o al token le falta el permiso). Si Meta no responde, `503`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
