@@ -365,6 +365,14 @@ def test_a_template_is_deleted_in_meta_by_its_id_and_name_and_its_copy_goes(http
     assert repo.list_templates(bot.uuid) == []
 
 
+def test_a_disabled_template_is_not_deleted(http, caller, repo, bot, meta):
+    stored(repo, bot, status="DISABLED")
+
+    assert http.delete(f"/chat/{bot.uuid}/templates/{META_ID}", headers=caller.auth).status_code == 409
+    assert meta.seen == []
+    assert [t.metaId for t in repo.list_templates(bot.uuid)] == [META_ID]
+
+
 def test_a_deletion_meta_turns_away_keeps_the_copy(http, caller, repo, bot, meta):
     stored(repo, bot)
     meta.answers = [(500, {})]

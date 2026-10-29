@@ -1522,8 +1522,10 @@ paths:
       - Templates
   /chat/{bot_id}/templates/{template_id}:
     delete:
-      description: Deletes a template in Meta, in its language only, and Hive's copy. Meta keeps its name taken
-        for 30 days.
+      description: 'Deletes a template in Meta, in its language only, and Hive''s copy: not one DISABLED (409).
+        Meta keeps its
+
+        name taken for 30 days.'
       operationId: delete_template_chat__bot_id__templates__template_id__delete
       parameters:
       - in: path

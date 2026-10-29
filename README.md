@@ -268,7 +268,7 @@ Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToke
 | `POST` | `/chat/{bot_id}/templates` | Crea una plantilla en Meta (`TemplateCreateRequest`), que queda en revisión (`PENDING`). Solo `MARKETING` y `UTILITY`. Los valores del cuerpo son `{{1}}`, `{{2}}`…, desde 1 y sin huecos, con un ejemplo cada uno. La cabecera y el pie no llevan valores, y un botón de enlace solo va a `https`. `201`. |
 | `GET`  | `/chat/{bot_id}/templates` | Lista la copia de las plantillas. Con `?sync=true`, primero trae la lista de Meta: estados, categorías y lo creado o borrado en las herramientas de Meta. |
 | `PUT`  | `/chat/{bot_id}/templates/{template_id}` | Cambia todos los componentes de una plantilla, por su id de Meta. Solo si está `APPROVED`, `REJECTED` o `PAUSED`; si no, `409`. Vuelve a `PENDING` y no se envía hasta que Meta la apruebe otra vez. |
-| `DELETE` | `/chat/{bot_id}/templates/{template_id}` | Borra la plantilla en Meta, solo en su idioma, y su copia. Meta no deja reusar el nombre durante 30 días. |
+| `DELETE` | `/chat/{bot_id}/templates/{template_id}` | Borra la plantilla en Meta, solo en su idioma, y su copia. Una `DISABLED` no se borra (`409`). Meta no deja reusar el nombre durante 30 días. |
 
 ### Intents — etiqueta `Intents`
 

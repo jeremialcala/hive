@@ -36,6 +36,8 @@ meta = MetaTemplates(settings.meta_graph_url, settings.meta_graph_version)
 PENDING = "PENDING"
 # What Meta lets be edited: an approved template, one it turned away, and one it paused for its quality.
 EDITABLE = ("APPROVED", "REJECTED", "PAUSED")
+# What Meta does not let be deleted.
+DISABLED = "DISABLED"
 # What a state or a category of Meta looks like: anything else is not stored as one.
 WORD = re.compile(r"^[A-Z_]{1,30}$")
 NAME = re.compile(r"^[a-z0-9_]{1,512}$")
@@ -209,7 +211,7 @@ def ctr_edit_template(repo: TenantRepository, bot_id: str, template_id: str,
 def ctr_delete_template(repo: TenantRepository, bot_id: str, template_id: str) -> JSONResponse:
     """
         Deletes the template in Meta, in this language only, and its copy. Meta does not let its name be used
-        again for 30 days.
+        again for 30 days, nor a disabled one be deleted.
     """
     bot = _bot(repo, bot_id)
     if bot is None:
@@ -217,6 +219,8 @@ def ctr_delete_template(repo: TenantRepository, bot_id: str, template_id: str) -
     template = _template(repo, bot, template_id)
     if template is None:
         return answer(status.HTTP_404_NOT_FOUND, TEMPLATE_NOT_FOUND)
+    if template.status == DISABLED:
+        return answer(status.HTTP_409_CONFLICT, "A template DISABLED is not deleted: Meta does not let it")
     try:
         account = _account(repo, bot)
     except KeyServiceUnavailable as e:

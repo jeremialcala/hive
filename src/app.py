@@ -445,7 +445,10 @@ def edit_template(bot_id: str, template_id: str, template: TemplateEditRequest,
 
 @app.delete(path="/chat/{bot_id}/templates/{template_id}", tags=["Templates"], response_model=ResponseData)
 def delete_template(bot_id: str, template_id: str, repo: TenantRepository = Depends(get_repository)):
-    """Deletes a template in Meta, in its language only, and Hive's copy. Meta keeps its name taken for 30 days."""
+    """
+        Deletes a template in Meta, in its language only, and Hive's copy: not one DISABLED (409). Meta keeps its
+        name taken for 30 days.
+    """
     return ctr_delete_template(repo, bot_id, template_id)
 
 

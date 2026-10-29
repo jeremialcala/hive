@@ -62,7 +62,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     - la cabecera de texto y el pie, sin valores;
     - hasta 10 botones, y un enlace solo a `https`.
   - **Editar** solo vale para una plantilla `APPROVED`, `REJECTED` o `PAUSED`. Si no, `409`. La copia vuelve a
-    `PENDING` y no se envía hasta que Meta la apruebe otra vez.
+    `PENDING` y no se envía hasta que Meta la apruebe otra vez. Una `DISABLED` no se borra: Meta no lo permite (`409`).
   - **Errores:**
     - sin `wabaId`, `422 NO_WABA`; sin token, `422 NO_TOKEN`;
     - un token que Meta no acepta, `502` con el permiso que falta;
@@ -70,7 +70,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     - Meta caído o saturado, `503`.
   - **El log** dice el bot y el id de Meta, nunca el texto de la plantilla ni el token.
   - **Configuración:** `META_GRAPH_URL` y `META_GRAPH_VERSION`, por defecto `https://graph.facebook.com` y `v26.0`.
-  - **Pruebas:** `tests/unit/test_templates.py`, con 68 pruebas contra un Graph API local. Las de aislamiento, de
+  - **Pruebas:** `tests/unit/test_templates.py`, con 69 pruebas contra un Graph API local. Las de aislamiento, de
     autenticación, de la credencial del motor y del log cubren las cuatro rutas.
   - **Documentación:** el README, el PRD (0.8.1: RF29, RF30 y AB40), la matriz (1.3.1) y el contrato OpenAPI.
 - **El notificador envía lo que el cliente escribe a sus contactos** (HIG-84,
