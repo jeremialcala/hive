@@ -6,6 +6,9 @@
     lo usa en cada llamada hasta un minuto antes de que caduque. Qué rutas alcanza lo decide el gateway por el worker
     de la clave: al coordinador le deja las reglas, las herramientas y las vueltas; al notificador, los tokens de Meta.
 
+    El token va atado por DPoP a esa misma clave (ADR-0033 del gateway): cada petición, también la del token, lleva
+    una prueba nueva que la clave firma para su método y su URL. Un token robado no sirve sin la clave.
+
     El token de Meta de cada bot se recuerda unos minutos, para no pedirlo en cada mensaje: cada entrega queda en el
     log del gateway. Si Meta lo rechaza, el notificador lo olvida y se pide otra vez.
 
@@ -28,7 +31,7 @@ from uuid import UUID
 import requests
 from pydantic import ValidationError
 
-from shared.auth.client import TOKEN_PATH, build_assertion, token_request
+from shared.auth.client import TOKEN_PATH, build_assertion, dpop_proof, token_request
 from shared.engine_key_store import EngineKeyStore, KeyStoreUnavailable
 from src.domain.models.sobre import MAX_VUELTAS, Persona, Vuelta
 from src.domain.ports.envio import TokensDelBot
@@ -105,23 +108,25 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
         return token
 
     def _pedir_acceso(self, client_id: UUID, clave: dict) -> requests.Response:
+        url = f"{self._url}{TOKEN_PATH}"
         try:
             asercion = build_assertion(clave, client_id, self._audience, self._gateway_key)
+            prueba = dpop_proof(clave, "POST", url)
         except Exception as e:  # pylint: disable=broad-except
             # Una clave mal formada en Andvari: jwcrypto lo dice con varios tipos de error.
             raise FuenteNoDisponible(f"no se pudo firmar: {type(e).__name__}") from None
         try:
-            return requests.post(f"{self._url}{TOKEN_PATH}", data=token_request(asercion), timeout=self._timeout,
+            return requests.post(url, data=token_request(asercion), headers={"DPoP": prueba}, timeout=self._timeout,
                                  verify=self._verify, allow_redirects=False)
         except (requests.RequestException, OSError) as e:
             # Solo el tipo: el texto de estas excepciones lleva la dirección y más.
             raise FuenteNoDisponible(type(e).__name__) from None
 
     def _get(self, client_id: UUID, path: str) -> dict:
-        respuesta = self._llamar(path, self._acceso(client_id))
+        respuesta = self._llamar(path, self._acceso(client_id), self._clave(client_id))
         if respuesta.status_code == 401:
             # Caducó entre medias, o el gateway rotó su clave de firma: uno nuevo, una vez.
-            respuesta = self._llamar(path, self._acceso(client_id, otro=True))
+            respuesta = self._llamar(path, self._acceso(client_id, otro=True), self._clave(client_id))
         if respuesta.status_code == 404:
             raise NoEncontrado(path.rsplit("/", 1)[-1])
         if respuesta.status_code != 200:
@@ -131,9 +136,14 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
         except (ValueError, KeyError, TypeError):
             raise FuenteNoDisponible("respuesta inesperada") from None
 
-    def _llamar(self, path: str, token: str) -> requests.Response:
+    def _llamar(self, path: str, token: str, clave: dict) -> requests.Response:
+        url = f"{self._url}{path}"
         try:
-            return requests.get(f"{self._url}{path}", headers={"Authorization": f"Bearer {token}"},
+            prueba = dpop_proof(clave, "GET", url, token)
+        except Exception as e:  # pylint: disable=broad-except
+            raise FuenteNoDisponible(f"no se pudo firmar: {type(e).__name__}") from None
+        try:
+            return requests.get(url, headers={"Authorization": f"DPoP {token}", "DPoP": prueba},
                                 timeout=self._timeout, verify=self._verify, allow_redirects=False)
         except (requests.RequestException, OSError) as e:
             # Solo el tipo: el texto de estas excepciones lleva la dirección y más.

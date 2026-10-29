@@ -31,7 +31,7 @@ import requests
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from shared.auth.client import TOKEN_PATH, build_assertion, new_signing_key, public_part, token_request
+from shared.auth.client import TOKEN_PATH, build_assertion, dpop_proof, new_signing_key, public_part, token_request
 from shared.engine_key_store import EngineKeyStore, KeyStoreUnavailable
 from enums import Worker
 
@@ -63,7 +63,8 @@ def _read(path: str) -> dict:
 def management_api(settings: EngineKeysSettings) -> Call:
     """
         Calls the management API as the operator (ADR-0025): it gets an access token at POST /oauth/token and uses it
-        until a minute before it expires, or until the gateway turns it away.
+        until a minute before it expires, or until the gateway turns it away. Each request carries a DPoP proof the
+        operator's key signs (ADR-0033).
     """
     operator_key = _read(settings.operator_key_file)
     # The last gateway key is the newest: while the gateway rotates, that is the one to move to.
@@ -75,19 +76,23 @@ def management_api(settings: EngineKeysSettings) -> Call:
         if again or not access or time.monotonic() >= access["until"]:
             assertion = build_assertion(operator_key, settings.operator_client_id, settings.gateway_audience,
                                         gateway_key)
-            response = requests.post(f"{base}{TOKEN_PATH}", data=token_request(assertion), timeout=TIMEOUT)
+            response = requests.post(f"{base}{TOKEN_PATH}", data=token_request(assertion), timeout=TIMEOUT,
+                                     headers={"DPoP": dpop_proof(operator_key, "POST", f"{base}{TOKEN_PATH}")})
             if response.status_code != 200:
                 raise SystemExit(f"The gateway gave no access token: {response.status_code}")
             given = response.json()
             access.update(token=given["access_token"], until=time.monotonic() + given["expires_in"] - 60)
         return access["token"]
 
+    def bound(given: str, method: str, url: str) -> dict:
+        return {"Authorization": f"DPoP {given}", "DPoP": dpop_proof(operator_key, method, url, given)}
+
     def call(method: str, path: str, body: dict | None = None) -> tuple:
         response = requests.request(method, f"{base}{path}", json=body, timeout=TIMEOUT,
-                                    headers={"Authorization": f"Bearer {token()}"})
+                                    headers=bound(token(), method, f"{base}{path}"))
         if response.status_code == 401:
             response = requests.request(method, f"{base}{path}", json=body, timeout=TIMEOUT,
-                                        headers={"Authorization": f"Bearer {token(again=True)}"})
+                                        headers=bound(token(again=True), method, f"{base}{path}"))
         try:
             return response.status_code, response.json()
         except ValueError:

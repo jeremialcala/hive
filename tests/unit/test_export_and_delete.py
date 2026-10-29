@@ -550,7 +550,7 @@ def test_a_deleted_client_no_longer_gets_in(http, operator, leaving):
     for assertion in (made_before, leaving.assertion()):
         assert request_token(assertion).status_code == 401
     # The access token it already had lasts until it expires (ADR-0025), and there is nothing left to reach.
-    assert http.get("/keys", headers={"Authorization": f"Bearer {token_before}"}).status_code != 200
+    assert http.get("/keys", headers={"Authorization": f"DPoP {token_before}"}).status_code != 200
 
 
 def test_the_webhooks_of_a_deleted_client_are_not_found(http, operator, leaving, people, queue):

@@ -1,24 +1,28 @@
 # Autenticación: cómo se llama al servicio y cómo se opera
 
 * **Estado:** review
-* **Fecha:** 2026-10-26
+* **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.2.0
+* **Versión:** 0.3.0
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
-`Authorization: Bearer <token>`. Es OAuth 2.0 con la concesión `client_credentials`: el cliente lo pide a
-`POST /oauth/token` con una **aserción**, un JWT que firma con su clave, metido dentro de un JWE cifrado para el
-gateway, y lo usa durante 10 minutos en todas sus peticiones. Las decisiones están en
-[ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md), que supera en parte
-[ADR-0005](../00-project/adr/0005-jwt-firmado-por-el-cliente-dentro-del-jwe.md) y
-[ADR-0009](../00-project/adr/0009-parametros-del-token-de-autenticacion.md); esto es cómo se usan.
+`Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
+`client_credentials`: el cliente lo pide a `POST /oauth/token` con una **aserción**, un JWT que firma con su clave,
+metido dentro de un JWE cifrado para el gateway, y lo usa durante 10 minutos en todas sus peticiones. El token va
+**atado a esa clave** (DPoP, RFC 9449): en cada petición, la del token incluida, el cliente firma con ella una prueba
+nueva para ese método y esa URL. Un token robado no sirve sin la clave.
+
+Las decisiones están en [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md), que
+supera en parte [ADR-0005](../00-project/adr/0005-jwt-firmado-por-el-cliente-dentro-del-jwe.md) y
+[ADR-0009](../00-project/adr/0009-parametros-del-token-de-autenticacion.md), y en
+[ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md), la de DPoP. Esto es cómo se usan.
 
 ## Las claves que intervienen
 
 | Clave | De quién | Dónde vive la parte privada | Para qué |
 |---|---|---|---|
-| Par P-256 de firma | De cada cliente, operador incluido | Solo en el cliente | Firma la aserción: demuestra quién pide el token. El gateway guarda la parte pública |
+| Par P-256 de firma | De cada cliente, operador incluido | Solo en el cliente | Firma la aserción, que demuestra quién pide el token, y cada prueba DPoP, que demuestra que quien usa el token tiene la clave. El gateway guarda la parte pública |
 | Par RSA de cifrado | Del gateway | En un fichero del servidor, fuera del repositorio y de la imagen | Que solo el gateway lea la aserción |
 | Par P-256 de firma | Del gateway | En el mismo fichero | Firma los tokens de acceso. No se entrega a nadie: solo el gateway los comprueba |
 
@@ -42,24 +46,49 @@ por nadie.
 
 Una aserción vale **una vez y 60 segundos**. Cualquier otro algoritmo se rechaza.
 
+### La prueba DPoP
+
+Cada petición lleva una, nueva, en la cabecera `DPoP`: un JWT que firma **la misma clave que firma la aserción**.
+
+| Parte | Valor |
+|---|---|
+| Cabecera | `typ: dpop+jwt`, `alg: ES256` y `jwk`, la parte **pública** de la clave (`kty`, `crv`, `x`, `y`) |
+| `jti` | Un identificador nuevo en cada prueba |
+| `htm` | El método de la petición: `GET`, `POST`… |
+| `htu` | La URL de la petición, sin consulta ni fragmento: `https://<gateway>/keys` |
+| `iat` | Cuándo se firmó. Vale 60 segundos, con 5 de margen para un reloj adelantado |
+| `ath` | Junto a un token de acceso, su hash: SHA-256 del token, en base64url sin relleno. En `/oauth/token` no va |
+
+Una prueba vale **una vez**: otra petición, aunque sea igual, lleva otra.
+
 ### El token de acceso
 
 ```
 POST /oauth/token
 Content-Type: application/x-www-form-urlencoded
+DPoP: <la prueba, para POST y https://<gateway>/oauth/token, sin ath>
 
 grant_type=client_credentials
 &client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer
 &client_assertion=<la aserción>
 ```
 
-La respuesta es `{"access_token": "…", "token_type": "Bearer", "expires_in": 600}`. El token vale **10 minutos y
+La respuesta es `{"access_token": "…", "token_type": "DPoP", "expires_in": 600}`. El token vale **10 minutos y
 para todas las peticiones** que se hagan en ellos: se pide otro un poco antes de que caduque. Es un JWT que firma el
-gateway (`typ: at+jwt`), y dice quién es el cliente; el cliente no tiene que leerlo.
+gateway (`typ: at+jwt`), y dice quién es el cliente y la huella de su clave (`cnf.jkt`); el cliente no tiene que
+leerlo. Se usa así:
+
+```
+GET /keys
+Authorization: DPoP <el token>
+DPoP: <una prueba nueva, para GET y https://<gateway>/keys, con el ath del token>
+```
 
 Los errores son los de OAuth: `400` con `invalid_request` o `unsupported_grant_type` si la petición no es como se
-acordó, y `401` con `invalid_client` para cualquier aserción que no valga, sin decir el motivo; el motivo queda en el
-log del gateway. Un token de acceso rechazado en una ruta recibe siempre el mismo `401`.
+acordó, `400` con `invalid_dpop_proof` si falta la prueba, no vale o no la firma la clave de la aserción, y `401` con
+`invalid_client` para cualquier aserción que no valga, sin decir el motivo; el motivo queda en el log del gateway. Un
+token o una prueba rechazados en una ruta reciben siempre el mismo `401`, con `WWW-Authenticate: DPoP algs="ES256"`
+y `error="invalid_token"` o `error="invalid_dpop_proof"`.
 
 Hay un límite de peticiones ([ADR-0028](../00-project/adr/0028-limite-de-peticiones-en-oauth-token.md)). Pasarlo da
 `429` con `{"error": "temporarily_unavailable"}` y una cabecera `Retry-After` con los segundos que hay que esperar.
@@ -83,7 +112,9 @@ python -m ops.client new-key mi-clave.json
 
 # Cada 10 minutos: un token de acceso, para todas las peticiones de esos 10 minutos.
 TOKEN=$(python -m ops.client access-token mi-clave.json <uuid del cliente> <audiencia> gateway-publicas.json https://<gateway>)
-curl -H "Authorization: Bearer $TOKEN" https://<gateway>/keys
+# En cada petición: una prueba nueva para su método y su URL.
+PRUEBA=$(python -m ops.client proof mi-clave.json GET https://<gateway>/keys "$TOKEN")
+curl -H "Authorization: DPoP $TOKEN" -H "DPoP: $PRUEBA" https://<gateway>/keys
 ```
 
 `gateway-publicas.json` es lo que el registro devolvió en `gateway.keys`, guardado como `{"keys": [...]}`. Los
@@ -106,8 +137,9 @@ Con el cliente de referencia, el paso 1 es:
 ```bash
 python -m ops.client new-key clave-nueva.json
 TOKEN=$(python -m ops.client access-token mi-clave.json <uuid del cliente> <audiencia> gateway-publicas.json https://<gateway>)
-curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-     -d "$(python -m ops.client add-key clave-nueva.json <uuid del cliente> <audiencia> $TOKEN)" https://<gateway>/keys
+PRUEBA=$(python -m ops.client proof mi-clave.json POST https://<gateway>/keys "$TOKEN")
+CUERPO=$(python -m ops.client add-key clave-nueva.json <uuid del cliente> <audiencia> "$TOKEN")
+curl -H "Authorization: DPoP $TOKEN" -H "DPoP: $PRUEBA" -H "Content-Type: application/json" -d "$CUERPO" https://<gateway>/keys
 ```
 
 La prueba impide registrar una clave con la que nadie puede firmar, pero **no frena a quien robó una clave**: se

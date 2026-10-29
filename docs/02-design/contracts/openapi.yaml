@@ -367,8 +367,11 @@ components:
   securitySchemes:
     OAuth2:
       description: 'An access token from POST /oauth/token (ADR-0025): a JWT the gateway signs (ES256, typ at+jwt),
-        sent as `Authorization: Bearer <token>`. It lasts 10 minutes and is good for every request in them. The
-        client authenticates at /oauth/token with a signed assertion (RFC 7523), not with a secret.'
+        sent as `Authorization: DPoP <token>`. It lasts 10 minutes and is good for every request in them. The client
+        authenticates at /oauth/token with a signed assertion (RFC 7523), not with a secret. The token is bound
+        to the client''s key (RFC 9449, ADR-0033): every request, POST /oauth/token too, carries a `DPoP` header,
+        a proof that key signs for that method and URL, good once and for 60 seconds, with the hash of the token
+        it goes with.'
       flows:
         clientCredentials:
           scopes: {}
@@ -378,34 +381,39 @@ info:
   description: "\nThe management API of Hive, the gateway between Meta (Messenger and WhatsApp) and the response\
     \ engine of each\nchatbot. Each client manages its own chatbots through it and reaches nothing of anybody else's.\
     \ What Meta calls is\nanother service, the webhook, which runs apart from this one.\n\n### Getting a token\n\
-    \nEvery route but the health check and /oauth/token asks for an access token in `Authorization: Bearer`.\n\n\
-    * /oauth/token: @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who\
-    \ it is\n  with an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's\
-    \ `kid`), with\n  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted\
-    \ to a public key of\n  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for\
-    \ 60 seconds at most.\n* The access token lasts 10 minutes and is good for every request in them. Ask for a\
-    \ new one shortly before it\n  expires, not for every request: each key gets a bounded number of tokens an hour,\
-    \ and an address that asks too\n  often, or keeps sending assertions that are not good, gets a 429 with `Retry-After`.\n\
-    \n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with\
-    \ everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials\
-    \ are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.\n\
-    * /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=` gives the last one of\
-    \ it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the persona of the chatbot and its rules, as data.\n*\
-    \ /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.\n\
-    * /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions for the model.\n* /chat/{bot_id}/contacts:\
-    \ @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id} exports\n  one with @GET and\
-    \ deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot of the client, by number\
-    \ or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate; /keys/{kid} removes one\
-    \ with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own key for each client, and\
-    \ the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator, the rules, the tools\
-    \ and the last turns of a conversation; the\nclassifier, the responder and the evaluator, the rules; the link,\
-    \ the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta tokens of a chatbot.\
-    \ Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n* /chat/{bot_id}/contacts/{contact_id}/turns:\
-    \ @GET the last 10 turns of a conversation, for the coordinator.\n\n### The operator\n\n* /clients: @POST registers\
-    \ a client, @GET lists them; /clients/{client_id} takes one off with @DELETE.\n* /clients/{client_id}/keys:\
-    \ the keys a client signs with; /clients/{client_id}/service-keys, the keys each\n  worker of the response engine\
-    \ signs with for that client, with the worker that signs with each.\n\n### Any caller\n\n* /gateway/keys: @GET\
-    \ the audience and the public keys tokens are encrypted to.\n* /health: @GET liveness, without a token.\n"
+    \nEvery route but the health check and /oauth/token asks for an access token in `Authorization: DPoP`, and beside\n\
+    it a DPoP proof (RFC 9449) in the `DPoP` header: the token is bound to the key of the client.\n\n* /oauth/token:\
+    \ @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who it is\n  with\
+    \ an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's `kid`), with\n\
+    \  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted to a public key\
+    \ of\n  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for 60 seconds at\
+    \ most.\n* Every request, the one to /oauth/token too, carries a new DPoP proof: a JWT signed with the same\
+    \ key as the\n  assertion (`typ` `dpop+jwt`, `ES256`, the public key as `jwk` in its header), with a new `jti`,\
+    \ the method as\n  `htm`, the URL without query as `htu`, `iat` and, beside an access token, its SHA-256 as\
+    \ `ath`. A proof is good\n  once and for 60 seconds.\n* The access token lasts 10 minutes and is good for every\
+    \ request in them. Ask for a new one shortly before it\n  expires, not for every request: each key gets a bounded\
+    \ number of tokens an hour, and an address that asks too\n  often, or keeps sending assertions that are not\
+    \ good, gets a 429 with `Retry-After`.\n\n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n\
+    * /bot/{bot_id}: @DELETE deletes it with everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored\
+    \ of the chatbot, and which Meta credentials are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates\
+    \ its Meta credentials. They are never returned.\n* /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET\
+    \ lists them. `?environment=` gives the last one of it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the\
+    \ persona of the chatbot and its rules, as data.\n* /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id}\
+    \ takes @GET, @PUT and @DELETE.\n* /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions\
+    \ for the model.\n* /chat/{bot_id}/contacts: @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id}\
+    \ exports\n  one with @GET and deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot\
+    \ of the client, by number or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate;\
+    \ /keys/{kid} removes one with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own\
+    \ key for each client, and the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator,\
+    \ the rules, the tools and the last turns of a conversation; the\nclassifier, the responder and the evaluator,\
+    \ the rules; the link, the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta\
+    \ tokens of a chatbot. Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n\
+    * /chat/{bot_id}/contacts/{contact_id}/turns: @GET the last 10 turns of a conversation, for the coordinator.\n\
+    \n### The operator\n\n* /clients: @POST registers a client, @GET lists them; /clients/{client_id} takes one\
+    \ off with @DELETE.\n* /clients/{client_id}/keys: the keys a client signs with; /clients/{client_id}/service-keys,\
+    \ the keys each\n  worker of the response engine signs with for that client, with the worker that signs with\
+    \ each.\n\n### Any caller\n\n* /gateway/keys: @GET the audience and the public keys tokens are encrypted to.\n\
+    * /health: @GET liveness, without a token.\n"
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -1393,6 +1401,14 @@ paths:
       description: The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 (ADR-0025),
         and gets an access token the gateway signs, for every other route.
       operationId: oauth_token_oauth_token_post
+      parameters:
+      - description: A DPoP proof (RFC 9449) for POST and this URL, signed with the same key as the assertion, without
+          ath.
+        in: header
+        name: DPoP
+        required: true
+        schema:
+          type: string
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -1429,7 +1445,7 @@ paths:
                     type: integer
                   token_type:
                     enum:
-                    - Bearer
+                    - DPoP
                     type: string
                 required:
                 - access_token
@@ -1447,7 +1463,8 @@ paths:
                 required:
                 - error
                 type: object
-          description: invalid_request or unsupported_grant_type.
+          description: 'invalid_request, unsupported_grant_type, or invalid_dpop_proof: the DPoP header is missing,
+            is not good, or is not signed by the key that signed the assertion.'
         '401':
           content:
             application/json:

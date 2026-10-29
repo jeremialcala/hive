@@ -21,11 +21,11 @@ from jwcrypto import jwe, jwk, jws
 from jwcrypto.common import base64url_decode
 
 import app as app_module
-from auth import access_tokens
+from auth import access_tokens, dpop
 from shared.auth import gateway_keys, tokens
 from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE, new_signing_key, token_request
 from classes import Client, SeenToken
-from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE
+from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, KEY_OF
 from enums import Role, Status
 from repository import find_signer
 
@@ -54,7 +54,7 @@ def status_of(http, assertion) -> int:
 
 def calling(http, access_token):
     """What a route answers to an access token."""
-    headers = {"Authorization": f"Bearer {access_token}"} if access_token is not None else {}
+    headers = {"Authorization": f"DPoP {access_token}"} if access_token is not None else {}
     return http.get("/keys", headers=headers)
 
 
@@ -79,7 +79,10 @@ def forge(caller, sign_with: dict | None = None, signature: str = "ES256", jws_h
     envelope = jwe.JWE(inner.encode(), protected=protected,
                        algs=["RSA-OAEP-256", "RSA-OAEP", "A256CBC-HS512", "A256GCM", "dir"])
     envelope.add_recipient(jwk.JWK(**target))
-    return envelope.serialize(compact=True)
+    forged = envelope.serialize(compact=True)
+    # The proof of the request is the honest one of the caller's key: what is tested is the assertion.
+    KEY_OF[forged] = caller.key
+    return forged
 
 
 def payload(token: str) -> dict:
@@ -97,7 +100,7 @@ def test_an_assertion_built_the_documented_way_gets_an_access_token(http, caller
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["token_type"], body["expires_in"]) == ("Bearer", 600)
+    assert (body["token_type"], body["expires_in"]) == ("DPoP", 600)
     # RFC 6749, section 5.1: nothing keeps it.
     assert (response.headers["cache-control"], response.headers["pragma"]) == ("no-store", "no-cache")
     assert calling(http, body["access_token"]).json()["data"]["uuid"] == str(caller.client_id)
@@ -211,7 +214,10 @@ def test_a_symmetric_envelope_is_rejected(http, caller):
     envelope = jwe.JWE(b"x", protected={"alg": "dir", "enc": "A256CBC-HS512", "cty": "JWT", "kid": GATEWAY_KEY["kid"]})
     envelope.add_recipient(shared)
 
-    assert status_of(http, envelope.serialize(compact=True)) == 401
+    assertion = envelope.serialize(compact=True)
+    KEY_OF[assertion] = caller.key
+
+    assert status_of(http, assertion) == 401
 
 
 def test_an_envelope_with_something_else_inside_is_rejected(http, caller):
@@ -279,8 +285,10 @@ def test_a_tampered_assertion_is_rejected(http, caller):
     assertion = caller.assertion()
     head, key, iv, text, tag = assertion.split(".")
     flipped = text[:-2] + ("AA" if text[-2:] != "AA" else "BB")
+    tampered = ".".join([head, key, iv, flipped, tag])
+    KEY_OF[tampered] = caller.key
 
-    assert status_of(http, ".".join([head, key, iv, flipped, tag])) == 401
+    assert status_of(http, tampered) == 401
 
 
 # --- The claims of the assertion -----------------------------------------------------------------------------------
@@ -454,6 +462,7 @@ def test_the_answer_does_not_say_why(http, caller, register):
     other = register("globex")
     used = caller.assertion()
     status_of(http, used)
+    KEY_OF["not-an-assertion"] = caller.key
     answers = [asking(http, assertion) for assertion in (
         used,
         forge(caller, sign_with=new_signing_key()),
@@ -474,14 +483,18 @@ def forge_access(caller, sign_with=None, kid: str | None = None, typ: str = "at+
     now = int(time.time())
     body = {"iss": GATEWAY_AUDIENCE, "aud": GATEWAY_AUDIENCE, "sub": str(caller.client_id),
             "client_id": str(caller.client_id), "iat": now, "exp": now + 600, "jti": str(uuid4()),
-            "hive_role": "client", "hive_worker": None, "hive_key": caller.kid}
+            "hive_role": "client", "hive_worker": None, "hive_key": caller.kid,
+            "cnf": {"jkt": dpop.thumbprint(caller.key)}}
     body.update({name: value(now) if callable(value) else value for name, value in claims.items()})
     body = {name: value for name, value in body.items() if value != "drop"}
     signer_kid, key = GATEWAY.signer()
     signed = jws.JWS(json.dumps(body).encode())
     signed.allowed_algs = [alg]
     signed.add_signature(sign_with or key, alg=alg, protected={"alg": alg, "typ": typ, "kid": kid or signer_kid})
-    return signed.serialize(compact=True)
+    forged = signed.serialize(compact=True)
+    # Its requests carry the honest proof of the caller's key: what is tested is the token.
+    KEY_OF[forged] = caller.key
+    return forged
 
 
 def test_an_access_token_is_good_for_many_requests(http, caller):
@@ -504,7 +517,7 @@ def test_checking_an_access_token_does_not_touch_the_database(http, caller, monk
     monkeypatch.setattr("auth.principal.find_signer", no)
     monkeypatch.setattr("auth.principal.remember_token", no)
 
-    assert http.get("/gateway/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    assert http.get("/gateway/keys", headers={"Authorization": f"DPoP {token}"}).status_code == 200
 
 
 @pytest.mark.parametrize("headers", [
@@ -514,14 +527,18 @@ def test_checking_an_access_token_does_not_touch_the_database(http, caller, monk
     {"Authorization": "Bearer not-a-token"},
     {"Authorization": "Bearer a.b.c.d.e"},
     {"Authorization": "Basic dXNlcjpwYXNz"},
+    {"Authorization": "DPoP"},
+    {"Authorization": "DPoP not-a-token"},
     {"X-API-Key": "test-admin-api-key-0123456789abcdef"},
-], ids=["nothing", "empty", "no value", "garbage", "five parts of nothing", "another scheme", "the old admin key"])
+], ids=["nothing", "empty", "no value", "garbage", "five parts of nothing", "another scheme", "DPoP without a token",
+        "DPoP with garbage", "the old admin key"])
 def test_a_request_without_an_access_token_is_rejected(http, headers):
     response = http.get("/keys", headers=headers)
 
     assert response.status_code == 401
     assert response.json() == {"detail": "HTTP_401_UNAUTHORIZED"}
-    assert response.headers["www-authenticate"] == "Bearer"
+    # RFC 9449, section 7.1: what the service takes, and nothing about why.
+    assert response.headers["www-authenticate"] in ('DPoP algs="ES256"', 'DPoP algs="ES256", error="invalid_token"')
 
 
 def test_an_assertion_is_not_an_access_token(http, caller):
@@ -600,12 +617,13 @@ def test_the_old_signing_key_checks_the_tokens_it_signed_while_it_is_in_the_file
     """Rotating the signing key: the newest signs, every one in the file checks."""
     old, new = gateway_keys.new_signing_key(), gateway_keys.new_signing_key()
     before = gateway_keys.GatewayKeys([gateway_keys.new_key(), old])
-    token, _ = access_tokens.issue(before, GATEWAY_AUDIENCE, caller.client_id, Role.CLIENT, None, caller.kid)
+    token, _ = access_tokens.issue(before, GATEWAY_AUDIENCE, caller.client_id, Role.CLIENT, None, caller.kid,
+                                   "a-thumbprint")
     rotating = gateway_keys.GatewayKeys([gateway_keys.new_key(), old, new])
     after = gateway_keys.GatewayKeys([gateway_keys.new_key(), new])
 
     assert header(access_tokens.issue(rotating, GATEWAY_AUDIENCE, caller.client_id, Role.CLIENT, None,
-                                      caller.kid)[0])["kid"] == new["kid"]
+                                      caller.kid, "a-thumbprint")[0])["kid"] == new["kid"]
     assert access_tokens.read(token, rotating, GATEWAY_AUDIENCE, time.time()).client_id == caller.client_id
     with pytest.raises(tokens.InvalidToken):
         access_tokens.read(token, after, GATEWAY_AUDIENCE, time.time())
@@ -636,7 +654,7 @@ def test_every_other_route_asks_for_a_token(http, method, path, headers):
 @pytest.mark.parametrize("method,path", ROUTES)
 def test_no_route_takes_an_assertion_for_an_access_token(http, caller, method, path):
     response = http.request(method, path.format(**PLACEHOLDERS),
-                            headers={"Authorization": f"Bearer {caller.assertion()}"}, json={})
+                            headers={"Authorization": f"DPoP {caller.assertion()}"}, json={})
 
     assert response.status_code == 401
 

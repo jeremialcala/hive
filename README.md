@@ -61,7 +61,7 @@ flowchart LR
     EN -- "RESPUESTAS" --> IN
     EN -- "Graph API" --> META
     EN -- "persona, reglas, tokens" --> API["hive-api"]
-    CL["clientes"] -- "OAuth 2.0 + Bearer" --> API
+    CL["clientes"] -- "OAuth 2.0 + DPoP" --> API
     WH & IN & API --- DB[("MongoDB")]
     WH & IN & API --- KS["Andvari<br/>(claves de datos)"]
 ```
@@ -201,13 +201,13 @@ Lo común a los dos servicios HTTP está en [src/service.py](src/service.py):
 URL base en local: `http://localhost:5002` para la API de gestión y `http://localhost:5003` para el webhook, que son dos servicios ([ADR-0018](docs/00-project/adr/0018-webhook-y-gestion-por-separado.md)).
 La documentación pública de la API de gestión está en `https://hive.higerotech.com/docs`, generada con el contrato [`openapi.yaml`](docs/02-design/contracts/openapi.yaml). La interactiva, `/docs` (Swagger) y `/redoc`, solo se sirve en `development`.
 
-Sin token solo se llaman las dos rutas del webhook (`GET` y `POST /chat/{bot_id}`), `POST /oauth/token` y `GET /health`. Cualquier otro endpoint exige un token de acceso en `Authorization: Bearer` y responde `401` sin uno válido. El token se pide a `/oauth/token` con una aserción firmada por la clave del cliente (OAuth 2.0 `client_credentials` con `private_key_jwt`, [ADR-0025](docs/00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md)). Cómo se construye, y cómo se da de alta a un cliente, está en [docs/03-implementation/autenticacion.md](docs/03-implementation/autenticacion.md).
+Sin token solo se llaman las dos rutas del webhook (`GET` y `POST /chat/{bot_id}`), `POST /oauth/token` y `GET /health`. Cualquier otro endpoint exige un token de acceso en `Authorization: DPoP`, con su prueba DPoP en la cabecera `DPoP` ([ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md)), y responde `401` sin uno válido. El token se pide a `/oauth/token` con una aserción firmada por la clave del cliente (OAuth 2.0 `client_credentials` con `private_key_jwt`, [ADR-0025](docs/00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md)). Cómo se construye, y cómo se da de alta a un cliente, está en [docs/03-implementation/autenticacion.md](docs/03-implementation/autenticacion.md).
 
 ### OAuth — etiqueta `OAuth`
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/oauth/token` | Cambia una aserción del cliente por un token de acceso. Cuerpo `application/x-www-form-urlencoded`: `grant_type=client_credentials`, `client_assertion_type` y `client_assertion` (un JWT ES256 del cliente, de 60 segundos como máximo y de un solo uso, dentro de un JWE para una clave de `GET /gateway/keys`). Devuelve un token `Bearer` que el gateway firma y que vale 10 minutos. `401 invalid_client` si la aserción no vale, sin decir por qué. |
+| `POST` | `/oauth/token` | Cambia una aserción del cliente por un token de acceso. Cuerpo `application/x-www-form-urlencoded`: `grant_type=client_credentials`, `client_assertion_type` y `client_assertion` (un JWT ES256 del cliente, de 60 segundos como máximo y de un solo uso, dentro de un JWE para una clave de `GET /gateway/keys`). Lleva una prueba DPoP firmada con la misma clave. Devuelve un token `DPoP` que el gateway firma y que vale 10 minutos. `401 invalid_client` si la aserción no vale, sin decir por qué. |
 
 ### Gestión de bots — etiqueta `Bot`
 
@@ -477,7 +477,7 @@ Se configura en [src/logging_config.yaml](src/logging_config.yaml) y lo aplica a
 | Superficie | Control |
 |---|---|
 | `POST /oauth/token` | Una aserción del cliente: un JWT firmado por su clave (`ES256`) dentro de un JWE cifrado para el gateway (`RSA-OAEP-256`, `A256CBC-HS512`). Dura 60 segundos como máximo y vale una vez. `401 invalid_client` si no es válida, sin decir por qué ([ADR-0025](docs/00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md)). |
-| Todo lo demás, salvo el webhook y `/health` | Un token de acceso en `Authorization: Bearer`: un JWT (`at+jwt`) que el gateway firma con `ES256` y que vale 10 minutos. `401` si no es válido, sin decir por qué. |
+| Todo lo demás, salvo el webhook y `/health` | Un token de acceso en `Authorization: DPoP`: un JWT (`at+jwt`) que el gateway firma con `ES256`, que vale 10 minutos y va atado a la clave del cliente (`cnf.jkt`). Cada petición lleva una prueba DPoP nueva para su método y su URL, de un solo uso y de 60 segundos ([ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md)). `401` si no es válido, sin decir por qué. |
 | Rutas de un cliente (`/bot`, `/chat/{bot_id}/...`) | El token dice quién es; solo alcanza lo suyo. Lo ajeno responde `404`, igual que lo inexistente. |
 | Registro de clientes (`/clients`) | Solo el operador, que también da de baja a un cliente con `DELETE /clients/{client_id}`. `403` para cualquier otro cliente. |
 | Motor de respuestas | Una clave por cliente y por worker, que registra el operador en `/clients/{client_id}/service-keys` diciendo de qué worker es. Cada worker alcanza solo sus rutas en los bots de ese cliente: el notificador, los tokens de Meta; el coordinador, las reglas, las herramientas y las vueltas; el resto, las reglas o las herramientas. Cualquier otra ruta le responde `403`. Ver [autenticacion.md](docs/03-implementation/autenticacion.md). |

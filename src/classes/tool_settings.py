@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     # What clients put in the aud of their tokens, so a token issued for another service is not valid here.
     # Required by the management API, like the key pair.
     gateway_audience: str | None = None
+    # The addresses a DPoP proof may say it was made for (ADR-0033), comma-separated and without a trailing slash:
+    # the public one, which is the audience, and the one the engine uses inside midgard. Without it, only the
+    # audience.
+    gateway_urls: str | None = None
     # The key service that holds the master key: an OpenBao. The app starts without reaching it, but nothing
     # encrypted can be read or written until it answers.
     andvari_addr: str = Field(min_length=8)

@@ -8,6 +8,26 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **Los tokens de acceso van atados por DPoP a la clave que los pidió** (RFC 9449,
+  [ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md), HIG-99; RS30). **Cambio incompatible:** el
+  gateway, el motor, `ops.client`, `ops.engine_keys` y el cliente externo se despliegan juntos.
+  - `POST /oauth/token` exige la cabecera `DPoP`, firmada por la misma clave que la aserción. Si no, `400
+    invalid_dpop_proof`. El token sale con `cnf.jkt` y `token_type: DPoP`.
+  - Cada ruta pide `Authorization: DPoP <token>` y una prueba nueva: firma, `htm`, `htu`, `iat` (60 s, 5 de margen y
+    posterior al arranque), `jti` de un solo uso y `ath`, y que la huella sea la del token (`src/auth/dpop.py`).
+    `Bearer` deja de valer. Un rechazo da `401` con `WWW-Authenticate: DPoP algs="ES256"`, sin decir qué falló.
+  - **Los `jti`** se guardan en memoria, no en Atlas. Si se llena, rechaza en lugar de olvidar.
+  - **`GATEWAY_URLS`:** las direcciones que valen como `htu` además de la audiencia. En midgard, `http://hive-api:5002`
+    para el motor y `http://127.0.0.1:5002` para `ops`.
+  - **El motor** firma una prueba por petición con la clave de cada worker para el cliente.
+  - **`ops.client`** gana el comando `proof`.
+  - **`shared.auth.client.dpop_proof`** es la referencia para un cliente.
+  - **Pruebas:** `tests/unit/test_dpop.py`, con el token sin prueba, la prueba de otra clave, la repetida, la de otra
+    ruta, otro método, otro host, otro token, fuera de su ventana o anterior al arranque, y las que no llevan la clave
+    de la aserción. El test client firma la prueba de cada petición como un cliente (`tests/conftest.py`). El falso
+    gateway del motor exige la prueba.
+  - **Documentación:** la guía de autenticación (0.3.0), la descripción pública de la API, el README y el contrato
+    OpenAPI.
 - **Los controles obligatorios, sin ambigüedad (H15, RD-01).** Desde el monorepo (ADR-0023), el gateway y el motor
   tenían jobs llamados igual, `test` e `image`, y los rulesets exigían «`test`» sin decir de cuál. En un PR que
   tocara los dos, uno en verde cumplía la regla aunque el otro estuviera en rojo. Además, `docs` no se exigía.

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
     The access tokens the gateway issues at POST /oauth/token (ADR-0025): JWTs it signs itself (RFC 9068), good for
-    10 minutes and for as many requests as the client makes in them.
+    10 minutes and for as many requests as the client makes in them. Each is bound to the key that asked for it
+    (`cnf.jkt`, RFC 9449, ADR-0033): every request with it brings a proof signed with that key (dpop.py).
 
     A token says who the client is, so a request is checked without going to the database: the signature with a
     signing key of the gateway, its type, its issuer and audience, and its lifetime. Revoking a key of a client stops
@@ -35,16 +36,22 @@ class Access:
     # The registered key the client signed its assertion with.
     kid: str
     jti: str
+    # The thumbprint of the key every proof that goes with this token is signed with (RFC 9449, section 6).
+    jkt: str
     worker: Worker | None = None
 
 
 def issue(gateway_keys: GatewayKeys, audience: str, client_id: UUID, role: Role, worker: Worker | None, kid: str,
-          now: float | None = None) -> tuple[str, int]:
-    """A new access token for that client, signed with the newest signing key of the gateway, and how long it lasts."""
+          jkt: str, now: float | None = None) -> tuple[str, int]:
+    """
+        A new access token for that client, bound to the key with thumbprint `jkt` and signed with the newest signing
+        key of the gateway, and how long it lasts.
+    """
     issued = int(time.time() if now is None else now)
     claims = {"iss": audience, "aud": audience, "sub": str(client_id), "client_id": str(client_id),
               "iat": issued, "exp": issued + LIFETIME, "jti": str(uuid4()),
-              "hive_role": role.value, "hive_worker": worker.value if worker else None, "hive_key": kid}
+              "hive_role": role.value, "hive_worker": worker.value if worker else None, "hive_key": kid,
+              "cnf": {"jkt": jkt}}
     signer_kid, key = gateway_keys.signer()
     signed = jws.JWS(json.dumps(claims).encode())
     signed.add_signature(key, alg=SIGNING_ALGORITHM,
@@ -101,4 +108,8 @@ def _check(claims: dict, audience: str, now: float) -> Access:
     kid, jti = claims.get("hive_key"), claims.get("jti")
     if not isinstance(kid, str) or not kid or not isinstance(jti, str) or not jti:
         raise InvalidToken("no key or jti")
-    return Access(client_id=client_id, role=role, kid=kid, jti=jti, worker=worker)
+    confirmation = claims.get("cnf")
+    jkt = confirmation.get("jkt") if isinstance(confirmation, dict) else None
+    if not isinstance(jkt, str) or not jkt:
+        raise InvalidToken("not bound to a key")
+    return Access(client_id=client_id, role=role, kid=kid, jti=jti, jkt=jkt, worker=worker)

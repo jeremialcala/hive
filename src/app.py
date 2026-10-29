@@ -5,6 +5,7 @@
 
         uvicorn app:app
 """
+import time
 from inspect import currentframe
 from urllib.parse import parse_qs
 
@@ -18,7 +19,7 @@ from fastapi.security.utils import get_authorization_scheme_param
 from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE
 from shared.auth.gateway_keys import GatewayKeys
 from auth.principal import Principal, authenticate, exchange
-from auth import token_limits
+from auth import dpop, token_limits
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ContactSearchRequest, IntentRequest, OwnedKeyRequest, ResponseData, RulesRequest,
@@ -46,6 +47,13 @@ if not settings.gateway_audience or len(settings.gateway_audience) < 8:
 # Read once, at start: without the gateway's key pair no client could authenticate, so the app does not start.
 GATEWAY_KEYS = GatewayKeys.load(settings.gateway_keys_file)
 
+# Where a DPoP proof may say a request was made to (ADR-0033): the public address and the engine's, inside midgard.
+# The request's own Host is never trusted for it: behind the tunnel it is whatever the proxy says.
+GATEWAY_URLS = tuple(sorted({url.strip().rstrip("/") for url in (settings.gateway_urls or "").split(",")
+                             if url.strip()} | {settings.gateway_audience.rstrip("/")}))
+# RFC 9449, section 7.1: how a request without a good token or proof is told what this service takes.
+DPOP_CHALLENGE = f'DPoP algs="{dpop.ALGORITHM}"'
+
 # Every deletion is written down here before it is made. It is only reached when needed.
 erasures.configure(settings.erasures_dir)
 
@@ -54,9 +62,12 @@ erasures.configure(settings.erasures_dir)
 oauth2 = OAuth2(flows=OAuthFlows(clientCredentials=OAuthFlowClientCredentials(tokenUrl="/oauth/token")),
                 scheme_name="OAuth2", auto_error=False,
                 description="An access token from POST /oauth/token (ADR-0025): a JWT the gateway signs (ES256, typ "
-                            "at+jwt), sent as `Authorization: Bearer <token>`. It lasts 10 minutes and is good for "
+                            "at+jwt), sent as `Authorization: DPoP <token>`. It lasts 10 minutes and is good for "
                             "every request in them. The client authenticates at /oauth/token with a signed assertion "
-                            "(RFC 7523), not with a secret.")
+                            "(RFC 7523), not with a secret. The token is bound to the client's key (RFC 9449, "
+                            "ADR-0033): every request, POST /oauth/token too, carries a `DPoP` header, a proof that "
+                            "key signs for that method and URL, good once and for 60 seconds, with the hash of the "
+                            "token it goes with.")
 
 # POST /oauth/token (ADR-0025): OAuth 2.0 client_credentials, the client authenticated by a signed assertion
 # (RFC 7523, section 2.2). Its body is a form, never bigger than this.
@@ -101,12 +112,14 @@ def get_principal(request: Request,
     """
     try:
         scheme, token = get_authorization_scheme_param(authorization)
-        principal = authenticate(token if scheme.lower() == "bearer" else None, GATEWAY_KEYS,
-                                 settings.gateway_audience)
+        principal = authenticate(token if scheme.lower() == "dpop" else None, request.headers.getlist("dpop"),
+                                 request.method, _urls_of(request), GATEWAY_KEYS, settings.gateway_audience)
     except InvalidToken as e:
         log.warning(f"Rejected a request: {e}")
+        error = "invalid_dpop_proof" if isinstance(e, dpop.InvalidProof) else "invalid_token"
+        challenge = DPOP_CHALLENGE if not authorization else f'{DPOP_CHALLENGE}, error="{error}"'
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="HTTP_401_UNAUTHORIZED",
-                            headers={"WWW-Authenticate": "Bearer"}) from None
+                            headers={"WWW-Authenticate": challenge}) from None
     if principal.role is Role.SERVICE:
         route = (METHODS.get(request.method), getattr(request.scope.get("route"), "path", None))
         if route not in WORKER_ROUTES.get(principal.worker, SERVICE_ROUTES):
@@ -119,6 +132,12 @@ def get_principal(request: Request,
             log.warning(f"The response engine used key {principal.kid} of client {principal.client_id}, which has "
                         f"no worker: register one per worker (ADR-0022)")
     return principal
+
+
+def _urls_of(request: Request) -> set[str]:
+    """The URLs a proof for this request may name: each address of the service, with the path as it was sent."""
+    path = request.scope.get("raw_path", b"").decode("latin-1") or request.url.path
+    return {f"{base}{path}" for base in GATEWAY_URLS}
 
 
 async def require_service(principal: Principal = Depends(get_principal)) -> Principal:
@@ -150,7 +169,7 @@ app = build(title=TITLE, summary=SUMMARY, description=DESCRIPTION, openapi_tags=
 
 def _oauth_error(code: int, error: str) -> JSONResponse:
     """An error of RFC 6749, section 5.2: the code and nothing else, whatever the reason."""
-    headers = {**NO_STORE, **({"WWW-Authenticate": "Bearer"} if code == status.HTTP_401_UNAUTHORIZED else {})}
+    headers = {**NO_STORE, **({"WWW-Authenticate": DPOP_CHALLENGE} if code == status.HTTP_401_UNAUTHORIZED else {})}
     return JSONResponse(status_code=code, content={"error": error}, headers=headers)
 
 
@@ -179,6 +198,9 @@ def _oauth_answer(description: str, schema: dict) -> dict:
 OAUTH_ERROR = {"type": "object", "required": ["error"], "properties": {"error": {"type": "string"}}}
 # What the contract says of /oauth/token: the route reads its form by hand, so FastAPI cannot infer it.
 TOKEN_CONTRACT = {
+    "parameters": [{"name": "DPoP", "in": "header", "required": True, "schema": {"type": "string"},
+                    "description": "A DPoP proof (RFC 9449) for POST and this URL, signed with the same key as the "
+                                   "assertion, without ath."}],
     "requestBody": {"required": True, "content": {FORM: {"schema": {
         "type": "object", "required": list(TOKEN_PARAMETERS),
         "properties": {
@@ -192,9 +214,11 @@ TOKEN_CONTRACT = {
     "responses": {
         "200": _oauth_answer("An access token, good for 10 minutes.", {
             "type": "object", "required": ["access_token", "token_type", "expires_in"],
-            "properties": {"access_token": {"type": "string"}, "token_type": {"type": "string", "enum": ["Bearer"]},
+            "properties": {"access_token": {"type": "string"}, "token_type": {"type": "string", "enum": ["DPoP"]},
                            "expires_in": {"type": "integer"}}}),
-        "400": _oauth_answer("invalid_request or unsupported_grant_type.", OAUTH_ERROR),
+        "400": _oauth_answer("invalid_request, unsupported_grant_type, or invalid_dpop_proof: the DPoP header is "
+                             "missing, is not good, or is not signed by the key that signed the assertion.",
+                             OAUTH_ERROR),
         "401": _oauth_answer("invalid_client: the assertion is not good, whatever the reason.", OAUTH_ERROR),
         "429": {**_oauth_answer("temporarily_unavailable: too many requests from this origin, too many rejected "
                                 "assertions from it, or too many tokens for this key in the last hour (ADR-0028). "
@@ -232,10 +256,19 @@ async def _token_answer(request: Request) -> JSONResponse:
         return _oauth_error(status.HTTP_400_BAD_REQUEST, "unsupported_grant_type")
     if form["client_assertion_type"] != ASSERTION_TYPE:
         return _oauth_error(status.HTTP_401_UNAUTHORIZED, "invalid_client")
+    # RFC 9449, section 5: the proof first, and its key has to be the one that signed the assertion.
+    try:
+        jkt = dpop.check(request.headers.getlist("dpop"), request.method, _urls_of(request), None, time.time())
+    except dpop.InvalidProof as e:
+        log.warning(f"Rejected a request for an access token: {e}")
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_dpop_proof")
     try:
         # It reads the client's key and remembers the assertion's jti in MongoDB: in a thread, not in the event loop.
         token, lifetime, caller = await run_in_threadpool(exchange, form["client_assertion"], GATEWAY_KEYS,
-                                                          settings.gateway_audience)
+                                                          settings.gateway_audience, jkt)
+    except dpop.InvalidProof as e:
+        log.warning(f"Rejected a request for an access token: {e}")
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_dpop_proof")
     except InvalidToken as e:
         log.warning(f"Rejected a request for an access token: {e}")
         return _oauth_error(status.HTTP_401_UNAUTHORIZED, "invalid_client")
@@ -247,7 +280,7 @@ async def _token_answer(request: Request) -> JSONResponse:
         return _too_many(refusal.retry_after)
     log.info(f"Access token for client {caller.client_id}, key {caller.kid}, worker {caller.worker_name}")
     return JSONResponse(status_code=status.HTTP_200_OK, headers=NO_STORE,
-                        content={"access_token": token, "token_type": "Bearer", "expires_in": lifetime})
+                        content={"access_token": token, "token_type": "DPoP", "expires_in": lifetime})
 
 
 @app.post(path="/bot", tags=["Bot"], response_model=BotResponse)

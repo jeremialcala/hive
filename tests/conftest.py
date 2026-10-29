@@ -12,6 +12,8 @@ from shared.auth import gateway_keys  # Needs neither settings nor database.
 GATEWAY_KEYS_FILE = os.path.join(tempfile.mkdtemp(prefix="gateway-keys-"), "gateway-keys.json")
 gateway_keys.write_file(GATEWAY_KEYS_FILE, [gateway_keys.new_key(), gateway_keys.new_signing_key()])
 GATEWAY_AUDIENCE = "https://gateway.test"
+# Where the test client sends its requests: a DPoP proof says it (ADR-0033).
+TEST_SERVER = "http://testserver"
 
 # The key service is replaced by a double further down. These only have to be there for the settings to load.
 ANDVARI_SECRET_ID_FILE = os.path.join(os.path.dirname(GATEWAY_KEYS_FILE), "secret-id")
@@ -21,6 +23,7 @@ with open(ANDVARI_SECRET_ID_FILE, "w", encoding="utf-8") as _file:
 os.environ.update({
     "GATEWAY_KEYS_FILE": GATEWAY_KEYS_FILE,
     "GATEWAY_AUDIENCE": GATEWAY_AUDIENCE,
+    "GATEWAY_URLS": TEST_SERVER,
     # Nothing listens there: a test that reached the real key service would fail, not hang.
     "ANDVARI_ADDR": "http://127.0.0.1:1",
     "ANDVARI_ROLE_ID": "test-role-id",
@@ -199,6 +202,68 @@ def token_limits(monkeypatch):
     return limits
 
 
+# The private key each assertion and each access token of the tests was made with. For every request that carries
+# one of those tokens, the test client signs the DPoP proof a client would (ADR-0033); a token that is not here goes
+# without one, and a request that already brings its own DPoP header is left as it is.
+KEY_OF: dict[str, dict] = {}
+
+
+# A request with this header goes without a proof: it is how a test sends none. It never reaches the service.
+WITHOUT_PROOF = "X-Test-Without-DPoP"
+
+
+@pytest.fixture(autouse=True)
+def dpop_proofs(monkeypatch):
+    """
+        Each request of the test client gets the proof a client would sign: with `Authorization: DPoP <a token of
+        KEY_OF>`, for that token; at POST /oauth/token, with the key of the assertion, if it was built here. The token
+        that request gets goes to KEY_OF, so the requests that carry it are signed too.
+    """
+    from urllib.parse import parse_qs
+
+    import httpx
+
+    from shared.auth.client import dpop_proof
+
+    def prove(request) -> str | None:
+        """Adds the proof to the request; the assertion of a token request, to remember the key of its token."""
+        if WITHOUT_PROOF.lower() in request.headers:
+            del request.headers[WITHOUT_PROOF]
+            return None
+        if "dpop" in request.headers:
+            return None
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        if scheme == "DPoP" and token in KEY_OF:
+            request.headers["DPoP"] = dpop_proof(KEY_OF[token], request.method, str(request.url), token)
+        elif request.method == "POST" and request.url.path == "/oauth/token":
+            assertion = (parse_qs(request.content.decode("ascii", "replace")).get("client_assertion") or [None])[0]
+            if assertion in KEY_OF:
+                request.headers["DPoP"] = dpop_proof(KEY_OF[assertion], "POST", str(request.url))
+                return assertion
+        return None
+
+    def remember(assertion, response):
+        if assertion is not None and response.status_code == 200:
+            KEY_OF[response.json()["access_token"]] = KEY_OF[assertion]
+
+    send, send_async = httpx.Client.send, httpx.AsyncClient.send
+
+    def signing(self, request, *args, **kwargs):
+        assertion = prove(request)
+        response = send(self, request, *args, **kwargs)
+        remember(assertion, response)
+        return response
+
+    async def signing_async(self, request, *args, **kwargs):
+        assertion = prove(request)
+        response = await send_async(self, request, *args, **kwargs)
+        remember(assertion, response)
+        return response
+
+    monkeypatch.setattr(httpx.Client, "send", signing)
+    monkeypatch.setattr(httpx.AsyncClient, "send", signing_async)
+
+
 class Caller:
     """A registered client and its private key: everything needed to call the service as that client."""
 
@@ -226,7 +291,7 @@ class Caller:
 
         token = self.access_token()
         proof = key_proof(new_key, self.client_id, GATEWAY_AUDIENCE, access_token_jti(token), **proof_changes)
-        return {"headers": {"Authorization": f"Bearer {token}"},
+        return {"headers": {"Authorization": f"DPoP {token}"},
                 "json": {"signingKey": public_part(new_key), "proof": proof}}
 
 
@@ -235,17 +300,22 @@ def signed_assertion(key: dict, client_id, **changes) -> str:
     from shared.auth.client import build_assertion
 
     gateway_key = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()["keys"][0]
-    return build_assertion(key, client_id, GATEWAY_AUDIENCE, gateway_key, **changes)
+    assertion = build_assertion(key, client_id, GATEWAY_AUDIENCE, gateway_key, **changes)
+    KEY_OF[assertion] = key
+    return assertion
 
 
-def request_token(assertion: str):
-    """What POST /oauth/token answers to that assertion."""
+def request_token(assertion: str, headers: dict | None = None):
+    """
+        What POST /oauth/token answers to that assertion: with the DPoP proof of the key that signed it, if it was
+        built here, unless `headers` brings its own DPoP header or WITHOUT_PROOF.
+    """
     from fastapi.testclient import TestClient
 
     import app as app_module
     from shared.auth.client import token_request
 
-    return TestClient(app_module.app).post("/oauth/token", data=token_request(assertion))
+    return TestClient(app_module.app).post("/oauth/token", data=token_request(assertion), headers=headers or {})
 
 
 def access_token_for(assertion: str) -> str:
@@ -256,12 +326,13 @@ def access_token_for(assertion: str) -> str:
 
 def bearer(assertion: str) -> dict:
     """
-        The headers of a request with the access token that assertion gets. If it gets none, a token the API turns
-        away: a test of a key that is not good expects the 401 of the route, as a client would get it.
+        The headers of a request with the access token that assertion gets; the test client adds its DPoP proof. If
+        it gets none, a token the API turns away: a test of a key that is not good expects the 401 of the route, as a
+        client would get it.
     """
     response = request_token(assertion)
     token = response.json()["access_token"] if response.status_code == 200 else "no.access.token"
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"DPoP {token}"}
 
 
 @pytest.fixture

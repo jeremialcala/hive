@@ -8,10 +8,15 @@
             gets registered. The private key is never printed.
 
         python -m ops.client access-token <key file> <client id> <audience> <gateway keys file> <gateway url>
-            Gets an access token from POST /oauth/token and prints it. It lasts 10 minutes, for every request in them:
+            Gets an access token from POST /oauth/token and prints it. It lasts 10 minutes, for every request in them,
+            and it is bound to the key (ADR-0033): each request needs a new proof, which `proof` signs.
 
                 TOKEN=$(python -m ops.client access-token ...)
-                curl -H "Authorization: Bearer $TOKEN" https://.../bot
+                PROOF=$(python -m ops.client proof key.json GET https://.../bot "$TOKEN")
+                curl -H "Authorization: DPoP $TOKEN" -H "DPoP: $PROOF" https://.../bot
+
+        python -m ops.client proof <key file> <method> <url> <access token>
+            Prints the DPoP header of one request with that access token: good once, and for 60 seconds.
 
             The gateway keys file is what GET /gateway/keys or the registration answer gave under "keys",
             saved as {"keys": [...]}.
@@ -30,8 +35,8 @@ import sys
 
 import requests
 
-from shared.auth.client import (TOKEN_PATH, access_token_jti, build_assertion, key_proof, new_signing_key,
-                                public_part, token_request)
+from shared.auth.client import (TOKEN_PATH, access_token_jti, build_assertion, dpop_proof, key_proof,
+                                new_signing_key, public_part, token_request)
 
 TIMEOUT = 10  # seconds
 
@@ -56,11 +61,16 @@ def assertion(key_path: str, client_id: str, audience: str, gateway_keys_path: s
 
 
 def access_token(key_path: str, client_id: str, audience: str, gateway_keys_path: str, gateway_url: str) -> str:
-    response = requests.post(f"{gateway_url.rstrip('/')}{TOKEN_PATH}", timeout=TIMEOUT,
+    url = f"{gateway_url.rstrip('/')}{TOKEN_PATH}"
+    response = requests.post(url, timeout=TIMEOUT, headers={"DPoP": dpop_proof(_read(key_path), "POST", url)},
                              data=token_request(assertion(key_path, client_id, audience, gateway_keys_path)))
     if response.status_code != 200:
         raise SystemExit(f"The gateway gave no access token: {response.status_code} {response.text[:200]}")
     return response.json()["access_token"]
+
+
+def proof(key_path: str, method: str, url: str, token: str) -> str:
+    return dpop_proof(_read(key_path), method, url, token)
 
 
 def add_key(new_key_path: str, client_id: str, audience: str, token: str) -> dict:
@@ -71,7 +81,7 @@ def add_key(new_key_path: str, client_id: str, audience: str, token: str) -> dic
 
 if __name__ == "__main__":
     commands = {"new-key": (new_key, 1, True), "access-token": (access_token, 5, False),
-                "assertion": (assertion, 4, False), "add-key": (add_key, 4, True)}
+                "assertion": (assertion, 4, False), "proof": (proof, 4, False), "add-key": (add_key, 4, True)}
     arguments = sys.argv[1:]
     if not arguments or arguments[0] not in commands or len(arguments) - 1 != commands[arguments[0]][1]:
         raise SystemExit(__doc__)
