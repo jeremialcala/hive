@@ -25,7 +25,8 @@ log = logging.getLogger(settings.environment)
 def ctr_set_bot_credentials(repo: TenantRepository, bot_id: str, request: BotCredentialsRequest) -> JSONResponse:
     try:
         bot = repo.set_bot_credentials(bot_id, facebookToken=request.facebookToken,
-                                       whatsappToken=request.whatsappToken, appSecret=request.appSecret)
+                                       whatsappToken=request.whatsappToken, appSecret=request.appSecret,
+                                       wabaId=request.wabaId)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, "This chatbot was not found")
     except KeyServiceUnavailable as e:

@@ -331,7 +331,8 @@ def test_the_meta_credentials_go_in_and_do_not_come_out(http, caller, bot_id):
     info = http.get(f"/chat/{bot_id}/info", headers=caller.auth)
 
     assert info.status_code == 200
-    assert info.json()["data"]["credentials"] == {"facebookToken": True, "whatsappToken": True, "appSecret": True}
+    assert info.json()["data"]["credentials"] == {"facebookToken": True, "whatsappToken": True, "appSecret": True,
+                                                "wabaId": False}
     assert all(secret not in info.text for secret in SECRETS.values())
 
 
@@ -342,7 +343,7 @@ def test_the_answer_to_loading_credentials_does_not_repeat_them(http, caller):
 
     assert response.status_code == 200
     assert response.json()["data"] == {"uuid": bot, "credentials": {"facebookToken": True, "whatsappToken": True,
-                                                                     "appSecret": True}}
+                                                                     "appSecret": True, "wabaId": False}}
     assert all(secret not in response.text for secret in SECRETS.values())
 
 
@@ -362,7 +363,8 @@ def test_the_verification_token_is_given_to_its_client_and_is_the_one_that_works
 def test_a_new_chatbot_has_no_credentials(http, caller):
     created = http.post("/bot", headers=caller.auth, json=BOT).json()["data"]
 
-    assert created["credentials"] == {"facebookToken": False, "whatsappToken": False, "appSecret": False}
+    assert created["credentials"] == {"facebookToken": False, "whatsappToken": False, "appSecret": False,
+                                      "wabaId": False}
     assert "facebookToken" not in created and "whatsappToken" not in created
 
 

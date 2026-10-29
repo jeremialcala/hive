@@ -118,6 +118,8 @@ su propio [README](engine/README.md).
 │   ├── controller/             # Capa de lógica de negocio
 │   │   ├── chatbot.py              # Bots, teléfonos y reglas
 │   │   ├── credentials.py          # Credenciales de Meta de un bot
+│   │   ├── templates.py            # Plantillas de WhatsApp de un bot, en Meta y su copia
+│   │   ├── meta_templates.py       # La API Graph de Meta para las plantillas
 │   │   ├── clients.py              # Registro de clientes y de sus claves
 │   │   ├── contacts.py             # Listar, buscar, exportar y borrar contactos
 │   │   ├── intents.py              # CRUD de intents y su esquema de herramientas
@@ -236,7 +238,7 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | `POST` | `/chat/{bot_id}/phones` | Registra un número de WhatsApp (`ChatbotPhoneRequest`: `environment`, `phoneNumber`, `phoneId`). |
 | `GET`  | `/chat/{bot_id}/phones?environment=` | Lista los números del bot; con `environment` devuelve el más reciente de ese entorno. |
 | `GET`  | `/chat/{bot_id}/info` | Devuelve la información guardada del bot (`chatbot_info()`) y su token de verificación. De las credenciales de Meta solo dice cuáles están cargadas. |
-| `PUT`  | `/chat/{bot_id}/credentials` | Carga o rota las credenciales de Meta del bot (`BotCredentialsRequest`: `facebookToken`, `whatsappToken`, `appSecret`). No las devuelve. |
+| `PUT`  | `/chat/{bot_id}/credentials` | Carga o rota las credenciales de Meta del bot (`BotCredentialsRequest`: `facebookToken`, `whatsappToken`, `appSecret`) y el id de su cuenta de WhatsApp Business (`wabaId`, que no es secreto). No devuelve las credenciales. |
 | `GET`  | `/chat/{bot_id}/tokens` | Los tokens de Meta del bot, **solo para el notificador del motor de respuestas**, con la clave que tiene para el cliente dueño del bot. Cada entrega queda en el log. |
 | `GET`  | `/chat/{bot_id}/rules` | La persona del bot y sus reglas, como datos (`name`, `role`, `tone`, `description`, `rules`): el motor escribe con ellos el `system` del modelo. |
 | `POST` | `/chat/{bot_id}/rules` | Añade una o varias reglas al bot (`RulesRequest.rules: list[str]`). |
@@ -256,6 +258,17 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 
 Cómo se atiende con ellos a quien pide sus datos, y qué no alcanza el borrado, está en
 [docs/03-implementation/exportar-y-borrar.md](docs/03-implementation/exportar-y-borrar.md).
+
+### Plantillas — etiqueta `Templates`
+
+Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código. Si Meta no responde, `503`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/chat/{bot_id}/templates` | Crea una plantilla en Meta (`TemplateCreateRequest`), que queda en revisión (`PENDING`). Solo `MARKETING` y `UTILITY`. Los valores del cuerpo son `{{1}}`, `{{2}}`…, desde 1 y sin huecos, con un ejemplo cada uno. La cabecera y el pie no llevan valores, y un botón de enlace solo va a `https`. `201`. |
+| `GET`  | `/chat/{bot_id}/templates` | Lista la copia de las plantillas. Con `?sync=true`, primero trae la lista de Meta: estados, categorías y lo creado o borrado en las herramientas de Meta. |
+| `PUT`  | `/chat/{bot_id}/templates/{template_id}` | Cambia todos los componentes de una plantilla, por su id de Meta. Solo si está `APPROVED`, `REJECTED` o `PAUSED`; si no, `409`. Vuelve a `PENDING` y no se envía hasta que Meta la apruebe otra vez. |
+| `DELETE` | `/chat/{bot_id}/templates/{template_id}` | Borra la plantilla en Meta, solo en su idioma, y su copia. Una `DISABLED` no se borra (`409`). Meta no deja reusar el nombre durante 30 días. |
 
 ### Intents — etiqueta `Intents`
 
@@ -299,10 +312,11 @@ Todas las entidades son `Document` de mongoengine y se conectan a la base config
 | Entidad | Fichero | Campos clave | Propósito |
 |---|---|---|---|
 | `Client` | `entity_client.py` | `uuid`, `name`, `role`, `signingKeys`, `serviceKeys`, `wrappedDataKey`, `status` | Un cliente de Hive: sus claves públicas, las de los workers del motor que lo atienden y su clave de datos, envuelta por Andvari. |
-| `ChatBot` | `entity_chatbot.py` | `uuid`, `clientId`, `name`, `role`, `description`, `tone`, `verifyToken`, `facebookToken`, `whatsappToken`, `appSecret`, `status` | Un chatbot. Los tokens, el App Secret y el `verifyToken` se guardan cifrados. `generate_verification_token()` emite el JWT firmado que se usa para verificar el webhook ante Meta. |
+| `ChatBot` | `entity_chatbot.py` | `uuid`, `clientId`, `name`, `role`, `description`, `tone`, `verifyToken`, `facebookToken`, `whatsappToken`, `appSecret`, `wabaId`, `status` | Un chatbot. Los tokens, el App Secret y el `verifyToken` se guardan cifrados; el `wabaId`, en claro. `generate_verification_token()` emite el JWT firmado que se usa para verificar el webhook ante Meta. |
 | `ChatbotPhone` | `entity_chatbot_phones.py` | `uuid`, `clientId`, `bot_id`, `environment`, `phoneNumber`, `phoneId` | Números de WhatsApp asociados a un bot, separados por entorno. El número va cifrado. |
 | `Contact` | `entity_contact.py` | `_uuid`, `clientId`, `botId`, `firstName`, `lastName`, `profilePic`, `fbId`, `waId`, `waIdIndex` | Una persona que escribe a un bot. Se busca por `fbId` o por el índice ciego de su número (`waIdIndex`); los contactos de Messenger se enriquecen desde la API Graph. |
 | `ConversationMessage` | `entity_conversation_message.py` | `key`, `clientId`, `botId`, `contactId`, `direction`, `messageId`, `channel`, `sentAt`, `text`, `expiresAt` | El historial, en la colección `messages`: lo que la persona envió y lo que el motor respondió. Caduca solo, por `expiresAt`. |
+| `MessageTemplate` | `entity_outbound.py` | `key`, `clientId`, `botId`, `name`, `language`, `category`, `status`, `metaId`, `components`, `parameters` | La copia de una plantilla de WhatsApp de un bot, en la colección `templates`, con el último estado que Hive vio en Meta. |
 | `SeenToken` | `entity_seen_token.py` | `key`, `clientId`, `expiresAt` | Las aserciones ya usadas en `/oauth/token`: cada una vale una vez. |
 | `Rule` | `entity_chatbot_rules.py` | `uuid`, `botId`, `rule` | Una regla del system prompt de un bot. |
 | `Intent` | `entity_intent.py` | `uuid`, `botId`, `name`, `description`, `samplePhrases`, `actions`, `status` | Algo que el bot sabe hacer. Cada acción (`Action`, con sus `ActionParameter` y su `ApiCall`) se expone al LLM como una herramienta. |
@@ -347,6 +361,7 @@ Los ajustes los carga `src/classes/tool_settings.py` (`pydantic-settings`) desde
 | `ENVIRONMENT` | `development`, `staging` o `production`: selecciona el logger, y solo en `development` se sirven `/docs`, `/redoc` y `/openapi.json`. Con cualquier otro valor el servicio no arranca. El compose de despliegue lo fija en `production`. |
 | `VERSION` | Versión de la app que muestra OpenAPI. |
 | `VERIFY_TOKEN` | Token de verificación por defecto. |
+| `META_GRAPH_URL`, `META_GRAPH_VERSION` | La API Graph con la que se gestionan las plantillas, y su versión. Por defecto, `https://graph.facebook.com` y `v26.0`, la misma con la que envía el motor. |
 | `FACEBOOK_GRAPH_URL`, `FACEBOOK_WHATSAPP_MESSAGE`, `FACEBOOK_GRAPH_VERSION` | Plantillas de los endpoints de la API Graph de Meta y su versión (por ejemplo, `v19.0`). |
 
 > `config.env` y `certs/` están ignorados por git y nunca se han commiteado. Que siga así: el repositorio es público.

@@ -8,7 +8,7 @@
 """
 from datetime import timedelta
 
-from mongoengine import DateTimeField, Document, IntField, StringField, UUIDField
+from mongoengine import DateTimeField, DictField, Document, IntField, ListField, StringField, UUIDField
 
 from .tool_clock import utc_now
 
@@ -32,11 +32,14 @@ class MessageTemplate(Document):
     language = StringField(required=True, max_length=15)
     category = StringField(required=True)
     status = StringField(required=True)
+    # Meta's id of the template, and what it is made of, as Meta has it: what the client edits or deletes by.
+    metaId = StringField(max_length=40)
+    components = ListField(DictField())
     # How many {{n}} the body takes: a send has to bring exactly that many values.
     parameters = IntField(required=True, min_value=0, default=0)
     updatedAt = DateTimeField(required=True, default=utc_now)
 
-    meta = {"collection": "templates", "indexes": [("clientId", "botId")]}
+    meta = {"collection": "templates", "indexes": [("clientId", "botId"), ("clientId", "botId", "metaId")]}
 
     @staticmethod
     def key_for(bot_id, name: str, language: str) -> str:

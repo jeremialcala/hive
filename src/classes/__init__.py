@@ -18,6 +18,7 @@ from .dto_client_request import ClientRequest, OwnedKeyRequest, ServiceKeyReques
 from .dto_bot_credentials import BotCredentialsRequest
 from .dto_contact_search import ContactSearchRequest
 from .dto_outbound import ConsentRequest, OutboundMessageRequest, TemplateRequest
+from .dto_templates import TemplateCreateRequest, TemplateEditRequest
 from .dto_chatbot import ChatbotRequest
 from .dto_response import ResponseData, BotResponse
 from .dto_chatbot_phone import ChatbotPhoneRequest

@@ -97,6 +97,43 @@ components:
       - url
       title: ApiCallRequest
       type: object
+    Body:
+      additionalProperties: false
+      properties:
+        example:
+          anyOf:
+          - $ref: '#/components/schemas/BodyExample'
+          - type: 'null'
+        text:
+          maxLength: 1024
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: BODY
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: Body
+      type: object
+    BodyExample:
+      additionalProperties: false
+      properties:
+        body_text:
+          items:
+            items:
+              type: string
+            type: array
+          maxItems: 1
+          minItems: 1
+          title: Body Text
+          type: array
+      required:
+      - body_text
+      title: BodyExample
+      type: object
     BotCredentialsRequest:
       additionalProperties: false
       description: 'The Meta credentials of a chatbot. Each one that is sent replaces the stored one; the ones left
@@ -118,6 +155,12 @@ components:
             type: string
           - type: 'null'
           title: Facebooktoken
+        wabaId:
+          anyOf:
+          - pattern: ^[0-9]{5,25}$
+            type: string
+          - type: 'null'
+          title: Wabaid
         whatsappToken:
           anyOf:
           - maxLength: 2048
@@ -149,6 +192,34 @@ components:
           title: Timestamp
           type: string
       title: BotResponse
+      type: object
+    Buttons:
+      additionalProperties: false
+      properties:
+        buttons:
+          items:
+            discriminator:
+              mapping:
+                PHONE_NUMBER: '#/components/schemas/PhoneButton'
+                QUICK_REPLY: '#/components/schemas/QuickReply'
+                URL: '#/components/schemas/UrlButton'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/QuickReply'
+            - $ref: '#/components/schemas/UrlButton'
+            - $ref: '#/components/schemas/PhoneButton'
+          maxItems: 10
+          minItems: 1
+          title: Buttons
+          type: array
+        type:
+          const: BUTTONS
+          title: Type
+          type: string
+      required:
+      - type
+      - buttons
+      title: Buttons
       type: object
     ChatbotPhoneRequest:
       properties:
@@ -253,6 +324,23 @@ components:
           title: Waid
       title: ContactSearchRequest
       type: object
+    Footer:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 60
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: FOOTER
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: Footer
+      type: object
     HTTPValidationError:
       properties:
         detail:
@@ -261,6 +349,28 @@ components:
           title: Detail
           type: array
       title: HTTPValidationError
+      type: object
+    Header:
+      additionalProperties: false
+      properties:
+        format:
+          const: TEXT
+          title: Format
+          type: string
+        text:
+          maxLength: 60
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: HEADER
+          title: Type
+          type: string
+      required:
+      - type
+      - format
+      - text
+      title: Header
       type: object
     IntentRequest:
       properties:
@@ -326,6 +436,45 @@ components:
       - proof
       title: OwnedKeyRequest
       type: object
+    PhoneButton:
+      additionalProperties: false
+      properties:
+        phone_number:
+          pattern: ^\+?[0-9]{6,20}$
+          title: Phone Number
+          type: string
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: PHONE_NUMBER
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      - phone_number
+      title: PhoneButton
+      type: object
+    QuickReply:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: QUICK_REPLY
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: QuickReply
+      type: object
     ResponseData:
       properties:
         code:
@@ -382,6 +531,78 @@ components:
       - signingKey
       title: SigningKeyRequest
       type: object
+    TemplateCreateRequest:
+      additionalProperties: false
+      properties:
+        category:
+          enum:
+          - MARKETING
+          - UTILITY
+          title: Category
+          type: string
+        components:
+          items:
+            discriminator:
+              mapping:
+                BODY: '#/components/schemas/Body'
+                BUTTONS: '#/components/schemas/Buttons'
+                FOOTER: '#/components/schemas/Footer'
+                HEADER: '#/components/schemas/Header'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/Body'
+            - $ref: '#/components/schemas/Header'
+            - $ref: '#/components/schemas/Footer'
+            - $ref: '#/components/schemas/Buttons'
+          maxItems: 4
+          minItems: 1
+          title: Components
+          type: array
+        language:
+          maxLength: 15
+          minLength: 2
+          pattern: ^[a-z]{2,3}(_[A-Za-z0-9]{2,8})?$
+          title: Language
+          type: string
+        name:
+          maxLength: 512
+          minLength: 1
+          pattern: ^[a-z0-9_]+$
+          title: Name
+          type: string
+      required:
+      - components
+      - name
+      - language
+      - category
+      title: TemplateCreateRequest
+      type: object
+    TemplateEditRequest:
+      additionalProperties: false
+      description: Meta replaces every component of the template, and an approved one does not change its category.
+      properties:
+        components:
+          items:
+            discriminator:
+              mapping:
+                BODY: '#/components/schemas/Body'
+                BUTTONS: '#/components/schemas/Buttons'
+                FOOTER: '#/components/schemas/Footer'
+                HEADER: '#/components/schemas/Header'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/Body'
+            - $ref: '#/components/schemas/Header'
+            - $ref: '#/components/schemas/Footer'
+            - $ref: '#/components/schemas/Buttons'
+          maxItems: 4
+          minItems: 1
+          title: Components
+          type: array
+      required:
+      - components
+      title: TemplateEditRequest
+      type: object
     TemplateRequest:
       additionalProperties: false
       properties:
@@ -407,6 +628,30 @@ components:
       - name
       - language
       title: TemplateRequest
+      type: object
+    UrlButton:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: URL
+          title: Type
+          type: string
+        url:
+          maxLength: 2000
+          minLength: 9
+          pattern: ^https://[^\s]+$
+          title: Url
+          type: string
+      required:
+      - type
+      - text
+      - url
+      title: UrlButton
       type: object
     ValidationError:
       properties:
@@ -1196,6 +1441,166 @@ paths:
       summary: Add Chatbot Rule
       tags:
       - Chat
+  /chat/{bot_id}/templates:
+    get:
+      description: 'The templates of the chatbot, as Hive last saw them in Meta. With ?sync=true, Meta''s list is
+        brought over
+
+        the copy first: states, categories, and the templates made or deleted in Meta''s own tools.'
+      operationId: list_templates_chat__bot_id__templates_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: sync
+        required: false
+        schema:
+          title: Sync
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: List Templates
+      tags:
+      - Templates
+    post:
+      description: 'Creates a WhatsApp template of the chatbot in Meta, with the chatbot''s WhatsApp token and WhatsApp
+        Business
+
+        Account (wabaId, loaded with PUT /chat/{bot_id}/credentials). Meta reviews it: it is sent once it says
+
+        APPROVED, which a list with ?sync=true brings. Only MARKETING and UTILITY; the body''s values, {{1}}, {{2}}...,
+
+        with an example each, and none in the header or the footer.'
+      operationId: create_template_chat__bot_id__templates_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreateRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Create Template
+      tags:
+      - Templates
+  /chat/{bot_id}/templates/{template_id}:
+    delete:
+      description: 'Deletes a template in Meta, in its language only, and Hive''s copy: not one DISABLED (409).
+        Meta keeps its
+
+        name taken for 30 days.'
+      operationId: delete_template_chat__bot_id__templates__template_id__delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          title: Template Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Delete Template
+      tags:
+      - Templates
+    put:
+      description: 'Replaces every component of a template, by Meta''s id: one APPROVED, REJECTED or PAUSED, else
+        409. Meta
+
+        reviews it again, and it is not sent until it is approved again.'
+      operationId: edit_template_chat__bot_id__templates__template_id__put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          title: Template Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateEditRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Edit Template
+      tags:
+      - Templates
   /chat/{bot_id}/tokens:
     get:
       description: 'The Meta tokens of a chatbot, for the response engine to send its answers with. Only the engine
@@ -1736,6 +2141,9 @@ tags:
 - description: 'The people who wrote to a chatbot: listing them, finding one, exporting what is stored about it
     and deleting it.'
   name: Contacts
+- description: 'The WhatsApp templates of a chatbot, created, edited and deleted in Meta, with the copy of each
+    that Hive keeps with its state: only an approved one is sent.'
+  name: Templates
 - description: Configure intents and their actions (API calls) as LLM tool definitions, stored per chatbot and consumed
     by the downstream worker.
   name: Intents

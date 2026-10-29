@@ -27,6 +27,8 @@ class ChatBot(Document):
     facebookToken = StringField()
     whatsappToken = StringField()
     appSecret = StringField()
+    # The WhatsApp Business Account whose templates the chatbot sends (HIG-85). An id of Meta, not a secret.
+    wabaId = StringField(regex=r"^[0-9]{5,25}$")
     createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
     statusDate = DateTimeField(required=True, default=utc_now)
@@ -42,7 +44,8 @@ class ChatBot(Document):
             "credentials": {
                 "facebookToken": bool(self.facebookToken),
                 "whatsappToken": bool(self.whatsappToken),
-                "appSecret": bool(self.appSecret)
+                "appSecret": bool(self.appSecret),
+                "wabaId": bool(self.wabaId)
             }
         }
 

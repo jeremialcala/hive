@@ -56,6 +56,10 @@ BODIES = {
     ("POST", "/clients/{client_id}/keys"): {"signingKey": public_part(new_signing_key())},
     ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key()),
                                                     "worker": "notifier"},
+    ("POST", "/chat/{bot_id}/templates"): {"name": "order_update", "language": "es", "category": "UTILITY",
+                                         "components": [{"type": "BODY", "text": "Your order is on its way"}]},
+    ("PUT", "/chat/{bot_id}/templates/{template_id}"): {
+        "components": [{"type": "BODY", "text": "Your order is on its way"}]},
 }
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
 ROUTES = sorted({(method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
@@ -296,6 +300,7 @@ def test_the_envelope_says_whose_chatbot_it_is_and_that_is_all_the_engine_needs(
 def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, method, path):
     intent = http.get(f"/chat/{bot}/intents", headers=acme.auth).json()["data"][0]["uuid"]
     address = path.format(bot_id=bot, intent_id=intent, contact_id=uuid4(), client_id=acme.client_id,
+                          template_id="1234567890",
                           kid=acme.kid)
     before = dump()
 
@@ -306,7 +311,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 29
+    assert len(NOT_FOR_THE_ENGINE) == 33
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 
