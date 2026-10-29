@@ -43,6 +43,9 @@ class ConversationMessage(Document):
     intent = StringField()
     # Of an answer, the identifier of Meta of the message it answers.
     inReplyTo = StringField()
+    # Of a message sent: the bot answering, or the client writing on its own, and then who asked (ADR-0031).
+    origin = StringField(choices=("engine", "client"))
+    sentBy = StringField(max_length=200)
     createdAt = DateTimeField(required=True, default=utc_now)
     # MongoDB deletes the message by itself at that time: 12 months at most (RNF05).
     expiresAt = DateTimeField(required=True)

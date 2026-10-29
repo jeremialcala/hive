@@ -323,12 +323,13 @@ components:
           description: Identificador en Instagram (IGSID).
     PedidoDeEnvio:
       description: >-
-        Un texto, dentro de la ventana de 24 horas, o una plantilla aprobada, dentro o fuera de ella (ADR-0031). Sin
-        número: el notificador busca el del contacto, como para una respuesta.
+        Un texto, dentro de la ventana de 24 horas, o una plantilla aprobada, dentro o fuera de ella (ADR-0031). Lleva
+        el número del contacto y desde qué número del bot se envía, como un mensaje de MOTOR (decisión de Jeremi del
+        2026-10-29).
       allOf:
         - $ref: '#/components/schemas/Base'
         - type: object
-          required: [uuid, contactId, channel, kind, sentBy, requestedAt]
+          required: [uuid, contactId, channel, kind, sentBy, requestedAt, to, phoneId]
           properties:
             uuid:
               type: string
@@ -348,6 +349,16 @@ components:
             requestedAt:
               type: string
               format: date-time
+            to:
+              type: string
+              pattern: '^[0-9]{6,20}$'
+              description: 'El número de WhatsApp del contacto. Dato personal, como en MOTOR.'
+            phoneId:
+              type: string
+              pattern: '^[0-9]{1,32}$'
+              description: >-
+                El `phone_number_id` desde el que se envía: el número del bot al que el contacto escribió por última
+                vez, o el primero del bot.
             text:
               type: string
               maxLength: 4096
@@ -376,7 +387,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Base'
         - type: object
-          required: [contactId, channel, inReplyTo, messageId, sentAt, text]
+          required: [contactId, channel, messageId, sentAt, text]
           properties:
             contactId:
               type: string
@@ -384,8 +395,22 @@ components:
             channel:
               enum: [whatsapp, messenger, instagram]
             inReplyTo:
-              type: string
-              description: Identificador de Meta del mensaje al que responde.
+              type: [string, 'null']
+              description: >-
+                Identificador de Meta del mensaje al que responde. Un mensaje que el cliente envía por iniciativa
+                propia no responde a nada y no lo lleva.
+            origin:
+              enum: [engine, client]
+              default: engine
+              description: Si es una respuesta del bot o un mensaje del cliente (ADR-0031).
+            sentBy:
+              type: [string, 'null']
+              maxLength: 200
+              description: 'Con `origin: client`, quién lo pidió: la clave de la credencial o la persona.'
+            requestId:
+              type: [string, 'null']
+              format: uuid
+              description: 'Con `origin: client`, el `uuid` del PedidoDeEnvio del que sale.'
             messageId:
               type: string
               description: Identificador que Meta dio al envío.

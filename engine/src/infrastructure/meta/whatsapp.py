@@ -7,9 +7,21 @@
          "text": {"body": <texto>, "preview_url": false}}
 
     Solo texto, sin vista previa de enlaces (ADR-0009, punto 5), y sin citar el mensaje de la persona (decisión de
-    Jeremi del 2026-10-20). Lo que hace con cada error lo dice el `code` de Meta, como pide su documentación de
-    errores (developers.facebook.com, consultada el 2026-10-20): los que se arreglan solos se reintentan, el del token
-    se reintenta con uno nuevo, y los demás no irán nunca así.
+    Jeremi del 2026-10-20). Y una plantilla aprobada, para lo que el cliente envía por iniciativa propia (ADR-0031 del
+    gateway), con sus valores como parámetros de texto del cuerpo:
+
+        {"messaging_product": "whatsapp", "recipient_type": "individual", "to": <número>, "type": "template",
+         "template": {"name": <nombre>, "language": {"code": <idioma>},
+                      "components": [{"type": "body",
+                                      "parameters": [{"type": "text", "text": <valor>}, ...]}]}}
+
+    Fuera de la ventana, un texto da el 131047; una plantilla en pausa, el 132015; desactivada, el 132016; con otros
+    valores, el 132000; y el límite de marketing por persona, el 131049, que no se arregla antes de 24 horas. Ninguno
+    está entre los que se reintentan (developers.facebook.com, «Error codes», consultada el 2026-10-29).
+
+    Lo que hace con cada error lo dice el `code` de Meta, como pide su documentación de errores
+    (developers.facebook.com, consultada el 2026-10-20): los que se arreglan solos se reintentan, el del token se
+    reintenta con uno nuevo, y los demás no irán nunca así.
 
     Y para marcar como leído un mensaje de la persona, con «escribiendo…» o sin él (ADR-0011; developers.facebook.com,
     «Typing indicators», consultada el 2026-10-21), a la misma ruta:
@@ -56,8 +68,20 @@ class WhatsAppCloud(CanalDeMeta):
             raise EnvioFallido(type(e).__name__) from None
 
     def _enviar(self, token: str, cuenta: str, destinatario: str, texto: str) -> str:
-        cuerpo = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": destinatario,
-                  "type": "text", "text": {"body": texto, "preview_url": False}}
+        return self._mandar(token, cuenta, {"messaging_product": "whatsapp", "recipient_type": "individual",
+                                            "to": destinatario, "type": "text",
+                                            "text": {"body": texto, "preview_url": False}})
+
+    def _plantilla(self, token: str, cuenta: str, destinatario: str, nombre: str, idioma: str,
+                   valores: list[str]) -> str:
+        plantilla = {"name": nombre, "language": {"code": idioma}}
+        if valores:
+            plantilla["components"] = [{"type": "body",
+                                        "parameters": [{"type": "text", "text": valor} for valor in valores]}]
+        return self._mandar(token, cuenta, {"messaging_product": "whatsapp", "recipient_type": "individual",
+                                            "to": destinatario, "type": "template", "template": plantilla})
+
+    def _mandar(self, token: str, cuenta: str, cuerpo: dict) -> str:
         respuesta = self._post(token, cuenta, cuerpo)
         if respuesta.status_code == 200:
             try:
@@ -103,6 +127,10 @@ class WhatsAppCloud(CanalDeMeta):
 
     async def enviar_texto(self, token: str, cuenta: str, destinatario: str, texto: str) -> str:
         return await asyncio.to_thread(self._enviar, token, cuenta, destinatario, texto)
+
+    async def enviar_plantilla(self, token: str, cuenta: str, destinatario: str, nombre: str, idioma: str,
+                               valores: list[str]) -> str:
+        return await asyncio.to_thread(self._plantilla, token, cuenta, destinatario, nombre, idioma, valores)
 
     async def marcar_leido(self, token: str, cuenta: str, message_id: str, escribiendo: bool) -> None:
         await asyncio.to_thread(self._marcar, token, cuenta, message_id, escribiendo)

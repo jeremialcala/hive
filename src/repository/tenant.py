@@ -322,6 +322,25 @@ class TenantRepository:
 
     # --- What the client sends to its contacts (ADR-0031) ------------------------------------------------------------
 
+    def last_phone_id(self, contact: Contact) -> str | None:
+        """The phone_number_id of the bot's number the contact last wrote to, opened; None if not known yet."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        return self._cipher.decrypt("Contact.lastPhoneId", contact.lastPhoneId) if contact.lastPhoneId else None
+
+    def remember_phone(self, contact: Contact, phone_id: str) -> None:
+        """The bot's number the contact wrote to now, encrypted, if it is another: only then is anything written."""
+        if contact.clientId != self.client_id or not phone_id or self.last_phone_id(contact) == phone_id:
+            return
+        sealed = self._cipher.encrypt("Contact.lastPhoneId", phone_id)
+        self._own(Contact, _uuid=contact._uuid).update_one(set__lastPhoneId=sealed)
+        contact.lastPhoneId = sealed
+
+    def first_phone_id(self, bot_uuid: UUID) -> str | None:
+        """The phone_number_id of the first number registered for the bot, opened; None if it has none."""
+        phone = self._own(ChatbotPhone, bot_id=bot_uuid).order_by("id").first()
+        return self.phone_numbers(phone)["phoneId"] if phone is not None else None
+
     def find_template(self, bot_uuid: UUID, name: str, language: str) -> MessageTemplate | None:
         return self._own(MessageTemplate, key=MessageTemplate.key_for(bot_uuid, name, language)).first()
 
@@ -359,7 +378,8 @@ class TenantRepository:
 
     def record_message(self, contact: Contact, direction: str, message_id: str, channel: str, sent_at: datetime,
                        text: str | None = None, attachments: tuple = (), intent: str | None = None,
-                       in_reply_to: str | None = None) -> bool:
+                       in_reply_to: str | None = None, origin: str | None = None,
+                       sent_by: str | None = None) -> bool:
         """
             Stores one message of the contact's conversation, with its text encrypted. False if it was already
             stored: storing it twice changes nothing, and does not tell whoever sent it again apart.
@@ -371,7 +391,8 @@ class TenantRepository:
             key=ConversationMessage.key_for(contact.botId, direction, message_id), clientId=self.client_id,
             botId=contact.botId, contactId=contact._uuid, direction=direction, messageId=message_id,
             channel=channel, sentAt=sent_at, text=self._cipher.encrypt("Message.text", text),
-            attachments=list(attachments), intent=intent, inReplyTo=in_reply_to, createdAt=now,
+            attachments=list(attachments), intent=intent, inReplyTo=in_reply_to, origin=origin, sentBy=sent_by,
+            createdAt=now,
             expiresAt=now + HISTORY_RETENTION)
         try:
             message.save(force_insert=True)
@@ -407,6 +428,6 @@ class TenantRepository:
     def _opened(self, messages) -> list[dict]:
         return [{"direction": message.direction, "messageId": message.messageId, "channel": message.channel,
                  "sentAt": message.sentAt.replace(tzinfo=timezone.utc), "intent": message.intent,
-                 "inReplyTo": message.inReplyTo,
+                 "inReplyTo": message.inReplyTo, "origin": message.origin, "sentBy": message.sentBy,
                  "text": self._cipher.decrypt("Message.text", message.text),
                  "attachments": list(message.attachments)} for message in messages]

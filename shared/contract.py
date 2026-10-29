@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
     The events of version 2 that cross between the gateway and the response engine, as models
-    (docs/02-design/contracts/asyncapi-v2.yaml): what the ingestion publishes for the engine, and what the engine's
-    notifier publishes back for the history. Both sides validate against these, so a change of the contract is a
+    (docs/02-design/contracts/asyncapi-v2.yaml): what the ingestion publishes for the engine, what the management API
+    asks the notifier to send for a client (ADR-0031), and what the engine's notifier publishes back for the history. Both sides validate against these, so a change of the contract is a
     change here, tested on both sides at once (ADR-0023).
 
     They read what comes in strictly: a field missing or of another type is a broken event, not a default.
@@ -71,17 +71,54 @@ class SentAttachment(BaseModel):
     type: str
 
 
+# Who a message sent to a contact comes from: the bot answering, or the client writing on its own (ADR-0031).
+Origin = Literal["engine", "client"]
+
+
+class TemplateToSend(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1, max_length=512)
+    language: str = Field(min_length=2, max_length=15)
+    category: Literal["MARKETING", "UTILITY"]
+    # In order, as the template's {{1}}, {{2}}... Personal data, like a text.
+    parameters: list[str] = Field(default_factory=list, max_length=20)
+
+
+class OutboundRequest(_Event):
+    """
+        PedidoDeEnvio: what a client asks the notifier to send to a contact (ADR-0031), on SALIENTES. It carries the
+        number and the account of the bot it goes from, as a message of MOTOR does: personal data, on a bus that is
+        encrypted at rest and reached by TLS.
+    """
+    uuid: UUID
+    contactId: UUID
+    channel: Literal["whatsapp"]
+    kind: Literal["text", "template"]
+    sentBy: str = Field(min_length=1, max_length=200)
+    requestedAt: datetime
+    # The contact's WhatsApp number, and the phone_number_id of the bot's number it last wrote to.
+    to: str = Field(pattern=r"^[0-9]{6,20}$")
+    phoneId: str = Field(pattern=r"^[0-9]{1,32}$")
+    text: str | None = Field(default=None, min_length=1, max_length=4096)
+    template: TemplateToSend | None = None
+
+
 class SentReply(_Event):
     """RespuestaEnviada: what the notifier sent and Meta accepted, for the history of the conversation."""
     contactId: UUID
     channel: Channel
-    # The Meta id of the message it answers.
-    inReplyTo: str = Field(min_length=1)
+    # The Meta id of the message it answers. A message the client sent on its own answers nothing.
+    inReplyTo: str | None = Field(default=None, min_length=1)
     # The id Meta gave to what was sent.
     messageId: str = Field(min_length=1)
     sentAt: datetime
     text: str = Field(max_length=4096)
     attachments: list[SentAttachment] = []
+    origin: Origin = "engine"
+    # Of a client's message: who asked for it, and the request it came from (ADR-0031).
+    sentBy: str | None = Field(default=None, min_length=1, max_length=200)
+    requestId: UUID | None = None
 
 
 # --- What a message says ----------------------------------------------------------------------------------------------

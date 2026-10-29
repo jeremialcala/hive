@@ -67,6 +67,18 @@ class CanalDeMeta(ABC):
         """
 
     @abstractmethod
+    async def enviar_plantilla(self, token: str, cuenta: str, destinatario: str, nombre: str, idioma: str,
+                               valores: list[str]) -> str:
+        """
+        Una plantilla aprobada de Meta, con sus valores en orden ({{1}}, {{2}}...), dentro o fuera de la ventana de 24
+        horas (ADR-0031 del gateway).
+
+        :return: el id que Meta dio al mensaje.
+        :raises EnvioFallido: si puede ir más tarde (TokenRechazado si es el token).
+        :raises EnvioRechazado: si no irá nunca así: la plantilla en pausa, desactivada o con otros valores.
+        """
+
+    @abstractmethod
     async def marcar_leido(self, token: str, cuenta: str, message_id: str, escribiendo: bool) -> None:
         """
         Pone en azul los ticks del mensaje de la persona, y de los anteriores de la conversación.

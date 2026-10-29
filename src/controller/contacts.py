@@ -52,6 +52,8 @@ def contact_info(repo: TenantRepository, contact: Contact) -> dict:
         "statusDate": as_utc(contact.statusDate),
         # Whether the contact agreed to the client's messages, and since when (RF31): theirs to see when they ask.
         "consent": consent_info(contact),
+        # Not the contact's: the bot's number it last wrote to, which a client's message goes from.
+        "lastPhoneId": repo.last_phone_id(contact),
     }
 
 

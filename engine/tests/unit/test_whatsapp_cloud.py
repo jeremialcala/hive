@@ -158,3 +158,39 @@ def test_lo_que_meta_no_acepta_al_marcar_se_dice_como_al_enviar(servidor, respue
 
     with pytest.raises(fallo):
         marcar(servidor, True)
+
+
+# --- Una plantilla, lo que el cliente envía por iniciativa propia (ADR-0031 del gateway) ---------------------------
+
+def plantilla(url, valores=("mañana a las 10",)):
+    return asyncio.run(WhatsAppCloud(url, "v26.0", 2).enviar_plantilla(TOKEN, CUENTA, NUMERO, "cita", "es",
+                                                                       list(valores)))
+
+
+def test_envia_una_plantilla_con_sus_valores_como_parametros_del_cuerpo(servidor):
+    assert plantilla(servidor) == "wamid.ENVIADO"
+    ((ruta, autorizacion, cuerpo),) = Meta.vistas
+    assert (ruta, autorizacion) == (f"/v26.0/{CUENTA}/messages", f"Bearer {TOKEN}")
+    assert cuerpo == {"messaging_product": "whatsapp", "recipient_type": "individual", "to": NUMERO,
+                      "type": "template",
+                      "template": {"name": "cita", "language": {"code": "es"},
+                                   "components": [{"type": "body", "parameters": [
+                                       {"type": "text", "text": "mañana a las 10"}]}]}}
+
+
+def test_una_plantilla_sin_valores_no_lleva_componentes(servidor):
+    plantilla(servidor, valores=())
+
+    assert Meta.vistas[0][2]["template"] == {"name": "cita", "language": {"code": "es"}}
+
+
+@pytest.mark.parametrize("codigo", [131047, 132000, 132001, 132015, 132016, 131049],
+                         ids=["fuera de la ventana", "otros valores", "no existe", "en pausa", "desactivada",
+                              "límite de marketing por persona"])
+def test_lo_que_meta_rechaza_de_un_envio_del_cliente_no_se_reintenta(servidor, codigo):
+    Meta.respuesta = error(codigo)
+
+    with pytest.raises(EnvioRechazado) as rechazo:
+        plantilla(servidor)
+    assert str(rechazo.value) == f"Meta {codigo}"
+    assert NUMERO not in str(rechazo.value)

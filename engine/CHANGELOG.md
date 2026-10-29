@@ -13,6 +13,16 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El notificador envía lo que el cliente escribe a sus contactos** (HIG-84; ADR-0031 del gateway).
+  - **El consumidor:** el tercero del notificador, `SALIENTES/notifier`. Lee cada `PedidoDeEnvio` y envía el texto o
+    la plantilla desde el `phoneId` al `to` del pedido, con el token del bot que da el gateway.
+  - **Sin duplicados:** lo apunta en `enviados` por pedido.
+  - **Al historial:** lo publica en `RESPUESTAS` con `origin: client`, `sentBy` y `requestId`.
+  - **`WhatsAppCloud.enviar_plantilla`:** el cuerpo `type: template`, con `language.code` y los valores como
+    parámetros de texto del cuerpo; sin valores, sin `components`.
+  - **Los rechazos de Meta,** como el resto: los códigos 131047, 132000, 132001, 132015, 132016 y 131049 no se
+    reintentan.
+  - **Pruebas:** `tests/unit/test_worker_salientes.py`, 17, y 7 más en `test_whatsapp_cloud.py`.
 - **El LLM se mantiene caliente** (`src/infrastructure/llm/caliente.py`; decisión de Jeremi del 2026-10-22). El primer
   mensaje tras una noche sin uso tardó 17,8 s, frente a 4 s los siguientes: la clasificación, 5,4 s en vez de 1, y la
   respuesta, 6,7 s en vez de 1,3. Si el clasificador o el de respuesta llevan `LLM_CALENTAR_CADA` segundos (600) sin
