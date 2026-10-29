@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **ADRs:** [ADR-0029](../../docs/00-project/adr/0029-autenticacion-de-personas.md), con su enmienda del 2026-10-28
 * **Tareas:** HIG-91 y HIG-96
 
@@ -104,9 +104,43 @@ En `https://hive-auth.higerotech.com/ui/console`, adonde también lleva la raíz
 pide cambiar la contraseña al entrar. La página de login abierta sola (`/ui/v2/login`) no vuelve a ninguna aplicación
 y termina en la cuenta del usuario, no en la consola.
 
-- **Correo:** SMTP de Resend. Servidor `smtp.resend.com`, puerto `465` (TLS), usuario `resend`, la contraseña es el
-  token de Resend y el remitente `no-reply@higerotech.com`, con el nombre «Hive». Hay que probar un correo.
-- **Política de inicio de sesión:** MFA obligatoria (passkey o TOTP), sin registro libre, sin proveedores externos.
+- **El nombre de usuario lleva el dominio de la organización:** `zitadel-admin@higerotech.hive-auth.higerotech.com`.
+  Con `zitadel-admin` solo, el login responde «User not found in the system». Su correo es de ese dominio, que no
+  existe en DNS: hay que cambiarlo por un buzón real, o la cuenta no se puede recuperar.
+- **Correo:** SMTP de Resend.
+  - Servidor `smtp.resend.com:2465`, con TLS activado (465 también sirve).
+  - Usuario `resend`; la contraseña es una clave de Resend propia de Zitadel, con permiso solo de envío y solo para
+    `higerotech.com`.
+  - Remitente `no-reply@higerotech.com`, con el nombre «Hive».
+
+  Después de guardarlo hay que **activarlo** y mandar un correo de prueba. Nidavellir sale a internet por el túnel
+  PIA de midgard. Si la prueba se queda colgada y la consola dice `RpcError(UNKNOWN): Unknown Content-type`, mira la
+  MTU antes que la configuración: Cloudflare cortó la petición porque el TLS no terminaba. Se arregló recortando el
+  MSS en `pia0` (higerotech/yggdrasil#111).
+- **Administradores:** solo `IAM_OWNER`. `IAM_LOGIN_CLIENT` es de la cuenta de máquina `login-client`, la de la
+  pantalla de login, y permite crear sesiones de cualquier usuario: nunca va en una persona. Los roles
+  `*_IMPERSONATOR` tampoco hacen falta.
+- **Política de inicio de sesión, en este orden.** Al activar «MFA obligatoria», la API rechaza cualquier token de
+  una sesión sin segundo factor (`mfa required (AUTHZ-Kl3p0)`), también el de la consola que está abierta. Además,
+  el login no obliga a registrar el segundo factor: da la sesión por buena y vuelve a la consola, que la rechaza. Si
+  ninguna cuenta con permisos tiene MFA, nadie entra (le pasó a Jeremi el 2026-10-28).
+  1. Registrar un TOTP en cada cuenta administradora, `zitadel-admin` incluida. Es la cuenta de emergencia, así que
+     lleva TOTP y no una passkey atada a un navegador.
+  2. Comprobarlo: salir, volver a entrar y ver que pide el código.
+  3. Solo entonces, aplicar la política:
+     - MFA obligatoria: TOTP o llave/passkey, ni SMS ni correo;
+     - sin registro libre ni proveedores externos;
+     - «Ignorar usuarios desconocidos» activado, para que el login no diga qué nombres existen.
+
+  **Si ya te quedaste fuera:**
+  1. Abre `https://hive-auth.higerotech.com/ui/v2/login/loginname` sin pasar por la consola y entra con la
+     contraseña.
+  2. En la misma pestaña, abre `https://hive-auth.higerotech.com/ui/v2/login/mfa/set?loginName=<nombre completo>` y
+     registra el TOTP.
+  3. Vuelve a `/`.
+
+  Si abres `mfa/set` sin una sesión en el navegador, sale el error genérico «An error occurred in the Server
+  Components render», y el log de `hive-idp-login` dice `No session found`.
 - **Proyecto `Hive`,** con la aplicación `hive-portal`: OIDC, Web, confidencial, Authorization Code con PKCE y sus
   URL de retorno en `https://hive-app.higerotech.com`.
 - **Una cuenta de servicio** para que `hive-api` cree y enlace personas (HIG-94). La clave se guarda en Andvari.
