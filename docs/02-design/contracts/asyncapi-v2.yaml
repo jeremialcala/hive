@@ -55,6 +55,22 @@ channels:
     messages:
       mensajeIdentificado:
         $ref: '#/components/messages/MensajeIdentificado'
+  pedidoDeEnvio:
+    address: 'gateway.outbound.{particion}.{botId}.{contactId}'
+    description: >-
+      Stream `SALIENTES`. Lo que el cliente pide enviar a un contacto (ADR-0031): la API de gestión lo publica cuando
+      ya comprobó la ventana, la plantilla, el consentimiento y los límites, y solo el notificador lo envía. Cola de
+      trabajo, 24 horas: lleva el texto.
+    parameters:
+      particion:
+        $ref: '#/components/parameters/particion'
+      botId:
+        $ref: '#/components/parameters/botId'
+      contactId:
+        $ref: '#/components/parameters/contactId'
+    messages:
+      pedidoDeEnvio:
+        $ref: '#/components/messages/PedidoDeEnvio'
   respuestaEnviada:
     address: 'engine.reply.sent.{botId}'
     description: >-
@@ -106,6 +122,22 @@ operations:
     summary: La ingesta publica el mensaje en la partición de su conversación.
     messages:
       - $ref: '#/channels/mensajeIdentificado/messages/mensajeIdentificado'
+  publicarPedidoDeEnvio:
+    action: send
+    channel:
+      $ref: '#/channels/pedidoDeEnvio'
+    summary: La API de gestión publica lo que el cliente pide enviar, con el `uuid` del pedido como `Nats-Msg-Id`.
+    messages:
+      - $ref: '#/channels/pedidoDeEnvio/messages/pedidoDeEnvio'
+  consumirPedidoDeEnvio:
+    action: receive
+    channel:
+      $ref: '#/channels/pedidoDeEnvio'
+    summary: El notificador lo envía a Meta y publica lo enviado en `RESPUESTAS`, como una respuesta del bot.
+    description: >-
+      Con un solo pedido en vuelo. Un pedido cuyo `uuid` ya está en el bucket `enviados` no se envía otra vez.
+    messages:
+      - $ref: '#/channels/pedidoDeEnvio/messages/pedidoDeEnvio'
   publicarRespuestaEnviada:
     action: send
     channel:
@@ -159,6 +191,14 @@ components:
         $ref: '#/components/schemas/Cabeceras'
       payload:
         $ref: '#/components/schemas/MensajeIdentificado'
+    PedidoDeEnvio:
+      name: PedidoDeEnvio
+      title: Lo que el cliente pide enviar a un contacto
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/PedidoDeEnvio'
     RespuestaEnviada:
       name: RespuestaEnviada
       title: Respuesta que Meta aceptó enviar
@@ -281,6 +321,56 @@ components:
         igsid:
           type: string
           description: Identificador en Instagram (IGSID).
+    PedidoDeEnvio:
+      description: >-
+        Un texto, dentro de la ventana de 24 horas, o una plantilla aprobada, dentro o fuera de ella (ADR-0031). Sin
+        número: el notificador busca el del contacto, como para una respuesta.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [uuid, contactId, channel, kind, sentBy, requestedAt]
+          properties:
+            uuid:
+              type: string
+              format: uuid
+              description: El pedido, el mismo para una clave de idempotencia repetida.
+            contactId:
+              type: string
+              format: uuid
+            channel:
+              const: whatsapp
+              description: Solo WhatsApp en la v1.
+            kind:
+              enum: [text, template]
+            sentBy:
+              type: string
+              description: Quién lo pidió, la clave de la credencial de máquina o la persona. Nunca un nombre.
+            requestedAt:
+              type: string
+              format: date-time
+            text:
+              type: string
+              maxLength: 4096
+              description: 'Con `kind: text`. Dato personal: el notificador lo envía y va al historial, cifrado.'
+            template:
+              type: object
+              description: 'Con `kind: template`.'
+              required: [name, language, category, parameters]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                language:
+                  type: string
+                category:
+                  enum: [MARKETING, UTILITY]
+                parameters:
+                  type: array
+                  maxItems: 20
+                  description: Los valores de la plantilla, en orden. Pueden ser datos personales.
+                  items:
+                    type: string
+                    maxLength: 1024
     RespuestaEnviada:
       description: Lo que publica el notificador del motor cuando Meta acepta un envío.
       allOf:

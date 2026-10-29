@@ -249,6 +249,9 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | `POST` | `/contacts/search` | Encuentra a una persona en todos los bots del cliente (`ContactSearchRequest`: `waId` o `fbId`). |
 | `GET`  | `/chat/{bot_id}/contacts/{contact_id}` | Exporta lo guardado de un contacto. |
 | `DELETE` | `/chat/{bot_id}/contacts/{contact_id}` | Borra un contacto. No se puede deshacer. |
+| `POST` | `/chat/{bot_id}/contacts/{contact_id}/messages` | Escribe por WhatsApp a un contacto: un texto dentro de las 24 horas desde su último mensaje, o una plantilla aprobada, dentro o fuera de ellas; fuera, solo con su consentimiento. Pide `Idempotency-Key`. `202` cuando Bifröst guarda el pedido; lo envía el notificador. 60 envíos por minuto por bot y 1 000 al día por cliente ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md)). |
+| `PUT` | `/chat/{bot_id}/contacts/{contact_id}/consent` | Registra el consentimiento de un contacto para recibir mensajes del cliente: categorías (`MARKETING`, `UTILITY`), origen y fecha. |
+| `DELETE` | `/chat/{bot_id}/contacts/{contact_id}/consent` | Retira el consentimiento. Queda guardado con la fecha. |
 | `GET`  | `/chat/{bot_id}/contacts/{contact_id}/turns` | Las últimas 10 vueltas de una conversación, **solo para el coordinador del motor**. Cada entrega queda en el log. |
 
 Cómo se atiende con ellos a quien pide sus datos, y qué no alcanza el borrado, está en

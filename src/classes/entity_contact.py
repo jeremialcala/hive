@@ -15,6 +15,17 @@ log = logging.getLogger(settings.environment)
 connect_database(settings)
 
 
+class Consent(EmbeddedDocument):
+    """
+        That the contact agreed to get the client's messages (RF31, ADR-0031): which categories, when, and where the
+        client says it got it. Withdrawing it keeps the record, with when: the consent was there until then.
+    """
+    categories = ListField(StringField(), required=True)
+    source = StringField(required=True, max_length=200)
+    grantedAt = DateTimeField(required=True)
+    withdrawnAt = DateTimeField()
+
+
 class Contact(Document):
     _uuid = UUIDField(required=True, unique=True, default=uuid4)
     clientId = UUIDField(required=True)
@@ -30,6 +41,8 @@ class Contact(Document):
     createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
     statusDate = DateTimeField(required=True, default=utc_now)
+    # It goes with the contact: exported and deleted with it.
+    consent = EmbeddedDocumentField(Consent)
 
     @staticmethod
     def generate_contact_from_fb(botId: str, fbId: str, fb_info: ProfileInfo):

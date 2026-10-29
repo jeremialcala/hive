@@ -9,7 +9,7 @@ import time
 from inspect import currentframe
 from urllib.parse import parse_qs
 
-from fastapi import Depends, HTTPException, Query, Request, status
+from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from fastapi.openapi.models import OAuthFlowClientCredentials, OAuthFlows
@@ -22,8 +22,8 @@ from auth.principal import Principal, authenticate, exchange
 from auth import dpop, token_limits
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
-                     ContactSearchRequest, IntentRequest, OwnedKeyRequest, ResponseData, RulesRequest,
-                     ServiceKeyRequest, SigningKeyRequest)
+                     ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
+                     ResponseData, RulesRequest, ServiceKeyRequest, SigningKeyRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
 from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_service_key, ctr_add_signing_key,
                         ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent, ctr_delete_chatbot,
@@ -31,8 +31,8 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_gateway_keys, ctr_get_bot_tokens, ctr_get_bot_tools, ctr_get_chatbot_from_uuid,
                         ctr_get_chatbot_phones, ctr_get_chatbot_rules_from_uuid, ctr_get_client, ctr_get_intent,
                         ctr_get_intents, ctr_last_turns, ctr_list_clients, ctr_list_contacts, ctr_register_client,
-                        ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_set_bot_credentials,
-                        ctr_update_intent)
+                        ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
+                        ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -373,6 +373,41 @@ async def delete_contact(bot_id: str, contact_id: str, repo: TenantRepository = 
         again as a new contact.
     """
     return await ctr_delete_contact(repo, bot_id, contact_id)
+
+
+@app.post(path="/chat/{bot_id}/contacts/{contact_id}/messages", tags=["Contacts"], response_model=ResponseData,
+          status_code=status.HTTP_202_ACCEPTED)
+async def send_message(bot_id: str, contact_id: str, message: OutboundMessageRequest,
+                       principal: Principal = Depends(get_principal),
+                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
+    """
+        Sends a WhatsApp message to a contact who already wrote to the chatbot (ADR-0031): a text, within the 24
+        hours since the contact last wrote, or an approved template of the chatbot, within or outside them; outside
+        them, only to a contact who agreed to messages of the template's category. The engine's notifier sends it:
+        202 says the request was taken, and the message shows in the history once Meta accepted it.
+
+        The Idempotency-Key header is required: the same key within 24 hours gives back the same request and sends
+        nothing more. 60 sends a minute for each chatbot and 1 000 a day for each client: more get 429 with
+        Retry-After.
+    """
+    return await ctr_send_message(TenantRepository(principal.client_id), bot_id, contact_id, message,
+                                  idempotency_key, sent_by=f"key {principal.kid}")
+
+
+@app.put(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)
+def set_consent(bot_id: str, contact_id: str, consent: ConsentRequest,
+                repo: TenantRepository = Depends(get_repository)):
+    """
+        Records that a contact agreed to get the client's messages of these categories (RF31), and where the client
+        got that consent. Outside the window of 24 hours, a template is only sent with it. It replaces any before.
+    """
+    return ctr_set_consent(repo, bot_id, contact_id, consent)
+
+
+@app.delete(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)
+def withdraw_consent(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
+    """The contact withdrew its consent: it is kept with when, and nothing is sent to it outside the window any more."""
+    return ctr_withdraw_consent(repo, bot_id, contact_id)
 
 
 @app.post(path="/contacts/search", tags=["Contacts"], response_model=ResponseData)

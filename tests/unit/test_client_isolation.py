@@ -23,7 +23,12 @@ BODIES = {
     ("POST", "/chat/{bot_id}/intents"): INTENT,
     ("PUT", "/chat/{bot_id}/intents/{intent_id}"): INTENT,
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "an-app-secret"},
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": "web form"},
+    ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": "Hello"},
 }
+# Sending is accepted with a 202 once the bus holds it, and only inside the window: test_outbound covers the owner.
+# Whoever is not the owner gets the same 404 here as anywhere else.
+SENDING = ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
 ROUTES = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
@@ -68,7 +73,7 @@ def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, co
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 16 and ENGINE_ONLY <= set(ROUTES)
+    assert len(BOT_ROUTES) == 19 and ENGINE_ONLY <= set(ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     assert OTHER_ROUTES == [
@@ -80,7 +85,7 @@ def test_every_route_of_a_chatbot_is_covered():
     ]
 
 
-@pytest.mark.parametrize("method,path", BOT_ROUTES)
+@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES if route != SENDING])
 def test_the_owner_reaches_its_chatbot(http, owner, stored, method, path):
     bot, intent, contact = stored
 

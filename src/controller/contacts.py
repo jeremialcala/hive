@@ -22,6 +22,7 @@ from repository import NotFound, RegisterUnavailable, TenantRepository
 
 from .answers import answer
 from .erasure_notices import CHATBOT, CONTACT, announce
+from .outbound import consent_info
 
 __all__ = ["ctr_list_contacts", "ctr_search_contacts", "ctr_export_contact", "ctr_last_turns", "ctr_delete_contact",
            "ctr_delete_chatbot"]
@@ -49,6 +50,8 @@ def contact_info(repo: TenantRepository, contact: Contact) -> dict:
         # Read back without a time zone, as pymongo hands dates over: they are UTC, and the answer says so.
         "createdAt": as_utc(contact.createdAt),
         "statusDate": as_utc(contact.statusDate),
+        # Whether the contact agreed to the client's messages, and since when (RF31): theirs to see when they ask.
+        "consent": consent_info(contact),
     }
 
 

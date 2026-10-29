@@ -11,7 +11,9 @@ from uuid import UUID
 from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import ChatBot, ChatbotPhone, Client, Contact, ConversationMessage, Intent, Rule
+from classes import (ChatBot, ChatbotPhone, Client, Contact, ConversationMessage, Intent, MessageTemplate,
+                     OutboundRequest, Rule)
+from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING
 from crypto.fields import ClientCipher
 from enums import Status
@@ -31,7 +33,8 @@ HISTORY_RETENTION = timedelta(days=365)
 
 # What is stored for a chatbot, and the field that says which one: all of it goes when the chatbot does.
 OF_A_BOT = (("contacts", Contact, "botId"), ("phones", ChatbotPhone, "bot_id"), ("rules", Rule, "botId"),
-            ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"))
+            ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"),
+            ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"))
 
 
 @dataclass(frozen=True)
@@ -167,7 +170,8 @@ class TenantRepository:
     def erase_contacts(self, bot_uuid: UUID, contacts: list) -> dict:
         """The contacts first, then their history: from then on no new message is stored for them."""
         return {"contacts": self._own(Contact, botId=bot_uuid, _uuid__in=list(contacts)).delete(),
-                "messages": self._own(ConversationMessage, botId=bot_uuid, contactId__in=list(contacts)).delete()}
+                "messages": self._own(ConversationMessage, botId=bot_uuid, contactId__in=list(contacts)).delete(),
+                "outbound": self._own(OutboundRequest, botId=bot_uuid, contactId__in=list(contacts)).delete()}
 
     def _add_to_bot(self, bot_id, document, field: str, seal=None):
         bot_uuid = self.get_bot(bot_id).uuid
@@ -302,7 +306,51 @@ class TenantRepository:
         erasures.record(erasures.CONTACT, self.client_id, bot_id=bot_uuid, contacts=copies)
         return self.erase_contacts(bot_uuid, copies)
 
+    def set_consent(self, contact: Contact, categories: list[str], source: str, granted_at: datetime) -> Contact:
+        """Records that the contact agreed to the client's messages of those categories (RF31). It replaces any before."""
+        contact.consent = Consent(categories=list(categories), source=source, grantedAt=granted_at)
+        return self._save_own(contact)
+
+    def withdraw_consent(self, contact: Contact, when: datetime) -> Contact:
+        """The contact withdrew it: it is kept, with when, and nothing outside the window is sent any more."""
+        if contact.consent is None:
+            # There was nothing to withdraw: nothing changes, and nothing is sent outside the window either way.
+            return contact
+        if contact.consent.withdrawnAt is None:
+            contact.consent.withdrawnAt = when
+        return self._save_own(contact)
+
+    # --- What the client sends to its contacts (ADR-0031) ------------------------------------------------------------
+
+    def find_template(self, bot_uuid: UUID, name: str, language: str) -> MessageTemplate | None:
+        return self._own(MessageTemplate, key=MessageTemplate.key_for(bot_uuid, name, language)).first()
+
+    def outbound_request(self, idempotency_key: str) -> OutboundRequest | None:
+        return self._own(OutboundRequest, key=OutboundRequest.key_for(self.client_id, idempotency_key)).first()
+
+    def remember_outbound(self, request: OutboundRequest) -> bool:
+        """Stores a request under its idempotency key. False if another one with the same key got there first."""
+        if request.clientId != self.client_id:
+            raise NotFound(request.uuid)
+        try:
+            request.save(force_insert=True)
+        except NotUniqueError:
+            return False
+        return True
+
+    def forget_outbound(self, request: OutboundRequest) -> None:
+        """A request the bus did not take: the same key can be tried again."""
+        self._own(OutboundRequest, key=request.key).delete()
+
     # --- History ----------------------------------------------------------------------------------------------------
+
+    def last_incoming_at(self, contact: Contact) -> datetime | None:
+        """When the contact last wrote, which opens Meta's window of 24 hours; None if it never did."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        last = (self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid, direction=INCOMING)
+                .order_by("-sentAt").only("sentAt").first())
+        return last.sentAt if last else None
 
     def has_message(self, bot_uuid: UUID, direction: str, message_id: str) -> bool:
         """Whether a message is already in the history: one Meta sends again is."""

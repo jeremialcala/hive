@@ -199,6 +199,36 @@ components:
       - name
       title: ClientRequest
       type: object
+    ConsentRequest:
+      additionalProperties: false
+      description: That a contact agreed to get the client's messages of these categories, when and where (RF31).
+      properties:
+        categories:
+          items:
+            enum:
+            - MARKETING
+            - UTILITY
+            type: string
+          maxItems: 2
+          minItems: 1
+          title: Categories
+          type: array
+        grantedAt:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Grantedat
+        source:
+          maxLength: 200
+          minLength: 1
+          title: Source
+          type: string
+      required:
+      - categories
+      - source
+      title: ConsentRequest
+      type: object
     ContactSearchRequest:
       additionalProperties: false
       description: 'Who to look for among the contacts of a client: a WhatsApp number or a Messenger id, one of
@@ -253,6 +283,31 @@ components:
       - name
       - description
       title: IntentRequest
+      type: object
+    OutboundMessageRequest:
+      additionalProperties: false
+      description: A text inside the window of 24 hours, or an approved template, inside or outside it.
+      properties:
+        template:
+          anyOf:
+          - $ref: '#/components/schemas/TemplateRequest'
+          - type: 'null'
+        text:
+          anyOf:
+          - maxLength: 4096
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Text
+        type:
+          enum:
+          - text
+          - template
+          title: Type
+          type: string
+      required:
+      - type
+      title: OutboundMessageRequest
       type: object
     OwnedKeyRequest:
       additionalProperties: false
@@ -326,6 +381,32 @@ components:
       required:
       - signingKey
       title: SigningKeyRequest
+      type: object
+    TemplateRequest:
+      additionalProperties: false
+      properties:
+        language:
+          maxLength: 15
+          minLength: 2
+          pattern: ^[a-z]{2,3}(_[A-Za-z0-9]{2,8})?$
+          title: Language
+          type: string
+        name:
+          maxLength: 512
+          minLength: 1
+          pattern: ^[a-z0-9_]+$
+          title: Name
+          type: string
+        parameters:
+          items:
+            type: string
+          maxItems: 20
+          title: Parameters
+          type: array
+      required:
+      - name
+      - language
+      title: TemplateRequest
       type: object
     ValidationError:
       properties:
@@ -595,6 +676,149 @@ paths:
       security:
       - OAuth2: []
       summary: Export Contact
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/consent:
+    delete:
+      description: 'The contact withdrew its consent: it is kept with when, and nothing is sent to it outside the
+        window any more.'
+      operationId: withdraw_consent_chat__bot_id__contacts__contact_id__consent_delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Withdraw Consent
+      tags:
+      - Contacts
+    put:
+      description: 'Records that a contact agreed to get the client''s messages of these categories (RF31), and
+        where the client
+
+        got that consent. Outside the window of 24 hours, a template is only sent with it. It replaces any before.'
+      operationId: set_consent_chat__bot_id__contacts__contact_id__consent_put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Set Consent
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/messages:
+    post:
+      description: 'Sends a WhatsApp message to a contact who already wrote to the chatbot (ADR-0031): a text, within
+        the 24
+
+        hours since the contact last wrote, or an approved template of the chatbot, within or outside them; outside
+
+        them, only to a contact who agreed to messages of the template''s category. The engine''s notifier sends
+        it:
+
+        202 says the request was taken, and the message shows in the history once Meta accepted it.
+
+
+        The Idempotency-Key header is required: the same key within 24 hours gives back the same request and sends
+
+        nothing more. 60 sends a minute for each chatbot and 1 000 a day for each client: more get 429 with
+
+        Retry-After.'
+      operationId: send_message_chat__bot_id__contacts__contact_id__messages_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboundMessageRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Send Message
       tags:
       - Contacts
   /chat/{bot_id}/contacts/{contact_id}/turns:

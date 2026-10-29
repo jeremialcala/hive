@@ -341,6 +341,8 @@ BODIES = {
     ("POST", "/clients"): {"name": "globex", "signingKey": public_part(new_signing_key())},
     ("POST", "/clients/{client_id}/keys"): {"signingKey": public_part(new_signing_key())},
     ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key()), "worker": "notifier"},
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": LEAK},
+    ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": LEAK},
 }
 
 
