@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-26
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.1.0
+* **Versión:** 1.2.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -142,15 +142,19 @@ los suyos tiene lo mismo que `cliente-admin`.
 
 ### 7. Mensajes a contactos (D10)
 
-Solo WhatsApp en la v1, y solo a contactos que ya existen: personas que escribieron alguna vez al bot.
+Solo WhatsApp en la v1, y solo a contactos que ya existen: personas que escribieron alguna vez al bot. Lo envía
+siempre el notificador, con límites por bot y por cliente (RS27); el camino lo decide la
+[ADR-0031](../00-project/adr/0031-mensajes-salientes.md).
 
 | Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
 |---|---|---|---|---|---|---|
-| Enviar un texto a un contacto, dentro de la ventana de 24 horas | ⛔ | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el notificador | D10 | ❌ |
-| Enviar una plantilla aprobada de Meta a un contacto, dentro o fuera de la ventana | ⛔ | ✅ nuevo | ✅ nuevo | ✅ nuevo, solo el notificador | D10 | ❌ |
-| Enviar a un número que no es un contacto | ⛔ | ⛔ nuevo | ⛔ nuevo | ⛔ nuevo | D10 | — |
-| Ver las plantillas de la cuenta de WhatsApp del bot y su estado | ⛔ | ✅ nuevo | ✅ nuevo | — | D10 | ❌ |
-| Crear, editar o borrar plantillas, por la API de Hive hacia Meta | ⛔ | ✅ nuevo | ⛔ nuevo | — | D10 | ❌ |
+| Enviar un texto a un contacto, dentro de la ventana de 24 horas | ⛔ | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el notificador | RF29 (D10, ADR-0031) | ⚠️ |
+| Enviar una plantilla aprobada de Meta a un contacto, dentro o fuera de la ventana; fuera, solo con su consentimiento | ⛔ | ✅ nuevo | ✅ nuevo | ✅ nuevo, solo el notificador | RF29, RF31 (D10, ADR-0031) | ⚠️ |
+| Enviar a un número que no es un contacto | ⛔ | ⛔ nuevo | ⛔ nuevo | ⛔ nuevo | RF29 (D10) | — |
+| Registrar o retirar el consentimiento de un contacto | ⛔ | ✅ nuevo | ⛔ nuevo | — | RF31 (ADR-0031) | ⚠️ |
+| Ver el consentimiento de un contacto | ⛔ | ✅ nuevo | ✅ nuevo | — | RF31 (ADR-0031) | ⚠️ |
+| Ver las plantillas de la cuenta de WhatsApp del bot y su estado | ⛔ | ✅ nuevo | ✅ nuevo | — | RF30 (D10, ADR-0031) | ⚠️ |
+| Crear, editar o borrar plantillas, por la API de Hive hacia Meta | ⛔ | ✅ nuevo | ⛔ nuevo | — | RF30 (D10, ADR-0031) | ⚠️ |
 
 ### 8. Lo que el borrador añade y Hive no tiene
 

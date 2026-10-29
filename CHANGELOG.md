@@ -26,6 +26,19 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **[ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md) (propuesta): el cliente escribe a sus contactos por
+  WhatsApp, y solo el notificador envía** (HIG-82).
+  - **El camino:** `hive-api` valida y publica un `PedidoDeEnvio` en Bifröst, el notificador envía y lo enviado vuelve
+    al historial por `RESPUESTAS`, con su autor.
+  - **La ventana de 24 horas** se calcula con el historial.
+  - **El consentimiento de cada contacto** lo guarda Hive. Es lo que Meta exige para escribir fuera de la ventana.
+  - **Los límites:** 60 envíos por minuto por bot y 1 000 al día por cliente.
+  - **La idempotencia,** con `Idempotency-Key`.
+  - **Las plantillas** las gestiona `hive-api` en Meta con el token del bot, que guarda su `WABA_ID` y una copia de
+    cada plantilla.
+  - **Las dos decisiones de Jeremi del 2026-10-29:** el consentimiento lo guarda Hive, y los límites.
+  - **En el PRD** (0.6.0): RF29–RF31, RS27, AB36–AB42 y RS06 matizado. En la matriz (1.2.0), la sección 7 apunta a
+    sus requisitos y gana las filas del consentimiento.
 - **Los requisitos de las capacidades de la D9 en el PRD** (`docs/01-requirements/mvp-baas-gateway.md` 0.5.0,
   HIG-80).
   - **Del operador:** suspender un cliente (RF19), la auditoría de la plataforma (RF20), las trazas y los eventos del

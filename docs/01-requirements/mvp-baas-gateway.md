@@ -1,11 +1,11 @@
 # PRD — MVP del gateway BaaS de mensajería
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28). Las
-  capacidades de la D9, en review desde el 2026-10-29
+  capacidades de la D9 y los mensajes salientes (D10), en review desde el 2026-10-29
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.5.0
+* **Versión:** 0.6.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -62,6 +62,13 @@ con los permisos que marca la matriz.
 
 Se añaden también tres requisitos de seguridad (RS24–RS26) y ocho escenarios de abuso (AB28–AB35). Jeremi tomó el
 2026-10-29 las cuatro decisiones que los requisitos necesitaban ([Decisiones](#tomadas-el-2026-10-29-para-las-capacidades-de-la-d9-jeremi-alcala)).
+
+### Mensajes a contactos (D10, 2026-10-29)
+
+Con la D10, el cliente escribe por iniciativa propia a los contactos que ya le escribieron, solo por WhatsApp: texto
+dentro de la ventana de 24 horas, y plantillas de Meta dentro o fuera de ella ([ADR-0031](../00-project/adr/0031-mensajes-salientes.md)). Se añaden RF29–RF31,
+RS27 y siete escenarios de abuso (AB36–AB42), y RS06 se matiza: la API de gestión usa el token del bot para
+gestionar las plantillas, sin devolverlo.
 
 ## Objetivos / No-objetivos
 
@@ -200,6 +207,13 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB33 | Un `cliente-analista` usa la calificación para leer conversaciones de otro cliente, o las lee sin dejar rastro | RS01, RS23, RF28 | Pendiente |
 | AB34 | Un `cliente-admin`, o quien robe su sesión, desactiva los guardrails para usar el bot contra sus usuarios o para sacar datos | RS26 | Pendiente: la base de la plataforma no se puede desactivar |
 | AB35 | Alguien borra o cambia una entrada de la auditoría, o una versión de un bot, para ocultar lo que hizo | RS25 | Pendiente |
+| AB36 | Alguien usa el bot de un cliente, con una sesión o una credencial robadas, para mandar spam o phishing a sus contactos | RS27, RF31 | Pendiente: límites por bot y por cliente, plantillas solo con consentimiento fuera de la ventana, y cada envío en la auditoría |
+| AB37 | Una persona de un cliente envía a un contacto de otro cliente, o a un número que no es un contacto | RS01, RF29 | Pendiente: el pedido lleva el identificador del contacto, que se busca dentro del cliente, nunca un número |
+| AB38 | Se envía a un contacto que retiró su consentimiento, o a uno que pidió que lo borraran | RF31, RF09 | Pendiente: sin consentimiento vigente, ninguna plantilla sale fuera de la ventana; un contacto borrado ya no existe |
+| AB39 | El mismo envío sale varias veces, por un reintento del cliente o una reentrega del bus | RF29, RNF04 | Pendiente: `Idempotency-Key` en la API y el bucket `enviados` del notificador |
+| AB40 | Una plantilla lleva contenido que Meta prohíbe, o se envía una que Meta no aprobó o pausó | RF30 | Pendiente: Meta revisa cada plantilla, y Hive solo envía las `APPROVED` |
+| AB41 | Un `cliente-analista` envía texto libre, o crea o cambia plantillas | RS23 | Pendiente |
+| AB42 | Quien tiene acceso al log o a la auditoría lee el texto que se envió | RS07 | Pendiente: el texto solo va cifrado al historial |
 
 ## Requisitos funcionales
 
@@ -233,6 +247,9 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RF26 | Cada cambio de la configuración de un bot (persona, reglas, intents y guardrails) crea una versión, con quién la hizo y cuándo. El `cliente-admin` vuelve a una versión anterior, y volver crea una versión nueva, así que nada se reescribe. Al volver, los destinos de los intents se validan otra vez (RS16). El `cliente-analista` ve las versiones y en qué se diferencian, pero no vuelve. Las credenciales de Meta y el `verifyToken` no se versionan. Las versiones se borran con el bot (RF10) | Pendiente | — |
 | RF27 | Cada bot lleva una base de guardrails de la plataforma que nadie desactiva: la inyección de instrucciones, los intentos de sacar datos de otros contactos o de la plataforma, y el fallo cerrado si el filtro no responde (RS26). Sobre esa base, el `cliente-admin` añade sus propios temas y elige para cada uno qué pasa ante una violación: bloquear con una respuesta fija, o solo registrar. Cada violación queda registrada con el bot, el tema y la acción, sin el texto del mensaje (RS07) | Parcial: el clasificador del motor ya filtra la entrada con un rail fijo y falla cerrado (ADR-0005 del motor); falta la configuración por bot | — |
 | RF28 | El `cliente-admin` y el `cliente-analista` califican las respuestas de los bots de su cliente. Para eso leen el historial completo de la conversación del contacto (RF14), sin su número. Cada calificación dice quién la hizo, y cada vez que se abre una conversación para calificar queda en la auditoría del cliente (RF18). Los dos ven las métricas de cumplimiento de cada bot: las respuestas que el evaluador aprobó o rechazó (ADR-0008 del motor), los mensajes bloqueados por los guardrails y las calificaciones de las personas. Las calificaciones se borran con el contacto (RF09) | Pendiente | — |
+| RF29 | El `cliente-admin`, o la credencial de máquina, envía a un contacto que ya existe un texto, dentro de la ventana de 24 horas desde su último mensaje, o una plantilla aprobada, dentro o fuera de ella. El `cliente-analista` solo envía plantillas aprobadas. En la v1, solo por WhatsApp, y nunca a un número que no sea un contacto del cliente. Envía el notificador: la API responde `202` con el id del pedido, y la misma `Idempotency-Key` no envía dos veces. Lo enviado queda en el historial, cifrado y con su autor (RF14), y en la auditoría del cliente (D10, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente (HIG-83, HIG-84) | — |
+| RF30 | El `cliente-admin` crea, edita, borra y lista las plantillas de la cuenta de WhatsApp de un bot por la API de Hive. Hive las gestiona en Meta con el token del bot y guarda una copia de cada una con su estado; el `cliente-analista` las lista. Solo se envía una plantilla aprobada y, en la v1, solo de las categorías `MARKETING` y `UTILITY` (D10, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente (HIG-85, HIG-86) | — |
+| RF31 | El `cliente-admin`, o la credencial de máquina, registra y retira el consentimiento de un contacto para recibir mensajes del cliente: sus categorías, la fecha y el origen. Una plantilla fuera de la ventana solo sale con el consentimiento vigente para su categoría. El consentimiento se ve en la ficha del contacto y se exporta y se borra con él (RF09) (decisión del 2026-10-29, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente | — |
 
 ## Requisitos no funcionales
 
@@ -381,9 +398,26 @@ requirementDiagram
     AprobacionReforzada - satisfies -> RS24
     RegistroDeSoloAnadir - satisfies -> RS25
     GuardrailsDePlataforma - satisfies -> RS26
+    requirement RS27 {
+      id: RS27
+      text: Envios a contactos con limite y auditados
+      risk: high
+      verifymethod: test
+    }
+    requirement RF31 {
+      id: RF31
+      text: Consentimiento del contacto fuera de la ventana
+      risk: high
+      verifymethod: test
+    }
+    element EnvioPorElNotificador {
+      type: "sin construir"
+    }
+    EnvioPorElNotificador - satisfies -> RS27
+    EnvioPorElNotificador - satisfies -> RF31
 ```
 *Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08; desde
-la D9, RS24–RS26. Los
+la D9, RS24–RS26; desde la D10, RS27 y RF31. Los
 elementos "sin construir" no tienen todavía ni componente ni prueba que los verifique; tres de ellos (autorización,
 cifrado y derechos) se construyeron en el Gate 2 y el diagrama no se ha vuelto a trazar.*
 
@@ -399,7 +433,7 @@ OWASP Top 10 en su edición 2025.
 | RS03 | Solo se procesan notificaciones con `X-Hub-Signature-256` válida sobre el cuerpo crudo | Construido | V2.10, V9.2 | A08 |
 | RS04 | El token de verificación se compara en tiempo constante, y un bot sin token no se puede verificar | Construido | V2.10 | A07 |
 | RS05 | El número de teléfono de un contacto y el número de WhatsApp de un bot se guardan cifrados con una clave propia del cliente dueño del bot, y el contacto se puede localizar sin guardar el número en claro | Construido | V6.2, V8.3 | A04 |
-| RS06 | Los tokens de Meta y el App Secret de un bot se guardan cifrados; la API de gestión no los devuelve a los clientes, y solo el motor de respuestas obtiene los tokens, pidiéndolos al gateway por `bot_id` con una credencial de servicio propia y dejando registro | Construido en el gateway: cifrados, fuera de la API de gestión, y entregados solo al motor con la clave que tiene para el cliente dueño del bot, dejando una línea en el log cada vez. `tests/unit/test_service_credential.py` | V6.4, V8.3 | A04 |
+| RS06 | Los tokens de Meta y el App Secret de un bot se guardan cifrados; la API de gestión no los devuelve a los clientes, y solo el motor de respuestas obtiene los tokens, pidiéndolos al gateway por `bot_id` con una credencial de servicio propia y dejando registro. Los usan sin devolverlos la ingesta, para el perfil de un contacto de Messenger, y la API de gestión, para las plantillas de WhatsApp ([ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Construido en el gateway: cifrados, fuera de la API de gestión, y entregados solo al motor con la clave que tiene para el cliente dueño del bot, dejando una línea en el log cada vez. `tests/unit/test_service_credential.py` | V6.4, V8.3 | A04 |
 | RS07 | Ningún log contiene números, nombres, contenido de mensajes ni credenciales, en ningún nivel | Construido: no se escribe en el log nada de lo que envía quien llama ni de lo que Meta envía sobre una persona; de un fallo, su tipo y su línea. El log de accesos del servidor, que escribía el token de verificación, está apagado. `tests/unit/test_logs_and_errors.py` | V7.1 | A09 |
 | RS08 | El mensaje viaja y reposa protegido entre el gateway y el motor: broker en red privada, con usuario propio, y contenido cifrado | Parcial: red privada y usuario propio previstos con Hermod; el cifrado JWE existe y está desactivado | V6.2, V9.2 | A04 |
 | RS09 | En internet solo se publica `/chat/<uuid>`. La gestión y la documentación de la API se quedan en red privada hasta que existan el registro de clientes y la autenticación con JWE (RS01, RS02); a partir de entonces la gestión se publica | Construido sin desplegar: el webhook y la gestión son dos servicios, y el túnel solo publica el del webhook, sin filtrar por ruta ([ADR-0018](../00-project/adr/0018-webhook-y-gestion-por-separado.md)) | V14.3 | A02 |
@@ -420,6 +454,7 @@ OWASP Top 10 en su edición 2025.
 | RS24 | El mantenimiento destructivo del operador (purgar o borrar mensajes del bus) muestra antes a qué afecta y exige MFA de los últimos 5 minutos y un motivo escrito, que quedan en la auditoría (RF22) | Pendiente | V3.7, V7.2 | A01 |
 | RS25 | La auditoría y las versiones de un bot son de solo añadir: ninguna persona ni credencial las edita ni las borra. Solo desaparecen al caducar o con la baja de su bot o su cliente (RF10). La auditoría del operador no lleva datos de los contactos ni contenido de mensajes (RF20) | Pendiente | V7.2, V7.3 | A09 |
 | RS26 | La base de guardrails de la plataforma se aplica a todo bot, ningún cliente la desactiva, y falla cerrado: si el filtro no responde, el mensaje se trata como bloqueado (RF27) | Parcial: el rail fijo del clasificador falla cerrado (ADR-0005 del motor); falta que la base y los temas del cliente sean por bot | V5.2, V11.1 | A05, A06 |
+| RS27 | Los envíos a contactos tienen límite: 60 por minuto por bot y 1 000 al día por cliente, de texto y de plantilla juntos, que el operador puede subir para un cliente. Pasarlos responde `429` con `Retry-After`. Cada envío queda en la auditoría del cliente, sin su texto (decisión del 2026-10-29, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Pendiente | V11.1, V7.2 | A06, A09 |
 
 ## Threat assessment inicial
 
@@ -581,6 +616,13 @@ control construido y una prueba que lo verifica.
 | Qué cuenta como aprobación humana con un solo operador | Ver antes a qué afecta, MFA de los últimos 5 minutos y un motivo escrito | RF22, RS24 |
 | Qué ve quien califica una respuesta | La conversación completa del contacto, sin su número, y cada apertura queda en la auditoría del cliente | RF28 |
 | Hasta dónde configura el cliente los guardrails | Sobre una base de la plataforma que no se desactiva, añade sus temas, cada uno con su acción: bloquear con una respuesta fija, o solo registrar | RF27, RS26 |
+
+### Tomadas el 2026-10-29 para los mensajes salientes (Jeremi Alcala)
+
+| Decisión | Resultado | Dónde queda |
+|---|---|---|
+| El consentimiento que Meta exige fuera de la ventana | Lo guarda Hive, por contacto y por categoría, con fecha y origen. Sin él, ninguna plantilla sale fuera de la ventana | RF31, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md) |
+| Los límites de Hive, además de los de Meta | 60 envíos por minuto por bot y 1 000 al día por cliente, que el operador puede subir | RS27, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md) |
 
 ### Por decidir en el diseño (D9)
 
