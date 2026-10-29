@@ -306,7 +306,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 26
+    assert len(NOT_FOR_THE_ENGINE) == 29
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 

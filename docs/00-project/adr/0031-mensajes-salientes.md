@@ -86,8 +86,11 @@ sequenceDiagram
     BUS->>I: RespuestaEnviada
     I->>DB: historial cifrado, mensaje de salida con su autor
 ```
-*Eje comportamiento · fase 02. El pedido usa la partición del contacto, así que un envío del cliente y una
-respuesta del bot a la misma persona salen en orden (RNF08).*
+*Eje comportamiento · fase 02. El pedido lleva la partición del contacto en su sujeto, como las respuestas del bot.
+Corrección del 2026-10-29, al construirlo (HIG-83): el pedido va en su propio stream, `SALIENTES`, que el notificador
+lee con su propio consumidor. El orden respecto a una respuesta del bot a la misma persona es el de llegada a cada
+stream, no está garantizado entre los dos. Para un mensaje que el cliente envía por iniciativa propia basta: no
+responde a nada.*
 
    - **El pedido no lleva el número del contacto,** solo su identificador. El notificador lo resuelve igual que con las
      respuestas del motor.

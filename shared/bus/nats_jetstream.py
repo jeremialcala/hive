@@ -7,10 +7,12 @@
 """
 import asyncio
 import logging
+import secrets
 import ssl
 import time
 
 import nats.errors
+import nats.js.errors
 from nats.aio.client import Client
 
 from . import BusUnavailable, Published
@@ -20,6 +22,9 @@ log = logging.getLogger(__name__)
 ACK_TIMEOUT = 3      # seconds for the acknowledgement: inside what Meta waits for, and well above the fsync of I0
 CONNECT_TIMEOUT = 2  # seconds for each attempt to reach the bus
 RETRY_AFTER = 1.0    # seconds without trying again after a failed attempt: a bus that is down costs no wait
+COUNT_ATTEMPTS = 20  # writes of a counter that lose against another process before it gives up
+COUNT_BACKOFF = 0.02 # seconds at most of wait, at random, before writing again after losing
+JITTER = secrets.SystemRandom()
 
 
 class NatsPublisher:
@@ -40,6 +45,9 @@ class NatsPublisher:
         # A lock, like a connection, belongs to one event loop: both are made again if the loop changes.
         self._lock = None
         self._lock_loop = None
+        # The counters of one process are written one at a time: only another process can then win a write.
+        self._count_lock = None
+        self._count_lock_loop = None
 
     def _tls(self) -> ssl.SSLContext | None:
         if not self._url.startswith("tls://"):
@@ -107,6 +115,43 @@ class NatsPublisher:
             # or no acknowledgement in time: in every case the event may not be kept, and it is sent again.
             raise BusUnavailable(type(e).__name__) from None
         return Published(stream=ack.stream, sequence=ack.seq, duplicate=bool(ack.duplicate))
+
+    async def count(self, bucket: str, key: str) -> int:
+        """
+            Adds one to the counter `key` of the bucket and says how many it holds now. Two callers at the same time
+            do not lose a count: each write says which revision it read, and the one that loses tries again.
+        """
+        jetstream = await self._connect()
+        loop = asyncio.get_running_loop()
+        if self._count_lock_loop is not loop:
+            self._count_lock, self._count_lock_loop = asyncio.Lock(), loop
+        async with self._count_lock:
+            return await self._count(jetstream, bucket, key)
+
+    @staticmethod
+    async def _count(jetstream, bucket: str, key: str) -> int:
+        try:
+            store = await jetstream.key_value(bucket)
+            for attempt in range(COUNT_ATTEMPTS):
+                if attempt:
+                    await asyncio.sleep(JITTER.uniform(0, COUNT_BACKOFF))
+                try:
+                    entry = await store.get(key)
+                except nats.js.errors.KeyNotFoundError:
+                    try:
+                        await store.create(key, b"1")
+                        return 1
+                    except nats.js.errors.KeyWrongLastSequenceError:
+                        continue
+                value = int(entry.value or b"0") + 1
+                try:
+                    await store.update(key, str(value).encode(), last=entry.revision)
+                    return value
+                except nats.js.errors.KeyWrongLastSequenceError:
+                    continue
+        except (nats.errors.Error, OSError, asyncio.TimeoutError, ValueError) as e:
+            raise BusUnavailable(type(e).__name__) from None
+        raise BusUnavailable("too many writers at once")
 
     async def close(self) -> None:
         connection, self._connection, self._jetstream = self._connection, None, None

@@ -46,6 +46,31 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **Escribir a un contacto por WhatsApp** (HIG-83, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF29,
+  RF31, RS27). Nueva ruta, `POST /chat/{bot_id}/contacts/{contact_id}/messages`, para un texto o una plantilla. Antes
+  de publicar comprueba, en este orden:
+  - que el contacto es del cliente; si no, `404`;
+  - la ventana de 24 horas, con el último mensaje del contacto; un texto fuera de ella da `422 OUTSIDE_WINDOW`;
+  - que la plantilla esté aprobada, sea de `MARKETING` o `UTILITY` y lleve sus valores;
+  - fuera de la ventana, el consentimiento del contacto para su categoría (`NO_CONSENT`);
+  - los límites: 60 por minuto por bot y 1 000 al día por cliente, con `429` y `Retry-After`.
+
+  Después publica un `PedidoDeEnvio` en `gateway.outbound.{partición}.{bot}.{contacto}` (stream `SALIENTES`) y responde
+  `202`. Más detalles:
+  - **Un solo envío por clave:** la misma `Idempotency-Key` en 24 horas devuelve el mismo pedido. Con otro cuerpo da
+    `IDEMPOTENCY_KEY_REUSED`. Si el bus no toma el pedido, la clave queda libre.
+  - **El log** dice quién, a qué bot y contacto y qué plantilla, nunca el texto, los valores ni el número.
+  - **El consentimiento:** `PUT` y `DELETE /chat/{bot_id}/contacts/{contact_id}/consent`. Retirarlo lo conserva con su
+    fecha, y va en la exportación del contacto.
+  - **Colecciones nuevas:** `templates`, la copia de las plantillas, que llenará HIG-85, y `outbound`, los pedidos, que
+    caducan a las 24 horas. Se borran con el bot, el cliente y el contacto.
+  - **Los contadores** viven en el bucket `limites` de Bifröst (higerotech/bifrost#6), con escrituras condicionadas por
+    revisión y serializadas en el proceso. Sin bus, en desarrollo, viven en memoria.
+  - **El contrato `asyncapi-v2.yaml`** gana el `PedidoDeEnvio`, y el OpenAPI, las tres rutas.
+  - **Pruebas:** `tests/unit/test_outbound.py`, con 40 pruebas, y `tests/integration/test_send_limits_bus.py`, contra un
+    NATS real.
+  - **Corrección de la ADR-0031:** el orden entre un envío del cliente y una respuesta del bot no está garantizado,
+    porque van en streams distintos.
 - **[ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) (aceptada el 2026-10-29): los tokens de acceso van atados
   por DPoP a la clave que los pidió** (HIG-89).
   - **La clave:** una credencial de máquina, de un cliente o de un worker del motor, firma cada prueba con su clave

@@ -23,6 +23,11 @@ def identified_subject(partition: int, bot_id, contact_id) -> str:
     return f"gateway.message.{partition}.{bot_id}.{contact_id}"
 
 
+def outbound_subject(partition: int, bot_id, contact_id) -> str:
+    """Where the management API publishes a client's request to send to a contact, in the stream SALIENTES."""
+    return f"gateway.outbound.{partition}.{bot_id}.{contact_id}"
+
+
 def reply_subject(bot_id) -> str:
     """Where the notifier publishes what it sent, in the stream RESPUESTAS."""
     return f"engine.reply.sent.{bot_id}"

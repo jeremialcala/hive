@@ -148,11 +148,11 @@ siempre el notificador, con límites por bot y por cliente (RS27); el camino lo 
 
 | Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
 |---|---|---|---|---|---|---|
-| Enviar un texto a un contacto, dentro de la ventana de 24 horas | ⛔ | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el notificador | RF29 (D10, ADR-0031) | ⚠️ |
+| Enviar un texto a un contacto, dentro de la ventana de 24 horas | ⛔ | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el notificador | RF29 (D10, ADR-0031) | ✅ `POST /chat/{bot_id}/contacts/{contact_id}/messages`; el envío, pendiente (HIG-84) |
 | Enviar una plantilla aprobada de Meta a un contacto, dentro o fuera de la ventana; fuera, solo con su consentimiento | ⛔ | ✅ nuevo | ✅ nuevo | ✅ nuevo, solo el notificador | RF29, RF31 (D10, ADR-0031) | ⚠️ |
 | Enviar a un número que no es un contacto | ⛔ | ⛔ nuevo | ⛔ nuevo | ⛔ nuevo | RF29 (D10) | — |
-| Registrar o retirar el consentimiento de un contacto | ⛔ | ✅ nuevo | ⛔ nuevo | — | RF31 (ADR-0031) | ⚠️ |
-| Ver el consentimiento de un contacto | ⛔ | ✅ nuevo | ✅ nuevo | — | RF31 (ADR-0031) | ⚠️ |
+| Registrar o retirar el consentimiento de un contacto | ⛔ | ✅ | ⛔ nuevo | — | RF31 (ADR-0031) | ✅ `PUT`, `DELETE /chat/{bot_id}/contacts/{contact_id}/consent` |
+| Ver el consentimiento de un contacto | ⛔ | ✅ | ✅ nuevo | — | RF31 (ADR-0031) | ✅ en `GET /chat/{bot_id}/contacts/{contact_id}` |
 | Ver las plantillas de la cuenta de WhatsApp del bot y su estado | ⛔ | ✅ nuevo | ✅ nuevo | — | RF30 (D10, ADR-0031) | ⚠️ |
 | Crear, editar o borrar plantillas, por la API de Hive hacia Meta | ⛔ | ✅ nuevo | ⛔ nuevo | — | RF30 (D10, ADR-0031) | ⚠️ |
 
