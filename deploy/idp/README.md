@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 0.2.0
+* **Versión:** 0.3.0
 * **ADRs:** [ADR-0029](../../docs/00-project/adr/0029-autenticacion-de-personas.md), con su enmienda del 2026-10-28
 * **Tareas:** HIG-91 y HIG-96
 
@@ -141,8 +141,29 @@ y termina en la cuenta del usuario, no en la consola.
 
   Si abres `mfa/set` sin una sesión en el navegador, sale el error genérico «An error occurred in the Server
   Components render», y el log de `hive-idp-login` dice `No session found`.
-- **Proyecto `Hive`,** con la aplicación `hive-portal`: OIDC, Web, confidencial, Authorization Code con PKCE y sus
-  URL de retorno en `https://hive-app.higerotech.com`.
+- **Proyecto `Hive`, con la aplicación `hive-portal`,** el BFF de la PWA (ADR-0029, HIG-93). Se creó el 2026-10-29.
+  Zitadel solo autentica: los roles y el cliente de cada persona viven en Hive. Por eso el proyecto no lleva roles y
+  las tres comprobaciones al autenticar (roles, autorización y proyecto) están desactivadas.
+
+  | Ajuste de `hive-portal` | Valor |
+  |---|---|
+  | Tipo | Web |
+  | Método de autenticación | **Code**, con secreto de cliente (`client_secret_basic`) |
+  | Redirección | `https://hive-app.higerotech.com/auth/callback` |
+  | Tras cerrar sesión | `https://hive-app.higerotech.com/` |
+  | Concesiones | solo Authorization Code, sin refresh token |
+  | Token de acceso | Bearer. Hive no lo usa: intercambia el ID token (RFC 8693) |
+  | Roles y datos del usuario en los tokens | desactivados. Hive busca a la persona por `iss` y `sub` |
+  | Modo desarrollo | desactivado: solo acepta redirecciones `https` |
+  | Versión del login | la v2, que la instancia exige (`LOGINV2_REQUIRED`) aunque la aplicación diga v1 |
+
+  - **El método:** el BFF manda además su `code_challenge`. En Zitadel, «PKCE» es el modo de cliente público, sin
+    secreto: no es este.
+  - **Sin refresh token:** el ID token dura 12 h en la instancia, lo mismo que la sesión máxima del BFF.
+
+  El secreto de cliente se muestra una sola vez, al crear la aplicación. Va al gestor de contraseñas de Jeremi y,
+  cuando se despliegue el BFF, a Andvari. El Client ID no es secreto, pero tampoco se escribe aquí: lo lee el BFF de su
+  configuración.
 - **Una cuenta de servicio** para que `hive-api` cree y enlace personas (HIG-94). La clave se guarda en Andvari.
 
 ## Vigilancia

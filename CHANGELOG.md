@@ -317,6 +317,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **Runbook de Zitadel (`deploy/idp/README.md`) 0.3.0: el proyecto `Hive` y la aplicación `hive-portal`, tal como se
+  crearon el 2026-10-29** (HIG-91, HIG-93). Es un cliente confidencial con secreto, solo Authorization Code y sin
+  refresh token. No lleva roles ni datos del usuario en los tokens, y sus rutas están en `hive-app.higerotech.com`.
 - **Runbook de Zitadel (`deploy/idp/README.md`): la configuración en la consola, con las trampas del 2026-10-28.**
   - La MFA obligatoria va después de registrar un TOTP en cada administrador. Activarla antes deja la consola
     rechazando todas las sesiones (`AUTHZ-Kl3p0`), porque el login no obliga a registrar el segundo factor. Se
