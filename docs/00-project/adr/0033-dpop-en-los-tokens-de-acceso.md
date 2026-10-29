@@ -1,10 +1,10 @@
 # ADR-0033: Los tokens de acceso de Hive van atados por DPoP a la clave que los pidió
 
-* **Estado:** proposed
+* **Estado:** accepted
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 1.0.0
 * **ID:** ADR-0033
 * **Supersede:** — (completa la [ADR-0025](0025-oauth2-client-credentials-con-private-key-jwt.md), que dejó DPoP
   pendiente)
