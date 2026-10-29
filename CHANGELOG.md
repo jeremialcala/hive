@@ -36,7 +36,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - **El motor también,** y el cambio es de golpe: decisiones de Jeremi del 2026-10-29.
   - **Medido en midgard,** con media CPU: firmar una prueba cuesta 0,9 ms y verificarla, 1,7 ms.
   - **En el PRD** (0.8.0): RS30 y AB50–AB51, y RS02 ampliado. La ADR-0025 da DPoP por resuelto.
-- **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (propuesta): los servicios de terceros
+- **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (aceptada el 2026-10-29): los servicios de terceros
   entran por un catálogo MCP del operador, y solo el enlace los llama** (HIG-79).
   - **El catálogo:** servidores remotos por Streamable HTTP. Cada herramienta está aprobada por la huella de su
     descripción y su esquema, y es de lectura o de escritura según decide el operador, no las anotaciones. Una
