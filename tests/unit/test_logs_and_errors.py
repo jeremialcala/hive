@@ -322,6 +322,9 @@ def test_a_method_that_is_not_one_of_the_usual_is_not_written_as_sent(http, logg
 # --- The text of a failure -------------------------------------------------------------------------------------------
 
 LEAK = "failure-text-marker 12025550143 EAAG-token-in-the-failure"
+TEMPLATE = {"name": "order_update", "language": "es", "category": "UTILITY",
+            "components": [{"type": "BODY", "text": f"{LEAK} {{{{1}}}}", "example": {"body_text": [["A-1"]]}}]}
+TEMPLATE_ID = "1234567890"
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
 # It answers from what the service holds in memory: there is nothing in it to fail. And the tokens and the last
 # turns are only for the response engine: the operator, who makes these calls, is turned away before anything can
@@ -343,6 +346,8 @@ BODIES = {
     ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key()), "worker": "notifier"},
     ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": LEAK},
     ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": LEAK},
+    ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
+    ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
 }
 
 
@@ -355,7 +360,7 @@ def test_no_route_writes_what_its_address_carries(http, operator, logged, method
     """One part of the address at a time is not an identifier, in every route that has one."""
     made = set_up(http, operator)
     parts = {"bot_id": made["bot"], "intent_id": made["intent"], "contact_id": made["contact"],
-             "client_id": str(operator.client_id), "kid": operator.kid}
+             "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID}
     parts[planted] = "address-marker%0AFORGED"
 
     response = call(http, operator, method, path.format(**parts), BODIES.get((method, path)))
@@ -385,7 +390,7 @@ def everything_fails(monkeypatch):
 def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, logged, everything_fails, method, path):
     made = set_up(http, operator)
     address = path.format(bot_id=made["bot"], intent_id=made["intent"], contact_id=made["contact"],
-                          client_id=operator.client_id, kid=operator.kid)
+                          client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID)
     # Adding a key of its own needs a proof for the token of that same request: the body cannot be made ahead.
     request = (operator.adding(new_signing_key()) if (method, path) == ("POST", "/keys") else
                {"headers": operator.auth, "json": BODIES.get((method, path))})

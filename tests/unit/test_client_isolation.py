@@ -17,6 +17,9 @@ from classes import ChatBot, ChatbotPhone, Contact, Intent, Rule
 from repository import TenantRepository
 
 INTENT = {"name": "check_order", "description": "Order status"}
+TEMPLATE = {"name": "order_update", "language": "es", "category": "UTILITY",
+            "components": [{"type": "BODY", "text": "Your order {{1}} is on its way",
+                            "example": {"body_text": [["A-1"]]}}]}
 BODIES = {
     ("POST", "/chat/{bot_id}/phones"): {"phoneNumber": "12025550101", "phoneId": "100000000000001"},
     ("POST", "/chat/{bot_id}/rules"): {"rules": ["Be kind"]},
@@ -25,10 +28,16 @@ BODIES = {
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "an-app-secret"},
     ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": "web form"},
     ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": "Hello"},
+    ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
+    ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
 }
 # Sending is accepted with a 202 once the bus holds it, and only inside the window: test_outbound covers the owner.
 # Whoever is not the owner gets the same 404 here as anywhere else.
 SENDING = ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")
+# Making, editing and deleting a template goes to Meta: test_templates covers the owner, against a Meta of its own.
+IN_META = {("POST", "/chat/{bot_id}/templates"), ("PUT", "/chat/{bot_id}/templates/{template_id}"),
+           ("DELETE", "/chat/{bot_id}/templates/{template_id}")}
+TEMPLATE_ID = "1234567890"
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
 ROUTES = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
@@ -68,12 +77,13 @@ def stored(owner):
 
 
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
-    return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id),
+    return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
+                                            template_id=TEMPLATE_ID),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 19 and ENGINE_ONLY <= set(ROUTES)
+    assert len(BOT_ROUTES) == 23 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     assert OTHER_ROUTES == [
@@ -85,7 +95,7 @@ def test_every_route_of_a_chatbot_is_covered():
     ]
 
 
-@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES if route != SENDING])
+@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES if route != SENDING and route not in IN_META])
 def test_the_owner_reaches_its_chatbot(http, owner, stored, method, path):
     bot, intent, contact = stored
 

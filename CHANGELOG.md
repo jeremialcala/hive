@@ -46,6 +46,33 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **Las plantillas de WhatsApp de un bot** (HIG-85, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF30).
+  Hive las crea, edita, borra y lista en Meta con el `whatsappToken` del bot, y guarda una copia de cada una con su
+  estado. Solo se envía una plantilla cuya copia diga `APPROVED`.
+  - **Rutas nuevas:** `POST` y `GET /chat/{bot_id}/templates`, y `PUT` y `DELETE
+    /chat/{bot_id}/templates/{template_id}`, con el id de Meta. `GET` con `?sync=true` trae la lista de Meta sobre la
+    copia y quita lo que Meta ya no tiene, solo si la lista llegó entera.
+  - **La cuenta:** `PUT /chat/{bot_id}/credentials` acepta `wabaId`, el id de la cuenta de WhatsApp Business. No es
+    secreto y se guarda en claro. Un solo token para enviar y para gestionar plantillas (decisión de Jeremi del
+    2026-10-29): necesita el permiso `whatsapp_business_management`.
+  - **Antes de ir a Meta** se comprueba la plantilla, para no gastar los envíos que Meta permite por hora:
+    - el nombre, en minúsculas, dígitos y `_`;
+    - la categoría, `MARKETING` o `UTILITY`;
+    - un solo cuerpo, con sus valores `{{1}}`, `{{2}}`… desde 1, sin huecos y con un ejemplo cada uno;
+    - la cabecera de texto y el pie, sin valores;
+    - hasta 10 botones, y un enlace solo a `https`.
+  - **Editar** solo vale para una plantilla `APPROVED`, `REJECTED` o `PAUSED`. Si no, `409`. La copia vuelve a
+    `PENDING` y no se envía hasta que Meta la apruebe otra vez.
+  - **Errores:**
+    - sin `wabaId`, `422 NO_WABA`; sin token, `422 NO_TOKEN`;
+    - un token que Meta no acepta, `502` con el permiso que falta;
+    - un no de Meta, `422 META_REFUSED` con su código y nunca su mensaje;
+    - Meta caído o saturado, `503`.
+  - **El log** dice el bot y el id de Meta, nunca el texto de la plantilla ni el token.
+  - **Configuración:** `META_GRAPH_URL` y `META_GRAPH_VERSION`, por defecto `https://graph.facebook.com` y `v26.0`.
+  - **Pruebas:** `tests/unit/test_templates.py`, con 68 pruebas contra un Graph API local. Las de aislamiento, de
+    autenticación, de la credencial del motor y del log cubren las cuatro rutas.
+  - **Documentación:** el README, el PRD (0.8.1: RF29, RF30 y AB40), la matriz (1.3.1) y el contrato OpenAPI.
 - **El notificador envía lo que el cliente escribe a sus contactos** (HIG-84,
   [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md)).
   - **El consumidor:** lee cada `PedidoDeEnvio` de `SALIENTES` con su consumidor `notifier` y envía por la Cloud API.

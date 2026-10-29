@@ -102,9 +102,12 @@ class TenantRepository:
         return BotSecrets(verify_token=opened["verifyToken"], facebook_token=opened["facebookToken"],
                           whatsapp_token=opened["whatsappToken"], app_secret=opened["appSecret"])
 
-    def set_bot_credentials(self, bot_id, **credentials) -> ChatBot:
+    def set_bot_credentials(self, bot_id, wabaId: str | None = None, **credentials) -> ChatBot:
         """Loads or rotates the Meta credentials of a chatbot. Only the ones given change."""
         bot = self.get_bot(bot_id)
+        if wabaId is not None:
+            # An id of Meta, not a secret: it is stored as it is.
+            bot.wabaId = wabaId
         for field, value in credentials.items():
             if field not in BOT_CREDENTIALS:
                 raise ValueError(field)
@@ -343,6 +346,33 @@ class TenantRepository:
 
     def find_template(self, bot_uuid: UUID, name: str, language: str) -> MessageTemplate | None:
         return self._own(MessageTemplate, key=MessageTemplate.key_for(bot_uuid, name, language)).first()
+
+    def list_templates(self, bot_uuid: UUID) -> list:
+        return list(self._own(MessageTemplate, botId=bot_uuid).order_by("name", "language"))
+
+    def template_by_meta_id(self, bot_uuid: UUID, meta_id: str) -> MessageTemplate | None:
+        return self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).first()
+
+    def save_template(self, bot: ChatBot, template: MessageTemplate) -> MessageTemplate:
+        """Hive's copy of a template of one of the client's chatbots, over the one it had of it."""
+        if bot.clientId != self.client_id:
+            raise NotFound(bot.uuid)
+        template.clientId, template.botId = self.client_id, bot.uuid
+        template.key = MessageTemplate.key_for(bot.uuid, template.name, template.language)
+        template.updatedAt = datetime.now(timezone.utc)
+        template.save()
+        if not self._own(ChatBot, uuid=bot.uuid).count():
+            # The chatbot was deleted between the lookup and the save: this would be left behind, out of reach.
+            template.delete()
+            raise NotFound(bot.uuid)
+        return template
+
+    def forget_templates(self, bot_uuid: UUID, keep: set) -> int:
+        """Removes the copies of the templates Meta does not have any more: how many."""
+        return self._own(MessageTemplate, botId=bot_uuid, key__nin=sorted(keep)).delete()
+
+    def delete_template(self, template: MessageTemplate) -> None:
+        self._own(MessageTemplate, key=template.key).delete()
 
     def outbound_request(self, idempotency_key: str) -> OutboundRequest | None:
         return self._own(OutboundRequest, key=OutboundRequest.key_for(self.client_id, idempotency_key)).first()

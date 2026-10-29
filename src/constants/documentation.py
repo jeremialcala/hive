@@ -99,6 +99,11 @@ TAGS_METADATA = [
                        "about it and deleting it."
     },
     {
+        "name": "Templates",
+        "description": "The WhatsApp templates of a chatbot, created, edited and deleted in Meta, with the copy "
+                       "of each that Hive keeps with its state: only an approved one is sent."
+    },
+    {
         "name": "Intents",
         "description": "Configure intents and their actions (API calls) as LLM tool definitions, "
                        "stored per chatbot and consumed by the downstream worker."

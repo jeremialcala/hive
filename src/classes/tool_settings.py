@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     facebook_whatsapp_message: str
     facebook_graph_version: str
 
+    # The Graph API that manages the WhatsApp templates of a chatbot (HIG-85), at the version the engine sends with.
+    meta_graph_url: str = "https://graph.facebook.com"
+    meta_graph_version: str = "v26.0"
+
     # hide_input_in_errors: a rejected setting must not be echoed into the startup traceback.
     # extra="ignore": a key left over in config.env from a setting that no longer exists must not stop the start.
     model_config = SettingsConfigDict(env_file="config.env", hide_input_in_errors=True, extra="ignore")

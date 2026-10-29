@@ -23,11 +23,13 @@ from auth import dpop, token_limits
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
-                     ResponseData, RulesRequest, ServiceKeyRequest, SigningKeyRequest)
+                     ResponseData, RulesRequest, ServiceKeyRequest, SigningKeyRequest, TemplateCreateRequest,
+                     TemplateEditRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
 from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_service_key, ctr_add_signing_key,
-                        ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent, ctr_delete_chatbot,
-                        ctr_delete_client, ctr_delete_contact, ctr_delete_intent, ctr_export_contact,
+                        ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent, ctr_create_template,
+                        ctr_delete_chatbot, ctr_delete_client, ctr_delete_contact, ctr_delete_intent,
+                        ctr_delete_template, ctr_edit_template, ctr_export_contact, ctr_list_templates,
                         ctr_gateway_keys, ctr_get_bot_tokens, ctr_get_bot_tools, ctr_get_chatbot_from_uuid,
                         ctr_get_chatbot_phones, ctr_get_chatbot_rules_from_uuid, ctr_get_client, ctr_get_intent,
                         ctr_get_intents, ctr_last_turns, ctr_list_clients, ctr_list_contacts, ctr_register_client,
@@ -408,6 +410,43 @@ def set_consent(bot_id: str, contact_id: str, consent: ConsentRequest,
 def withdraw_consent(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
     """The contact withdrew its consent: it is kept with when, and nothing is sent to it outside the window any more."""
     return ctr_withdraw_consent(repo, bot_id, contact_id)
+
+
+@app.post(path="/chat/{bot_id}/templates", tags=["Templates"], response_model=ResponseData,
+          status_code=status.HTTP_201_CREATED)
+def create_template(bot_id: str, template: TemplateCreateRequest, repo: TenantRepository = Depends(get_repository)):
+    """
+        Creates a WhatsApp template of the chatbot in Meta, with the chatbot's WhatsApp token and WhatsApp Business
+        Account (wabaId, loaded with PUT /chat/{bot_id}/credentials). Meta reviews it: it is sent once it says
+        APPROVED, which a list with ?sync=true brings. Only MARKETING and UTILITY; the body's values, {{1}}, {{2}}...,
+        with an example each, and none in the header or the footer.
+    """
+    return ctr_create_template(repo, bot_id, template)
+
+
+@app.get(path="/chat/{bot_id}/templates", tags=["Templates"], response_model=ResponseData)
+def list_templates(bot_id: str, sync: bool = Query(default=False), repo: TenantRepository = Depends(get_repository)):
+    """
+        The templates of the chatbot, as Hive last saw them in Meta. With ?sync=true, Meta's list is brought over
+        the copy first: states, categories, and the templates made or deleted in Meta's own tools.
+    """
+    return ctr_list_templates(repo, bot_id, sync)
+
+
+@app.put(path="/chat/{bot_id}/templates/{template_id}", tags=["Templates"], response_model=ResponseData)
+def edit_template(bot_id: str, template_id: str, template: TemplateEditRequest,
+                  repo: TenantRepository = Depends(get_repository)):
+    """
+        Replaces every component of a template, by Meta's id: one APPROVED, REJECTED or PAUSED, else 409. Meta
+        reviews it again, and it is not sent until it is approved again.
+    """
+    return ctr_edit_template(repo, bot_id, template_id, template)
+
+
+@app.delete(path="/chat/{bot_id}/templates/{template_id}", tags=["Templates"], response_model=ResponseData)
+def delete_template(bot_id: str, template_id: str, repo: TenantRepository = Depends(get_repository)):
+    """Deletes a template in Meta, in its language only, and Hive's copy. Meta keeps its name taken for 30 days."""
+    return ctr_delete_template(repo, bot_id, template_id)
 
 
 @app.post(path="/contacts/search", tags=["Contacts"], response_model=ResponseData)
