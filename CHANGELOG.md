@@ -417,6 +417,11 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **El vigía ya no arranca lo que alguien paró** (`deploy/vigia/hive-vigia.sh`, HIG-96). Docker marca `unhealthy`
+  también un contenedor parado, y el vigía le hacía `docker restart`, que lo arranca. El 2026-10-28 deshizo en 23 s el
+  `docker stop hive-idp-proxy` de la prueba de aceptación de HIG-96, y lo mismo habría hecho en medio de una
+  restauración o un mantenimiento. Ahora solo reinicia lo que está en marcha y unhealthy (`running unhealthy`). Vale
+  para midgard y para Nidavellir, que usan el mismo script.
 - **La raíz de `hive-auth.higerotech.com` lleva a la consola de Zitadel** (HIG-91). Llevaba a la página de login, que
   abierta sola no vuelve a ninguna aplicación y terminaba en la cuenta del usuario. Ahora `/` redirige con un 302 a
   `/ui/console`, que arranca su propio flujo OIDC.

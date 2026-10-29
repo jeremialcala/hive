@@ -66,8 +66,12 @@ rendidos=()
 fallidos=()
 desde=$((AHORA - VENTANA_S))
 for c in $CONTENEDORES; do
-    estado=$($DOCKER inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$c" 2>/dev/null || true)
-    [ "$estado" = unhealthy ] || continue
+    # Solo lo que está en marcha. Docker marca unhealthy también a un contenedor parado, y `docker restart` lo
+    # arranca: el 2026-10-28 el vigía deshizo en 23 s un `docker stop hive-idp-proxy` hecho a propósito. Lo que
+    # alguien para, se queda parado.
+    estado=$($DOCKER inspect -f '{{.State.Status}}{{if .State.Health}} {{.State.Health.Status}}{{end}}' "$c" \
+        2>/dev/null || true)
+    [ "$estado" = "running unhealthy" ] || continue
 
     # Los reinicios de la ventana, uno por línea, con su hora. Los de antes se olvidan.
     registro="$ESTADO/$c.reinicios"
