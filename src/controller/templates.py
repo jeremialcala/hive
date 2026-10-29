@@ -52,8 +52,9 @@ UNAVAILABLE = "SERVICE UNAVAILABLE"
 
 def template_info(template: MessageTemplate) -> dict:
     return {"id": template.metaId, "name": template.name, "language": template.language,
-            "category": template.category, "status": template.status, "parameters": template.parameters,
-            "components": list(template.components or []), "updatedAt": as_utc(template.updatedAt)}
+            "category": template.category, "status": template.status, "reason": template.statusReason,
+            "parameters": template.parameters, "components": list(template.components or []),
+            "updatedAt": as_utc(template.updatedAt)}
 
 
 def _refused(code: str, why: str) -> JSONResponse:
@@ -172,6 +173,10 @@ def ctr_list_templates(repo: TenantRepository, bot_id: str, sync: bool = False) 
             return _meta_failed(e, bot, "list")
         kept = set()
         for template in filter(None, map(_from_meta, found)):
+            # Meta's list does not say why: the reason a notice gave stays while the state is the same.
+            before = repo.find_template(bot.uuid, template.name, template.language)
+            if before is not None and before.status == template.status:
+                template.statusReason = before.statusReason
             try:
                 kept.add(repo.save_template(bot, template).key)
             except NotFound:
@@ -207,6 +212,7 @@ def ctr_edit_template(repo: TenantRepository, bot_id: str, template_id: str,
     except (MetaUnavailable, MetaRefused) as e:
         return _meta_failed(e, bot, "edit")
     template.components, template.parameters, template.status = request.components_for_meta(), request.values(), PENDING
+    template.statusReason = None
     try:
         repo.save_template(bot, template)
     except NotFound:

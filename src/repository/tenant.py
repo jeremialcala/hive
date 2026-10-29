@@ -28,6 +28,10 @@ BOT_SECRETS = ("verifyToken", "facebookToken", "whatsappToken", "appSecret")
 BOT_CREDENTIALS = ("facebookToken", "whatsappToken", "appSecret")
 PHONE_FIELDS = ("phoneNumber", "phoneId")
 
+# How much older than what Hive did in Meta a notice of Meta may be and still count: Meta says when in whole
+# seconds, and may approve a template before its creation is answered (HIG-86).
+NOTICE_MARGIN = timedelta(seconds=60)
+
 # How long a message of the history is kept at most, from when it is stored: 12 months (RNF05, ADR-0017).
 HISTORY_RETENTION = timedelta(days=365)
 
@@ -360,12 +364,30 @@ class TenantRepository:
         template.clientId, template.botId = self.client_id, bot.uuid
         template.key = MessageTemplate.key_for(bot.uuid, template.name, template.language)
         template.updatedAt = datetime.now(timezone.utc)
+        # What Hive did or saw in Meta now: a notice of Meta from a little before still counts (HIG-86).
+        template.statusAt = template.updatedAt - NOTICE_MARGIN
         template.save()
         if not self._own(ChatBot, uuid=bot.uuid).count():
             # The chatbot was deleted between the lookup and the save: this would be left behind, out of reach.
             template.delete()
             raise NotFound(bot.uuid)
         return template
+
+    def apply_template_notice(self, bot_uuid: UUID, meta_id: str, status: str | None, reason: str | None,
+                              at: datetime) -> str:
+        """
+            Applies a notice of Meta to the copy of a template, in one write that only goes through if the copy is
+            not newer than the notice: a notice delivered late does not undo one that came after it. With status
+            None, it only says as of when. Says whether it was applied, older, or of a template Hive does not have.
+        """
+        if not self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).count():
+            return "unknown"
+        changes = {"set__statusAt": at, "set__updatedAt": datetime.now(timezone.utc)}
+        if status is not None:
+            changes.update(set__status=status, set__statusReason=reason)
+        applied = self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).filter(
+            Q(statusAt=None) | Q(statusAt__lte=at)).update_one(**changes)
+        return "applied" if applied else "older"
 
     def forget_templates(self, bot_uuid: UUID, keep: set) -> int:
         """Removes the copies of the templates Meta does not have any more: how many."""

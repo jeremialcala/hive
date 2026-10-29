@@ -67,7 +67,7 @@ flowchart LR
 ```
 
 - **Webhook de entrada**: Meta envía el reto de verificación (`GET`) y las notificaciones (`POST`) a `/chat/{bot_id}`. El webhook busca el bot y su App Secret, comprueba la firma y responde a Meta en cuanto Bifröst confirma la publicación. No toca el historial.
-- **Ingesta**: `hive-ingest` lee el stream `WEBHOOK`. Salta lo que ya está en el historial, busca o crea a cada remitente como `Contact` (los de Messenger, con su perfil de la API Graph), publica el mensaje en `MENSAJES`, en la partición de su conversación, y después lo guarda en el historial. El contrato es [`docs/02-design/contracts/asyncapi-v2.yaml`](docs/02-design/contracts/asyncapi-v2.yaml).
+- **Ingesta**: `hive-ingest` lee el stream `WEBHOOK`. Un aviso de estado de una plantilla lo aplica a su copia, solo si es de la cuenta `wabaId` del bot y no es anterior a lo que la copia ya sabe. Salta lo que ya está en el historial, busca o crea a cada remitente como `Contact` (los de Messenger, con su perfil de la API Graph), publica el mensaje en `MENSAJES`, en la partición de su conversación, y después lo guarda en el historial. El contrato es [`docs/02-design/contracts/asyncapi-v2.yaml`](docs/02-design/contracts/asyncapi-v2.yaml).
 - **Respuestas**: lo que el notificador del motor envía a Meta vuelve por `RESPUESTAS`, y la ingesta lo guarda en el historial.
 - **Cola heredada**: la ingesta también publica cada mensaje, en el sobre de la versión 1, en la cola `llm` de Hermod, el RabbitMQ de midgard ([`asyncapi.yaml`](docs/02-design/contracts/asyncapi.yaml)). Desaparece cuando se retire Hermod.
 - **Registro de eventos**: una petición puede generar un `Event` y varias `EventAction` con el método, el paso, el estado y el tiempo transcurrido.
@@ -225,7 +225,7 @@ Dar de alta un bot, de punta a punta:
 1. `POST /bot` → el `uuid` del bot y su `verifyToken`.
 2. `PUT /chat/{bot_id}/credentials` con los tokens de Meta y el `appSecret` de la app.
 3. `POST /chat/{bot_id}/rules`, y si hace falta `POST /chat/{bot_id}/intents`.
-4. En la app de Meta, la URL de callback `https://hive-webhook.higerotech.com/chat/{bot_id}` con el `verifyToken`, suscrita a `messages`.
+4. En la app de Meta, la URL de callback `https://hive-webhook.higerotech.com/chat/{bot_id}` con el `verifyToken`, suscrita a `messages` y, para WhatsApp, a `message_template_status_update`, con la que Meta avisa de los cambios de estado de las plantillas.
 
 El motor solo atiende los bots de un cliente para el que el operador dio de alta sus claves (ver [Dar paso al motor de respuestas](docs/03-implementation/autenticacion.md#dar-paso-al-motor-de-respuestas)).
 
@@ -234,7 +234,7 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET`  | `/chat/{bot_id}` | **Verificación del webhook de Meta.** Valida `hub.mode=subscribe` y compara `hub.verify_token` con el `verifyToken` del bot; después devuelve `hub.challenge` como texto plano. Cualquier otra cosa es un `403`. |
-| `POST` | `/chat/{bot_id}` | **Mensajes entrantes.** Exige un `X-Hub-Signature-256` válido (`403` si no). Recibe un `FacebookRequest` de Messenger (`object=page`) o de WhatsApp (`object=whatsapp_business_account`). Publica en `WEBHOOK` un evento por notificación con todos sus mensajes; los acuses de entrega y de lectura, los ecos de lo que envía la página y las pulsaciones de botones se aceptan y no se publican. Responde `200` cuando Bifröst ha confirmado la publicación, y también a lo firmado que no entiende o no puede procesar, que deja en el log. Responde `503`, para que Meta reintente, solo si no están el bus, la base de datos o el servicio de claves. |
+| `POST` | `/chat/{bot_id}` | **Mensajes entrantes.** Exige un `X-Hub-Signature-256` válido (`403` si no). Recibe un `FacebookRequest` de Messenger (`object=page`) o de WhatsApp (`object=whatsapp_business_account`). Publica en `WEBHOOK` un evento por notificación con todos sus mensajes; los acuses de entrega y de lectura, los ecos de lo que envía la página y las pulsaciones de botones se aceptan y no se publican. Los avisos `message_template_status_update` van en su propio evento, en `webhook.meta.templates`, y la ingesta los aplica a la copia de la plantilla. Responde `200` cuando Bifröst ha confirmado la publicación, y también a lo firmado que no entiende o no puede procesar, que deja en el log. Responde `503`, para que Meta reintente, solo si no están el bus, la base de datos o el servicio de claves. |
 | `POST` | `/chat/{bot_id}/phones` | Registra un número de WhatsApp (`ChatbotPhoneRequest`: `environment`, `phoneNumber`, `phoneId`). |
 | `GET`  | `/chat/{bot_id}/phones?environment=` | Lista los números del bot; con `environment` devuelve el más reciente de ese entorno. |
 | `GET`  | `/chat/{bot_id}/info` | Devuelve la información guardada del bot (`chatbot_info()`) y su token de verificación. De las credenciales de Meta solo dice cuáles están cargadas. |
@@ -261,12 +261,12 @@ Cómo se atiende con ellos a quien pide sus datos, y qué no alcanza el borrado,
 
 ### Plantillas — etiqueta `Templates`
 
-Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código y su subcódigo (`100/33`: la cuenta no existe para ese token, o al token le falta el permiso). Si Meta no responde, `503`.
+Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Meta avisa de cada cambio de estado por el webhook (`message_template_status_update`), y la copia lo recoge con su motivo (`reason`). Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código y su subcódigo (`100/33`: la cuenta no existe para ese token, o al token le falta el permiso). Si Meta no responde, `503`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/chat/{bot_id}/templates` | Crea una plantilla en Meta (`TemplateCreateRequest`), que queda en revisión (`PENDING`). Solo `MARKETING` y `UTILITY`. Los valores del cuerpo son `{{1}}`, `{{2}}`…, desde 1 y sin huecos, con un ejemplo cada uno. La cabecera y el pie no llevan valores, y un botón de enlace solo va a `https`. `201`. |
-| `GET`  | `/chat/{bot_id}/templates` | Lista la copia de las plantillas. Con `?sync=true`, primero trae la lista de Meta: estados, categorías y lo creado o borrado en las herramientas de Meta. |
+| `GET`  | `/chat/{bot_id}/templates` | Lista la copia de las plantillas, con su estado y su motivo. Con `?sync=true`, primero trae la lista de Meta: estados, categorías y lo creado o borrado en las herramientas de Meta. Sirve también si un aviso del webhook no llegó. |
 | `PUT`  | `/chat/{bot_id}/templates/{template_id}` | Cambia todos los componentes de una plantilla, por su id de Meta. Solo si está `APPROVED`, `REJECTED` o `PAUSED`; si no, `409`. Vuelve a `PENDING` y no se envía hasta que Meta la apruebe otra vez. |
 | `DELETE` | `/chat/{bot_id}/templates/{template_id}` | Borra la plantilla en Meta, solo en su idioma, y su copia. Una `DISABLED` no se borra (`409`). Meta no deja reusar el nombre durante 30 días. |
 

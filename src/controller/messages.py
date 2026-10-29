@@ -17,9 +17,9 @@ from classes import ChatBot
 from classes import Settings, FacebookRequest
 from enums import Status
 from .events import ctr_notify_action
-from .incoming import READERS, incoming_messages
+from .incoming import READERS, incoming_messages, template_changes
 from .ingestion import DatabaseUnavailable, RETRY_LATER, ingest_notification
-from .webhook_event import CHANNELS, publish_notification, webhook_event
+from .webhook_event import CHANNELS, publish_notification, publish_template_changes, template_event, webhook_event
 
 __all__ = ["ctr_process_messages", "DatabaseUnavailable", "RETRY_LATER"]
 
@@ -58,6 +58,15 @@ async def ctr_process_messages(req: FacebookRequest, _bot: ChatBot, eventId: str
     elif incoming:
         event = webhook_event(CHANNELS[req.object], _bot, incoming, datetime.now(timezone.utc))
         await ingest_notification(event, bot=_bot)
+
+    # The notices of the templates' states (HIG-86): an event of their own, which the ingestion applies to the copies.
+    changes = template_changes(req.object, req.entry)
+    if changes:
+        log.info(f"Notices of templates for chatbot {_bot.uuid} in this notification: {len(changes)}")
+    if changes and bus.configured():
+        await publish_template_changes(_bot, changes)
+    elif changes:
+        await ingest_notification(template_event(_bot, changes, datetime.now(timezone.utc)), bot=_bot)
 
     if eventId is not None:
         ensure_future(ctr_notify_action(
