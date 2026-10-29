@@ -26,6 +26,21 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **Los requisitos de las capacidades de la D9 en el PRD** (`docs/01-requirements/mvp-baas-gateway.md` 0.5.0,
+  HIG-80).
+  - **Del operador:** suspender un cliente (RF19), la auditoría de la plataforma (RF20), las trazas y los eventos del
+    bus (RF21), y el reproceso y el mantenimiento (RF22).
+  - **Del `cliente-admin`:** editar la persona (RF23), editar o borrar reglas (RF24), rotar el `verifyToken` (RF25),
+    las versiones (RF26) y los guardrails (RF27).
+  - **De los dos roles del cliente:** calificar respuestas y ver las métricas (RF28).
+  - **Seguridad y abuso:** tres requisitos (RS24–RS26) y ocho escenarios de abuso (AB28–AB35), con su traza en el
+    diagrama de requisitos.
+  - **Las cuatro decisiones de Jeremi del 2026-10-29:**
+    - un cliente suspendido sigue recibiendo, y el bus retiene sus mensajes 7 días sin procesarlos;
+    - lo destructivo del operador pide MFA de los últimos 5 minutos y un motivo;
+    - quien califica lee la conversación completa, sin el número y dejando rastro;
+    - la base de guardrails de la plataforma no se desactiva.
+  - **La matriz rol × acción** pasa a la 1.1.0: cada capacidad apunta a su requisito.
 - **[ADR-0030](docs/00-project/adr/0030-alimentacion-de-midgard-y-nidavellir.md) (propuesta): un SAI para midgard y
   Nidavellir, con apagado ordenado.**
   - El 2026-10-28 hubo cuatro cortes de luz, y con cada uno Hive cayó entero: unas 8 h 13 min.

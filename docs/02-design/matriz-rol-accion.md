@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-26
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.0.0
+* **Versión:** 1.1.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -91,7 +91,7 @@ está construido.
 | Dar de baja a un cliente, con todo lo suyo | ✅ | ⛔ | ⛔ nuevo | ⛔ | RF10 | ✅ `DELETE /clients/{client_id}` |
 | Registrar o revocar una clave de un cliente (también la última) | ✅ | ⛔ | ⛔ nuevo | ⛔ | RF01 | ✅ `POST /clients/{client_id}/keys`, `DELETE …/keys/{kid}` |
 | Registrar o quitar la clave de un worker para un cliente | ✅ | ⛔ | ⛔ nuevo | ⛔ | ADR-0016, ADR-0022 | ✅ `POST /clients/{client_id}/service-keys`, `DELETE …/{kid}` |
-| Suspender un cliente sin borrarlo | ✅ nuevo | ⛔ | ⛔ nuevo | — | Borrador (D9) | ❌ |
+| Suspender un cliente sin borrarlo | ✅ nuevo | ⛔ | ⛔ nuevo | — | RF19 (D9) | ⚠️ |
 
 ### 3. Bots
 
@@ -105,10 +105,10 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Borrar un bot con todo lo suyo | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF10 | ✅ `DELETE /bot/{bot_id}` |
 | Registrar un número de WhatsApp | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST /chat/{bot_id}/phones` |
 | Ver los números del bot | ⛔ `404` | ✅ | ✅ nuevo | ⛔ | RF02 | ✅ `GET /chat/{bot_id}/phones` |
-| Editar la persona del bot (nombre, rol, tono, descripción) | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF02 (D9) | ⚠️ |
+| Editar la persona del bot (nombre, rol, tono, descripción) | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF23 (D9) | ⚠️ |
 | Ver el estado del bot (REG, ACT, ERR) | ⛔ | ✅ nuevo | ✅ nuevo | ⛔ | ADR-0027 (HIG-74) | ❌ |
 | Publicar o despublicar un bot | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | D4, ADR-0027 (HIG-75) | ❌ |
-| Ver el historial de versiones y volver a una | ⛔ | ✅ nuevo | ✅ ver / ⛔ volver, nuevo | ⛔ | Borrador (D9) | ❌ |
+| Ver el historial de versiones y volver a una | ⛔ | ✅ nuevo | ✅ ver / ⛔ volver, nuevo | ⛔ | RF26 (D9) | ⚠️ |
 
 ### 4. Reglas, intents y herramientas
 
@@ -116,7 +116,7 @@ los suyos tiene lo mismo que `cliente-admin`.
 |---|---|---|---|---|---|---|
 | Ver la persona y las reglas como datos | ⛔ `404` | ✅ | ✅ nuevo | ✅ clasificador, coordinador, de respuesta, evaluador | RF05 | ✅ `GET /chat/{bot_id}/rules` |
 | Añadir reglas | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST /chat/{bot_id}/rules` |
-| Editar o borrar una regla | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF02 (D9) | ⚠️ |
+| Editar o borrar una regla | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF24 (D9) | ⚠️ |
 | Ver los intents | ⛔ `404` | ✅ | ✅ nuevo | ⛔ | RF02 | ✅ `GET /chat/{bot_id}/intents`, `…/{intent_id}` |
 | Crear, editar o borrar un intent | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST`, `PUT`, `DELETE /chat/{bot_id}/intents…` |
 | Ver las herramientas del bot | ⛔ `404` | ✅ | ✅ nuevo | ✅ coordinador, enlace | RF05 | ✅ `GET /chat/{bot_id}/tools` |
@@ -128,7 +128,7 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Cargar o rotar los tokens y el App Secret | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF06 | ✅ `PUT /chat/{bot_id}/credentials` |
 | Ver cuáles están cargados (nunca su valor) | ⛔ `404` | ✅ | ✅ nuevo | ⛔ | RF06, RS06 | ✅ en `GET /chat/{bot_id}/info` |
 | Obtener los tokens en claro para enviar | ⛔ | ⛔ | ⛔ | ✅ solo el notificador | RF07, RS06 | ✅ `GET /chat/{bot_id}/tokens` |
-| Rotar el `verifyToken` | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | Borrador (D9) | ❌ |
+| Rotar el `verifyToken` | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF25 (D9) | ⚠️ |
 
 ### 6. Contactos y derechos del titular
 
@@ -157,15 +157,15 @@ Solo WhatsApp en la v1, y solo a contactos que ya existen: personas que escribie
 | Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
 |---|---|---|---|---|---|---|
 | Invitar usuarios al cliente; darlos de alta, de baja o bloquearlos; cambiar su rol | — | ✅ nuevo | ⛔ nuevo | — | Borrador (D1, D2) | ❌ |
-| Ver la auditoría de su cliente | ✅ nuevo, de la plataforma | ✅ nuevo, lectura | ⛔ nuevo | — | RS14 (D5) | ⚠️ |
-| Definir guardrails y la acción ante una violación | — | ✅ nuevo | ⛔ nuevo | — | Borrador (D9) | ❌ |
-| Calificar respuestas y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | Borrador (D9; el evaluador de la ADR-0008 del motor) | ❌ |
-| Ver trazas y eventos del bus | ✅ nuevo | ⛔ | ⛔ | — | Mapa de estilo (ADR-0027, D9) | ❌ (hoy, en Tempo) |
+| Ver la auditoría de su cliente | ✅ nuevo, de la plataforma | ✅ nuevo, lectura | ⛔ nuevo | — | RF18, RF20; RS14, RS25 (D5, D9) | ⚠️ |
+| Definir guardrails y la acción ante una violación, sobre la base de la plataforma | — | ✅ nuevo | ⛔ nuevo | — | RF27, RS26 (D9) | ⚠️ |
+| Calificar respuestas, leyendo la conversación del contacto, y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | RF28 (D9; el evaluador de la ADR-0008 del motor) | ⚠️ |
+| Ver trazas y eventos del bus, sin su contenido | ✅ nuevo | ⛔ | ⛔ | — | RF21, RS19 (ADR-0027, D9) | ⚠️ (hoy, en Tempo) |
 | Configurar los servidores MCP por defecto de la plataforma, con sus permisos declarados | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | D7, D8 | ❌ |
 | Cargar las llaves o credenciales de su cuenta para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8 | ❌ |
 | Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8; hoy, los intents (RF02) | ❌ |
 | Ver las integraciones de sus bots (sin sus credenciales) | ⛔ nuevo | ✅ nuevo | ✅ nuevo | — | D8 | ❌ |
-| Reprocesar mensajes que no se pudieron entregar y mantenimiento | ✅ nuevo, con aprobación humana si es destructivo | — | — | — | Borrador (D9) | ❌ |
+| Reprocesar mensajes que no se pudieron entregar y mantenimiento | ✅ nuevo; lo destructivo, con MFA reciente y motivo | — | — | — | RF22, RS24 (D9) | ⚠️ |
 | Entrar directamente en los datos de un cliente | ⛔ | — | — | — | RS01, ADR-0012 | — |
 
 ## El motor, worker por worker
@@ -188,7 +188,8 @@ uso deja un aviso en el log. Esas claves se retiran cuando cada worker tenga la 
 ## Perfil de `cliente-analista` (D1, D2, D6, D10)
 
 Lee lo de su cliente: bots, números, reglas, intents, herramientas, qué credenciales están cargadas y contactos.
-Califica respuestas cuando exista la evaluación y envía plantillas aprobadas a los contactos, pero no texto libre. No
+Califica respuestas cuando exista la evaluación, y para eso lee la conversación completa del contacto, sin su número
+y dejando rastro en la auditoría (RF28). Envía plantillas aprobadas a los contactos, pero no texto libre. No
 crea ni cambia configuración, no toca credenciales, no ve el `verifyToken`, no gestiona usuarios ni claves, y no
 exporta ni borra contactos. Es el perfil de un analista de calidad o de un agente de soporte.
 
@@ -215,8 +216,8 @@ D1–D9, resueltas por Jeremi el 2026-10-26, y D10, el 2026-10-27.
    sesión, la MFA y cómo convive con la credencial de máquina de la ADR-0025.
 2. Escribir la ADR de MCP (D7, D8): el catálogo del operador, las credenciales del cliente y sus integraciones, que
    llama el enlace.
-3. Escribir en el PRD el requisito de cada capacidad que entró con la D9: suspender un cliente, editar la persona,
-   editar o borrar reglas, rotar el `verifyToken`, versiones, guardrails, calificar, auditoría, trazas y reproceso.
+3. ~~Escribir en el PRD el requisito de cada capacidad que entró con la D9.~~ Hecho el 2026-10-29: RF19–RF28,
+   RS24–RS26 y AB28–AB35 en el [PRD](../01-requirements/mvp-baas-gateway.md).
 4. Una prueba que compare la matriz con el código: que cada ✅ y ⛔ construido coincida con la dependencia de su ruta
    y con `WORKER_ROUTES`. Así la matriz no se queda atrás cuando cambie una ruta.
 5. Marcar en el contrato qué roles alcanzan cada operación (`x-roles`), generado de las mismas dependencias.
