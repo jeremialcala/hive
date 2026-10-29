@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-26
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.2.0
+* **Versión:** 1.3.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -165,10 +165,11 @@ siempre el notificador, con límites por bot y por cliente (RS27); el camino lo 
 | Definir guardrails y la acción ante una violación, sobre la base de la plataforma | — | ✅ nuevo | ⛔ nuevo | — | RF27, RS26 (D9) | ⚠️ |
 | Calificar respuestas, leyendo la conversación del contacto, y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | RF28 (D9; el evaluador de la ADR-0008 del motor) | ⚠️ |
 | Ver trazas y eventos del bus, sin su contenido | ✅ nuevo | ⛔ | ⛔ | — | RF21, RS19 (ADR-0027, D9) | ⚠️ (hoy, en Tempo) |
-| Configurar los servidores MCP por defecto de la plataforma, con sus permisos declarados | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | D7, D8 | ❌ |
-| Cargar las llaves o credenciales de su cuenta para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8 | ❌ |
-| Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | D8; hoy, los intents (RF02) | ❌ |
-| Ver las integraciones de sus bots (sin sus credenciales) | ⛔ nuevo | ✅ nuevo | ✅ nuevo | — | D8 | ❌ |
+| Configurar el catálogo MCP de la plataforma: servidores, herramientas aprobadas por su huella y su clase | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | RF32 (D7, D8, ADR-0032) | ⚠️ |
+| Cargar las llaves o credenciales de su cuenta, o conectarla por OAuth, para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace las obtiene | RF33 (D8, ADR-0032) | ⚠️ |
+| Configurar integraciones con sus propias APIs, para que el agente consulte sus datos al responder | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace | RF34; son las llamadas de los intents (RF02, ADR-0032) | ⚠️ |
+| Activar en un bot servidores y herramientas del catálogo | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | — | RF34 (ADR-0032) | ⚠️ |
+| Ver las integraciones de sus bots (sin sus credenciales) | ⛔ nuevo | ✅ nuevo | ✅ nuevo | — | RF34 (D8, ADR-0032) | ⚠️ |
 | Reprocesar mensajes que no se pudieron entregar y mantenimiento | ✅ nuevo; lo destructivo, con MFA reciente y motivo | — | — | — | RF22, RS24 (D9) | ⚠️ |
 | Entrar directamente en los datos de un cliente | ⛔ | — | — | — | RS01, ADR-0012 | — |
 
@@ -218,8 +219,9 @@ D1–D9, resueltas por Jeremi el 2026-10-26, y D10, el 2026-10-27.
 
 1. Escribir en el PRD los requisitos de las personas (D1–D3, D5) y la ADR de autenticación de personas: el IdP, la
    sesión, la MFA y cómo convive con la credencial de máquina de la ADR-0025.
-2. Escribir la ADR de MCP (D7, D8): el catálogo del operador, las credenciales del cliente y sus integraciones, que
-   llama el enlace.
+2. ~~Escribir la ADR de MCP (D7, D8).~~ Hecho el 2026-10-29: la
+   [ADR-0032](../00-project/adr/0032-integraciones-de-terceros-con-mcp.md). Las integraciones conviven con los
+   intents.
 3. ~~Escribir en el PRD el requisito de cada capacidad que entró con la D9.~~ Hecho el 2026-10-29: RF19–RF28,
    RS24–RS26 y AB28–AB35 en el [PRD](../01-requirements/mvp-baas-gateway.md).
 4. Una prueba que compare la matriz con el código: que cada ✅ y ⛔ construido coincida con la dependencia de su ruta
