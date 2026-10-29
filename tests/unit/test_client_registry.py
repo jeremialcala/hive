@@ -15,9 +15,9 @@ from jwcrypto import jwk
 
 import app as app_module
 from shared.auth import gateway_keys
-from shared.auth.client import build_assertion, new_signing_key, public_part, token_request
+from shared.auth.client import build_assertion, dpop_proof, new_signing_key, public_part, token_request
 from classes import Client
-from conftest import Caller, GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, access_token_for
+from conftest import Caller, GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, KEY_OF, access_token_for
 from enums import Role
 from ops import client as ops_client, gateway_key as ops_gateway_key, operator_key as ops_operator_key
 from repository import get_client, operator_client
@@ -47,9 +47,10 @@ def test_the_operator_registers_a_client_that_can_then_call_the_service(http, op
     assert response.status_code == 200
     assert (data["name"], data["role"], data["status"], data["keys"]) == ("acme", "client", "ACT", [key["kid"]])
     # The answer is all the new client needs: who it is, the audience and the key to encrypt to.
-    token = access_token_for(build_assertion(key, data["uuid"], data["gateway"]["audience"],
-                                             data["gateway"]["keys"][-1]))
-    mine = http.get("/keys", headers={"Authorization": f"Bearer {token}"})
+    assertion = build_assertion(key, data["uuid"], data["gateway"]["audience"], data["gateway"]["keys"][-1])
+    KEY_OF[assertion] = key
+    token = access_token_for(assertion)
+    mine = http.get("/keys", headers={"Authorization": f"DPoP {token}"})
     assert (mine.status_code, mine.json()["data"]["uuid"]) == (200, data["uuid"])
 
 
@@ -93,7 +94,7 @@ def test_a_client_does_not_become_operator_by_saying_so(http, register):
     caller = register("acme")
     token = caller.access_token()
 
-    assert http.get("/clients", headers={"Authorization": f"Bearer {token}"}).status_code == 403
+    assert http.get("/clients", headers={"Authorization": f"DPoP {token}"}).status_code == 403
     assert get_client(caller.client_id).role == Role.CLIENT.value
 
 
@@ -399,15 +400,23 @@ def test_the_reference_client_runs_without_the_service_settings(tmp_path):
 
     # The assertion, from the reference client; the access token, from the service in this process.
     assertion = run("assertion", str(key_file), str(client_id), GATEWAY_AUDIENCE, str(gateway_file))
-    token = registered.post("/oauth/token", data=token_request(assertion)).json()["access_token"]
+    token_proof = dpop_proof(json.loads(key_file.read_text(encoding="utf-8")), "POST",
+                             f"{GATEWAY_AUDIENCE}/oauth/token")
+    token = registered.post("/oauth/token", data=token_request(assertion),
+                            headers={"DPoP": token_proof}).json()["access_token"]
 
-    assert registered.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    # Each request with it, with the proof the reference client signs (ADR-0033).
+    def bound(method: str, path: str) -> dict:
+        return {"Authorization": f"DPoP {token}",
+                "DPoP": run("proof", str(key_file), method, f"{GATEWAY_AUDIENCE}{path}", token)}
+
+    assert registered.get("/keys", headers=bound("GET", "/keys")).status_code == 200
 
     # And adding a second key, with the proof the new one signs for that access token.
     new_key_file = tmp_path / "client-key-2.json"
     second = json.loads(run("new-key", str(new_key_file)))
     body = json.loads(run("add-key", str(new_key_file), str(client_id), GATEWAY_AUDIENCE, token))
-    added = registered.post("/keys", headers={"Authorization": f"Bearer {token}"}, json=body)
+    added = registered.post("/keys", headers=bound("POST", "/keys"), json=body)
 
     assert (added.status_code, added.json()["data"]["keys"][-1]) == (200, jwk.JWK(**second).thumbprint())
 
@@ -415,8 +424,8 @@ def test_the_reference_client_runs_without_the_service_settings(tmp_path):
 def test_the_reference_client_gets_an_access_token_and_says_why_not(tmp_path, monkeypatch):
     http = TestClient(app_module.app)
     monkeypatch.setattr(ops_client.requests, "post",
-                        lambda url, data=None, timeout=None: http.post(url.removeprefix("https://gateway.test"),
-                                                                       data=data))
+                        lambda url, data=None, timeout=None, headers=None: http.post(
+                            url.removeprefix("https://gateway.test"), data=data, headers=headers))
     key_file, gateway_file = tmp_path / "key.json", tmp_path / "gateway.json"
     public = ops_client.new_key(str(key_file))
     gateway_file.write_text(json.dumps(gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE).public_set()),
@@ -428,7 +437,8 @@ def test_the_reference_client_gets_an_access_token_and_says_why_not(tmp_path, mo
     token = ops_client.access_token(str(key_file), str(client_id), GATEWAY_AUDIENCE, str(gateway_file),
                                     "https://gateway.test/")
 
-    assert http.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+    proof = ops_client.proof(str(key_file), "GET", "https://gateway.test/keys", token)
+    assert http.get("/keys", headers={"Authorization": f"DPoP {token}", "DPoP": proof}).status_code == 200
     with pytest.raises(SystemExit, match="401"):
         ops_client.access_token(str(key_file), "00000000-0000-0000-0000-000000000000", GATEWAY_AUDIENCE,
                                 str(gateway_file), "https://gateway.test")

@@ -95,6 +95,9 @@ services:
       OTEL_SERVICE_NAME: gateway-management
       OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
       GATEWAY_KEYS_FILE: /run/gateway/gateway-keys.json
+      # Besides the audience, where a DPoP proof may say it was sent (ADR-0033): the engine and engine-keys, by the
+      # network; ops on midgard itself, by the published port.
+      GATEWAY_URLS: http://hive-api:5002,http://127.0.0.1:5002
       ANDVARI_ADDR: https://andvari:8200
       ANDVARI_CA_FILE: /run/gateway/andvari-ca.crt
       ANDVARI_SECRET_ID_FILE: /run/gateway/andvari-secret-id

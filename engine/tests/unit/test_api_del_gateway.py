@@ -4,13 +4,17 @@
     hace de gateway (ADR-0025 del gateway): en /oauth/token abre la aserción con la clave privada del gateway,
     comprueba la firma con la clave pública del worker y que la emite el cliente para la audiencia del gateway, y da
     un token de acceso; en el resto de rutas, solo acepta los tokens que dio, y contesta lo que el gateway contestaría.
+    Cada petición tiene que traer su prueba DPoP, firmada con la clave del worker para su método y su ruta y, junto a
+    un token, con el hash de ese token (ADR-0033 del gateway).
 """
 import asyncio
+import base64
+import hashlib
 import json
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -35,6 +39,24 @@ PERSONA = {"name": "Mine", "role": "Sales Assistant", "tone": "helpful", "descri
 def mensaje(direccion, texto, id_meta, hora="2026-10-20T09:00:00+00:00", adjuntos=()):
     return {"direction": direccion, "messageId": id_meta, "channel": "whatsapp", "sentAt": hora, "intent": None,
             "inReplyTo": None, "text": texto, "attachments": list(adjuntos)}
+
+
+def prueba_buena(cabecera: str | None, metodo: str, ruta: str, token: str | None = None) -> bool:
+    """Si la prueba DPoP la firma la clave que vale, para ese método, esa ruta y, si lo hay, ese token."""
+    try:
+        firmado = jws.JWS()
+        firmado.deserialize(cabecera)
+        publica = jwk.JWK(**firmado.jose_header["jwk"])
+        firmado.verify(publica)
+        claims = json.loads(firmado.payload)
+        hash_del_token = (base64.urlsafe_b64encode(hashlib.sha256(token.encode()).digest()).rstrip(b"=").decode()
+                          if token else None)
+        return (firmado.jose_header["typ"] == "dpop+jwt"
+                and publica.thumbprint() == jwk.JWK(**public_part(Gateway.vale["clave"])).thumbprint()
+                and claims["htm"] == metodo and urlsplit(claims["htu"]).path == ruta.split("?")[0]
+                and claims.get("ath") == hash_del_token)
+    except Exception:  # pylint: disable=broad-except
+        return False
 
 
 class Gateway(BaseHTTPRequestHandler):
@@ -67,14 +89,18 @@ class Gateway(BaseHTTPRequestHandler):
             assert (claims["iss"], claims["sub"], claims["aud"]) == (str(CLIENTE), str(CLIENTE), AUDIENCIA)
         except Exception:  # pylint: disable=broad-except
             return self._contestar(401, {"error": "invalid_client"})
+        if not prueba_buena(self.headers.get("DPoP"), "POST", self.path):
+            return self._contestar(400, {"error": "invalid_dpop_proof"})
         token = f"at-{uuid4()}"
         Gateway.emitidos.add(token)
         Gateway.pedidos += 1
-        return self._contestar(200, {"access_token": token, "token_type": "Bearer", "expires_in": 600})
+        return self._contestar(200, {"access_token": token, "token_type": "DPoP", "expires_in": 600})
 
     def do_GET(self):  # pylint: disable=invalid-name
-        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-        if token not in Gateway.emitidos:
+        esquema, _, token = self.headers.get("Authorization", "").partition(" ")
+        if esquema != "DPoP" or token not in Gateway.emitidos:
+            return self._contestar(401, {"detail": "Unauthorized"})
+        if not prueba_buena(self.headers.get("DPoP"), "GET", self.path, token):
             return self._contestar(401, {"detail": "Unauthorized"})
         Gateway.vistas.append((self.path, token))
         codigo, cuerpo = Gateway.respuestas.get(self.path, (404, {"code": 404, "message": "not found"}))

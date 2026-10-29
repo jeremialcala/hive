@@ -13,12 +13,17 @@ another service, the webhook, which runs apart from this one.
 
 ### Getting a token
 
-Every route but the health check and /oauth/token asks for an access token in `Authorization: Bearer`.
+Every route but the health check and /oauth/token asks for an access token in `Authorization: DPoP`, and beside
+it a DPoP proof (RFC 9449) in the `DPoP` header: the token is bound to the key of the client.
 
 * /oauth/token: @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who it is
   with an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's `kid`), with
   its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted to a public key of
   /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for 60 seconds at most.
+* Every request, the one to /oauth/token too, carries a new DPoP proof: a JWT signed with the same key as the
+  assertion (`typ` `dpop+jwt`, `ES256`, the public key as `jwk` in its header), with a new `jti`, the method as
+  `htm`, the URL without query as `htu`, `iat` and, beside an access token, its SHA-256 as `ath`. A proof is good
+  once and for 60 seconds.
 * The access token lasts 10 minutes and is good for every request in them. Ask for a new one shortly before it
   expires, not for every request: each key gets a bounded number of tokens an hour, and an address that asks too
   often, or keeps sending assertions that are not good, gets a 429 with `Retry-After`.

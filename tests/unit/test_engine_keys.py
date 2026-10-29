@@ -228,10 +228,12 @@ def environment(monkeypatch, tmp_path, http, operator, store):
         sent.append((method, url))
         return http.request(method, url.removeprefix("http://gestion:5002"), json=json, headers=headers)
 
-    def token_over_http(url, data=None, timeout=None):
+    def token_over_http(url, data=None, timeout=None, headers=None):
         sent.append(("POST", url))
-        return http.post(url.removeprefix("http://gestion:5002"), data=data)
+        return http.post(url.removeprefix("http://gestion:5002"), data=data, headers=headers)
 
+    # The command signs its DPoP proofs for the address it calls (ADR-0033): the API takes it as one of its own.
+    monkeypatch.setattr(app_module, "GATEWAY_URLS", (*app_module.GATEWAY_URLS, "http://gestion:5002"))
     monkeypatch.setattr(engine_keys.requests, "request", over_http)
     monkeypatch.setattr(engine_keys.requests, "post", token_over_http)
     monkeypatch.setattr(engine_keys, "EngineKeyStore", lambda *args: store)

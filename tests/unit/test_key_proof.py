@@ -76,7 +76,7 @@ def test_without_a_good_proof_the_key_is_not_added(http, register, caplog, kind)
     new = new_signing_key()
     request = caller.adding(new)
     token = caller.access_token()
-    request = {"headers": {"Authorization": f"Bearer {token}"},
+    request = {"headers": {"Authorization": f"DPoP {token}"},
                "json": {**request["json"], "proof": BAD_PROOFS[kind](caller, new, access_token_jti(token))}}
 
     with caplog.at_level(logging.WARNING):
