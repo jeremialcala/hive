@@ -39,6 +39,15 @@ channels:
     messages:
       eventoWebhook:
         $ref: '#/components/messages/EventoWebhook'
+  webhookPlantillas:
+    address: 'webhook.meta.templates'
+    description: >-
+      Stream `WEBHOOK`, el mismo consumidor `ingesta`. Los avisos de Meta del cambio de estado de las plantillas de la
+      cuenta de WhatsApp Business del bot (`message_template_status_update`, HIG-86), como un solo evento por
+      notificación.
+    messages:
+      cambioDePlantilla:
+        $ref: '#/components/messages/CambioDePlantilla'
   mensajeIdentificado:
     address: 'gateway.message.{particion}.{botId}.{contactId}'
     description: >-
@@ -115,6 +124,29 @@ operations:
       Andvari o de Bifröst, no confirma y el evento se reentrega con espera creciente.
     messages:
       - $ref: '#/channels/webhookMeta/messages/eventoWebhook'
+  publicarCambioDePlantilla:
+    action: send
+    channel:
+      $ref: '#/channels/webhookPlantillas'
+    summary: El webhook publica los avisos de estado de las plantillas de una notificación firmada.
+    description: >-
+      Como EventoWebhook: 200 a Meta cuando Bifröst acusa el evento, 503 si no. Un aviso sin cuenta, sin plantilla o
+      sin estado no se publica. El `Nats-Msg-Id` lleva un resumen de los avisos con su hora, así que una plantilla
+      que vuelve a un estado que ya tuvo es otro evento.
+    messages:
+      - $ref: '#/channels/webhookPlantillas/messages/cambioDePlantilla'
+  consumirCambioDePlantilla:
+    action: receive
+    channel:
+      $ref: '#/channels/webhookPlantillas'
+    summary: La ingesta aplica cada aviso a la copia de su plantilla.
+    description: >-
+      Solo si el aviso es de la cuenta `wabaId` del bot y no es anterior a lo que la copia ya sabe (`statusAt`): un
+      aviso reentregado tarde no deshace uno posterior. El de una plantilla que Hive no tiene se ignora; la copia se
+      trae con `GET /chat/{bot_id}/templates?sync=true`. `REINSTATED` deja la plantilla `APPROVED`, y `FLAGGED` no
+      cambia su estado.
+    messages:
+      - $ref: '#/channels/webhookPlantillas/messages/cambioDePlantilla'
   publicarMensajeIdentificado:
     action: send
     channel:
@@ -183,6 +215,14 @@ components:
         $ref: '#/components/schemas/Cabeceras'
       payload:
         $ref: '#/components/schemas/EventoWebhook'
+    CambioDePlantilla:
+      name: CambioDePlantilla
+      title: Avisos de estado de plantillas de Meta
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/CambioDePlantilla'
     MensajeIdentificado:
       name: MensajeIdentificado
       title: Mensaje con su contacto identificado
@@ -268,6 +308,54 @@ components:
               description: Los mensajes de la notificación, en el orden en que los envió Meta.
               items:
                 $ref: '#/components/schemas/MensajeDeMeta'
+    CambioDePlantilla:
+      description: >-
+        Lo que publica el webhook con los avisos `message_template_status_update` de una notificación firmada. No
+        lleva el texto de ninguna plantilla.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [channel, receivedAt, changes]
+          properties:
+            channel:
+              const: templates
+            receivedAt:
+              type: string
+              format: date-time
+            changes:
+              type: array
+              minItems: 1
+              maxItems: 1000
+              items:
+                type: object
+                required: [account, templateId, event]
+                additionalProperties: false
+                properties:
+                  account:
+                    type: string
+                    pattern: '^[0-9]{1,30}$'
+                    description: La cuenta de WhatsApp Business del aviso, el `id` de la entrada.
+                  templateId:
+                    type: string
+                    pattern: '^[0-9]{1,30}$'
+                    description: El id de Meta de la plantilla.
+                  event:
+                    type: string
+                    pattern: '^[A-Z_]{1,40}$'
+                    description: Su estado nuevo, o lo que le pasó (APPROVED, REJECTED, PAUSED, DISABLED, FLAGGED...).
+                  reason:
+                    type: string
+                    pattern: '^[A-Z_]{1,40}$'
+                    description: Por qué, si Meta lo dice. `NONE` no se publica.
+                  name:
+                    type: string
+                    pattern: '^[a-z0-9_]{1,512}$'
+                  language:
+                    type: string
+                  at:
+                    type: integer
+                    minimum: 1
+                    description: Cuándo, en segundos desde 1970, el `time` de la entrada.
     MensajeDeMeta:
       type: object
       required: [messageId, message]

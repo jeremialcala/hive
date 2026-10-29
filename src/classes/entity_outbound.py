@@ -32,6 +32,10 @@ class MessageTemplate(Document):
     language = StringField(required=True, max_length=15)
     category = StringField(required=True)
     status = StringField(required=True)
+    # Why it is in that state, when Meta said it with its notice (HIG-86): INVALID_FORMAT, SCAM...
+    statusReason = StringField(max_length=40)
+    # As of when the state is known: a notice of Meta older than this does not change it (HIG-86).
+    statusAt = DateTimeField()
     # Meta's id of the template, and what it is made of, as Meta has it: what the client edits or deletes by.
     metaId = StringField(max_length=40)
     components = ListField(DictField())

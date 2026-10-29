@@ -16,6 +16,10 @@
 
     Without a bus (development and the tests) the webhook runs this itself, on the event it would have published.
 
+    The same consumer reads the notices of the templates' states (CambioDePlantilla, HIG-86): each one is applied to
+    the copy of its template, if it is of the chatbot's WhatsApp Business Account and not older than what the copy
+    knows. The send route only sends a copy that says APPROVED.
+
     What waits on MongoDB, the key service or the Graph API runs in a thread (H14): the worker reads two streams in
     the same event loop, and the client of the bus answers its heartbeats from it.
 """
@@ -23,10 +27,12 @@ import asyncio
 import hashlib
 import json
 import logging
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timezone
 from uuid import UUID
 
 from classes import ChatBot, Contact, MessageBody, QueueMessage, Settings
+from classes.entity_outbound import APPROVED
 from classes.entity_conversation_message import INCOMING, OUTGOING
 from crypto.key_service import KeyServiceUnavailable
 from repository import NotFound, TenantRepository, database_failed
@@ -36,8 +42,8 @@ from utils import describe
 
 from .amqp_broker import BrokerUnavailable, send_message_to_queue
 from .facebook import ctr_identify_contact_by_wa_id, ctr_identify_fb_contact
-from .incoming import IncomingMessage
-from .webhook_event import SCHEMA_VERSION, traceparent
+from .incoming import META_ID, WORD, IncomingMessage
+from .webhook_event import SCHEMA_VERSION, TEMPLATES, traceparent
 
 __all__ = ["DatabaseUnavailable", "Unprocessable", "RETRY_LATER", "PARTITIONS", "partition", "ingest_notification",
            "ingest_reply"]
@@ -147,6 +153,46 @@ async def _publish(event: dict, item: dict, contact: Contact, message: IncomingM
     await send_message_to_queue(queue=QUEUE, message=QueueMessage(messageId=item["messageId"], jwe_body=body.__dict__))
 
 
+# What a notice of Meta leaves the copy of a template as, when it is not the notice's own word. REINSTATED is a
+# template that was paused and is sent again. FLAGGED says its quality fell: Meta still sends it, until it pauses or
+# disables it, each with a notice of its own; the state stays as it was.
+STATUS_OF = {"REINSTATED": APPROVED, "FLAGGED": None}
+
+
+def _apply_template_changes(event: dict, bot: ChatBot) -> dict:
+    repo = TenantRepository(bot.clientId)
+    received_at = datetime.fromisoformat(event["receivedAt"])
+    outcome = Counter()
+    for change in event.get("changes") or []:
+        if not (isinstance(change, dict) and isinstance(change.get("templateId"), str)
+                and META_ID.fullmatch(change["templateId"]) and isinstance(change.get("event"), str)
+                and WORD.fullmatch(change["event"])):
+            outcome["malformed"] += 1
+            continue
+        if not bot.wabaId or change.get("account") != bot.wabaId:
+            # Of a WhatsApp Business Account that is not the chatbot's: its templates are not this chatbot's.
+            outcome["of another account"] += 1
+            continue
+        at = change.get("at")
+        when = (datetime.fromtimestamp(at, timezone.utc) if isinstance(at, int) and not isinstance(at, bool) and at > 0
+                else received_at)
+        reason = change.get("reason")
+        reason = reason if isinstance(reason, str) and WORD.fullmatch(reason) else None
+        status = STATUS_OF.get(change["event"], change["event"])
+        try:
+            applied = repo.apply_template_notice(bot.uuid, change["templateId"], status, reason, when)
+        except Exception as e:
+            if database_failed(e):
+                raise DatabaseUnavailable(type(e).__name__) from None
+            raise
+        if applied == "applied":
+            log.info(f"Template {change['templateId']} of chatbot {bot.uuid} is {change['event']} by Meta's notice")
+        outcome[applied] += 1
+    if outcome.keys() - {"applied"}:
+        log.warning(f"Notices of templates for chatbot {bot.uuid} not applied: {dict(outcome)}")
+    return dict(outcome)
+
+
 # The kind of object of version 1, which the envelope still carries as `type`.
 _KINDS = {"whatsapp": "whatsapp_business_account", "messenger": "page"}
 
@@ -174,6 +220,13 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
             if database_failed(e):
                 raise DatabaseUnavailable(type(e).__name__) from None
             raise
+        if event.get("channel") == TEMPLATES:
+            current.set(**{"gateway.bot_id": str(bot.uuid), "gateway.client_id": str(bot.clientId),
+                           "gateway.channel": TEMPLATES})
+            try:
+                return await asyncio.to_thread(_apply_template_changes, event, bot)
+            except (KeyError, ValueError, TypeError):
+                raise Unprocessable("notices of templates without their shape") from None
         current.set(**{"gateway.bot_id": str(bot.uuid), "gateway.client_id": str(bot.clientId),
                        "gateway.channel": event.get("channel"), "gateway.messages": len(event["messages"])})
         received_at = datetime.fromisoformat(event["receivedAt"])

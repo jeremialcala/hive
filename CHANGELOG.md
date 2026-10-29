@@ -46,6 +46,29 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **El webhook recibe los cambios de estado de las plantillas** (HIG-86,
+  [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF30). Meta avisa con `message_template_status_update`
+  cuando una plantilla queda aprobada, rechazada, en pausa o desactivada.
+  - **El webhook** lee los avisos firmados y los publica como un evento `CambioDePlantilla`, en
+    `webhook.meta.templates` del stream `WEBHOOK`. Bifröst no cambia: el webhook ya publica en `webhook.meta.>` y la
+    ingesta lee todo el stream. Un aviso sin cuenta, sin plantilla o sin estado no se publica, y Meta recibe `200`.
+  - **La ingesta** aplica cada aviso a la copia, con su motivo (`statusReason`, que la lista devuelve como
+    `reason`). Ignora:
+    - los avisos de una cuenta que no es el `wabaId` del bot;
+    - los de una plantilla que Hive no tiene;
+    - los anteriores a lo que la copia ya sabe (`statusAt`).
+  - **El orden:** la escritura es condicional, así que un aviso reentregado tarde no deshace uno posterior. Lo que Hive
+    hace en Meta (crear, editar, sincronizar) deja la copia al día menos 60 s, porque Meta puede aprobar antes de
+    responder.
+  - **`REINSTATED`** deja la plantilla `APPROVED`. **`FLAGGED`** no cambia su estado: Meta la sigue enviando hasta que
+    la pausa o la desactiva, cada vez con su aviso.
+  - **Contrato:** `asyncapi-v2.yaml` gana el canal `webhookPlantillas` y el esquema `CambioDePlantilla`.
+  - **En el alta de un bot** de WhatsApp, la app de Meta se suscribe también a `message_template_status_update`
+    (README).
+  - **Pruebas:** `tests/unit/test_template_status.py`, con 29 pruebas. Cubren cada estado, el aviso sin firma (`403`),
+    el de otra cuenta, el de otro cliente, el de una plantilla desconocida, los malformados, el orden, el evento del
+    contrato y su `Nats-Msg-Id`.
+  - **Documentación:** el README, el PRD (0.8.2: RF29 y RF30, construido) y el contrato AsyncAPI.
 - **Las plantillas de WhatsApp de un bot** (HIG-85, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF30).
   Hive las crea, edita, borra y lista en Meta con el `whatsappToken` del bot, y guarda una copia de cada una con su
   estado. Solo se envía una plantilla cuya copia diga `APPROVED`.
