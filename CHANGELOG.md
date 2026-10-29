@@ -26,7 +26,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
-- **[ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) (propuesta): los tokens de acceso van atados
+- **[ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md) (aceptada el 2026-10-29): los tokens de acceso van atados
   por DPoP a la clave que los pidió** (HIG-89).
   - **La clave:** una credencial de máquina, de un cliente o de un worker del motor, firma cada prueba con su clave
     registrada. El BFF usa un par suyo, que vive solo en memoria.
