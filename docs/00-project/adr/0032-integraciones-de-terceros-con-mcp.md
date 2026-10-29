@@ -1,10 +1,10 @@
 # ADR-0032: Los servicios de terceros entran por un catálogo MCP del operador, y solo el enlace los llama
 
-* **Estado:** proposed
+* **Estado:** accepted
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 1.0.0
 * **ID:** ADR-0032
 * **Supersede:** —
 * **Controles OWASP afectados:** A01 (qué herramienta puede usar cada bot), A04 (las credenciales del cliente), A05 y
@@ -21,7 +21,9 @@ Decisiones de Jeremi:
 - **2026-10-29:**
   - las integraciones conviven con los intents y comparten el almacén de credenciales;
   - una herramienta con efectos la confirma el usuario final antes de ejecutarse;
-  - los servicios que lo exigen se conectan por OAuth ya en la v1.
+  - los servicios que lo exigen se conectan por OAuth ya en la v1;
+  - Jeremi aceptó la ADR el mismo día, con sus cifras: tres llamadas por mensaje, 16 KiB de respuesta, 10 minutos para
+    confirmar, y la confirmación también para las acciones de los intents que no son `GET`.
 
 ## Contexto
 

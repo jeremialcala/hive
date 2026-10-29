@@ -26,7 +26,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
-- **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (propuesta): los servicios de terceros
+- **[ADR-0032](docs/00-project/adr/0032-integraciones-de-terceros-con-mcp.md) (aceptada el 2026-10-29): los servicios de terceros
   entran por un catálogo MCP del operador, y solo el enlace los llama** (HIG-79).
   - **El catálogo:** servidores remotos por Streamable HTTP. Cada herramienta está aprobada por la huella de su
     descripción y su esquema, y es de lectura o de escritura según decide el operador, no las anotaciones. Una
