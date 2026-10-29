@@ -1,10 +1,10 @@
 # ADR-0031: El cliente escribe a sus contactos por WhatsApp, y solo el notificador envía
 
-* **Estado:** proposed
+* **Estado:** accepted
 * **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 1.0.0
 * **ID:** ADR-0031
 * **Supersede:** —
 * **Controles OWASP afectados:** A01 (quién envía y a quién), A04 (el token de Meta sale de la API de gestión hacia
@@ -18,7 +18,8 @@ Decisiones de Jeremi:
   - el `cliente-analista` solo envía plantillas aprobadas.
 - **2026-10-29:**
   - Hive guarda el consentimiento (opt-in) de cada contacto;
-  - Hive limita a 60 envíos por minuto por bot y a 1 000 al día por cliente.
+  - Hive limita a 60 envíos por minuto por bot y a 1 000 al día por cliente;
+  - un solo token de WhatsApp por bot, con los dos permisos: Jeremi lo confirmó al aceptar la ADR.
 
 ## Contexto
 
@@ -117,7 +118,7 @@ respuesta del bot a la misma persona salen en orden (RNF08).*
    - El token no sale de `hive-api` ni vuelve a nadie. Esto matiza RS06: el token se usa en el servidor de la API de
      gestión, pero solo el notificador lo obtiene en claro.
    - Hive guarda el `WABA_ID` de cada bot, que no es secreto y hoy no se guarda.
-   - **Un solo token por bot,** con los dos permisos. Lo normal es un token de usuario del sistema de Meta. Si le
+   - **Un solo token por bot,** con los dos permisos (confirmado por Jeremi el 2026-10-29). Lo normal es un token de usuario del sistema de Meta. Si le
      falta `whatsapp_business_management`, Hive lo dice al cargarlo y al gestionar plantillas, en lugar de pedir un
      segundo token.
    - Hive guarda una copia de cada plantilla: nombre, idioma, categoría y estado. Se actualiza al gestionarla y con
