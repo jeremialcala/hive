@@ -52,6 +52,15 @@ CONTACT_NOT_FOUND = "This contact was not found"
 UNAVAILABLE = "SERVICE UNAVAILABLE"
 
 
+def _one_line(value) -> str:
+    """
+        What goes into a line of the log from a request, on one line: whatever it says, it cannot write a line of its
+        own. The values logged here are already bounded (a uuid, a key's thumbprint, a template's name), but the log
+        does not rely on it.
+    """
+    return str(value).replace("\r", " ").replace("\n", " ")
+
+
 def _refused(code: str, why: str) -> JSONResponse:
     return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{code}: {why}")
 
@@ -174,9 +183,10 @@ async def ctr_send_message(repo: TenantRepository, bot_id: str, contact_id: str,
                       f"accepted, and the same key can be sent again")
             return answer(status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE)
     # A warning, so that it is kept at the level production logs at: it is the record of who sent what to whom.
-    log.warning(f"Send {record.uuid} accepted: client {repo.client_id}, by {sent_by}, chatbot {contact.botId}, "
-                f"contact {contact._uuid}, {request.type}" + (f" {template.name} ({template.language})"
-                                                               if template else ""))
+    what = (f"template {_one_line(template.name)} ({_one_line(template.language)})" if template is not None
+            else "text")
+    log.warning(f"Send {record.uuid} accepted: client {repo.client_id}, by {_one_line(sent_by)}, chatbot "
+                f"{contact.botId}, contact {contact._uuid}, {what}")
     return _accepted(record)
 
 
@@ -187,8 +197,10 @@ def ctr_set_consent(repo: TenantRepository, bot_id: str, contact_id: str, reques
         contact = repo.set_consent(contact, request.categories, request.source, granted)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, CONTACT_NOT_FOUND)
+    # The categories as the service names them, not as the request wrote them.
+    agreed = ", ".join(category for category in CATEGORIES if category in request.categories)
     log.warning(f"Client {repo.client_id} recorded the consent of contact {contact._uuid} of chatbot {contact.botId}: "
-                f"{', '.join(request.categories)}")
+                f"{agreed}")
     return answer(status.HTTP_200_OK, data={"uuid": str(contact._uuid), "consent": consent_info(contact)})
 
 

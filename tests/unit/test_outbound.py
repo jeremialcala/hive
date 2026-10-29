@@ -11,7 +11,7 @@ import logging
 import pathlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -357,3 +357,7 @@ def test_what_was_asked_goes_with_the_contact_when_it_is_deleted(http, caller, r
 
     assert deleted["outbound"] == 1
     assert OutboundRequest.objects(contactId=ana._uuid).count() == 0
+
+
+def test_what_goes_into_the_log_from_a_request_stays_on_one_line():
+    assert outbound._one_line("key\r\nFAKE Send accepted") == "key  FAKE Send accepted"

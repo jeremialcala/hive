@@ -49,6 +49,7 @@ def buckets(url):
             try:
                 await js.delete_key_value(name)
             except nats.js.errors.NotFoundError:
+                # The bucket may not exist yet: the setup starts from nothing either way.
                 pass
             await js.create_key_value(KeyValueConfig(bucket=name, ttl=24 * 3600, history=1, max_value_size=64))
     run(_admin(url, create))
@@ -66,6 +67,7 @@ def outgoing(url):
         try:
             await js.delete_stream("SALIENTES")
         except nats.js.errors.NotFoundError:
+            # The stream may not exist yet: the setup starts from nothing either way.
             pass
         await js.add_stream(config)
     run(_admin(url, create))
