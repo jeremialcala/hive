@@ -1,10 +1,11 @@
 # PRD — MVP del gateway BaaS de mensajería
 
-* **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28)
-* **Fecha:** 2026-10-28
+* **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28). Las
+  capacidades de la D9, en review desde el 2026-10-29
+* **Fecha:** 2026-10-29
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.4.0
+* **Versión:** 0.5.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -45,8 +46,22 @@ abuso (AB17–AB22). Lo demás sigue como se aprobó el 2026-10-12.
 ### Personas dentro de un cliente (2026-10-28)
 
 Cada cliente deja de ser solo una credencial de máquina: tiene personas que entran al área del cliente. Lo deciden
-la [matriz rol × acción](../02-design/matriz-rol-accion.md) (D1–D3, D5) y la [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md): Zitadel en midgard, MFA para todas las personas, intercambio de tokens en
+la [matriz rol × acción](../02-design/matriz-rol-accion.md) (D1–D3, D5) y la [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md): Zitadel en Nidavellir (enmienda del 2026-10-28), MFA para todas las personas, intercambio de tokens en
 `/oauth/token` y un BFF para la sesión. Se añaden RF16–RF18, RS22–RS23 y cinco escenarios de abuso (AB23–AB27).
+
+### Capacidades nuevas de la v1 (D9, 2026-10-29)
+
+La D9 de la [matriz rol × acción](../02-design/matriz-rol-accion.md) metió en la v1 diez capacidades del borrador,
+con los permisos que marca la matriz.
+
+| Para quién | Capacidades | Requisitos |
+|---|---|---|
+| El operador | suspender un cliente, la auditoría de la plataforma, las trazas y los eventos del bus, y el reproceso y el mantenimiento | RF19–RF22 |
+| El `cliente-admin` | editar la persona del bot, editar o borrar reglas, rotar el `verifyToken`, las versiones y los guardrails | RF23–RF27 |
+| El `cliente-admin` y el `cliente-analista` | calificar respuestas y ver las métricas de cumplimiento | RF28 |
+
+Se añaden también tres requisitos de seguridad (RS24–RS26) y ocho escenarios de abuso (AB28–AB35). Jeremi tomó el
+2026-10-29 las cuatro decisiones que los requisitos necesitaban ([Decisiones](#tomadas-el-2026-10-29-para-las-capacidades-de-la-d9-jeremi-alcala)).
 
 ## Objetivos / No-objetivos
 
@@ -177,6 +192,14 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB25 | Alguien roba la cookie de sesión del área del cliente o el token de acceso de una persona, por XSS o desde una máquina comprometida | RS22 | Pendiente: el BFF de la ADR-0029 deja los tokens fuera del navegador |
 | AB26 | Una persona dada de baja o bloqueada sigue entrando con la sesión que tenía | RS23 | Pendiente: como mucho 10 minutos, hasta el siguiente intercambio (ADR-0029) |
 | AB27 | Una cuenta de Zitadel sin persona en Hive, o con la contraseña robada pero sin el segundo factor, intenta conseguir un token | RS22, RS23 | Pendiente |
+| AB28 | Un cliente suspendido sigue operando con un token emitido antes de la suspensión, o sus bots siguen respondiendo | RF19, RS23 | Pendiente: como mucho 10 minutos, lo que dura un token |
+| AB29 | Alguien con la sesión de un `cliente-admin` vuelve a una versión antigua para recuperar un intent con un destino ya prohibido, o borra reglas para dejar el bot sin límites | RS16, RS25, RS26 | Pendiente: al volver se validan otra vez los destinos, la base de guardrails no cambia y todo queda en la auditoría |
+| AB30 | Un `cliente-analista`, o una sesión robada, lee el `verifyToken` o lo rota para cortar la suscripción del bot a Meta | RS23 | Pendiente |
+| AB31 | Quien entra en la superficie del operador lee el contenido de los mensajes de un cliente en las trazas, en los eventos del bus o en lo que espera reproceso | RS01, RS19 | Pendiente |
+| AB32 | Un reproceso o una purga, por error o con la sesión robada del operador, borra mensajes de varios clientes o hace que un bot responda dos veces | RS24, RNF04 | Pendiente |
+| AB33 | Un `cliente-analista` usa la calificación para leer conversaciones de otro cliente, o las lee sin dejar rastro | RS01, RS23, RF28 | Pendiente |
+| AB34 | Un `cliente-admin`, o quien robe su sesión, desactiva los guardrails para usar el bot contra sus usuarios o para sacar datos | RS26 | Pendiente: la base de la plataforma no se puede desactivar |
+| AB35 | Alguien borra o cambia una entrada de la auditoría, o una versión de un bot, para ocultar lo que hizo | RS25 | Pendiente |
 
 ## Requisitos funcionales
 
@@ -200,6 +223,16 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RF16 | El `cliente-admin` invita personas a su cliente por su correo, las bloquea, las da de baja y les cambia el rol, dentro de un catálogo fijo de dos: `cliente-admin` y `cliente-analista` (D1, D2 de la [matriz rol × acción](../02-design/matriz-rol-accion.md); [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | — |
 | RF17 | Una persona inicia sesión en el área del cliente con su IdP (Zitadel), siempre con MFA, y lo que alcanza lo decide su rol en Hive, según la matriz rol × acción ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | — |
 | RF18 | El `cliente-admin` lee la auditoría de su cliente: quién hizo qué y cuándo, sea una persona o la credencial de máquina (D5; completa RS14) | Pendiente | — |
+| RF19 | El operador suspende a un cliente y lo reactiva, sin borrar nada (D9). Mientras está suspendido, no consiguen token ni su credencial de máquina, ni sus personas, ni las claves del motor para él, y los tokens que ya tenían dejan de servir al caducar, en 10 minutos como mucho. El webhook de sus bots sigue aceptando y publicando lo que manda Meta, que espera en el bus hasta 7 días sin que nadie lo procese, ni la ingesta ni el motor (ADR-0021). Al reactivarlo, se procesa lo que no haya caducado. Suspender y reactivar llevan un motivo, que queda en la auditoría | Pendiente | — |
+| RF20 | El operador lee la auditoría de la plataforma, de todos los clientes: altas, bajas y suspensiones de clientes, claves registradas y revocadas, rechazos de autenticación, entregas al motor de tokens y vueltas, y sus propias acciones de mantenimiento. No lleva datos de los contactos ni contenido de mensajes; de cada cliente, su identificador (D9; completa RS14 junto con RF18) | Pendiente | — |
+| RF21 | El operador ve, desde su superficie (ADR-0027), las trazas de un mensaje y los eventos del bus: por qué servicios pasó, cuánto tardó cada paso y en qué sujeto está o dónde se paró. Ve solo los atributos que permite RS19 y los metadatos de cada evento (sujeto, identificadores, hora, intentos), nunca el contenido (D9) | Pendiente: hoy solo se ven en Tempo | — |
+| RF22 | El operador ve los mensajes que no se pudieron entregar o procesar (en qué sujeto, de qué cliente, cuántos intentos y por qué fallaron) y los reprocesa. Antes de reprocesar, Hive muestra a cuántos mensajes y clientes afecta, y un mensaje reprocesado no se responde dos veces (RNF04). El mantenimiento destructivo, purgar o borrar mensajes del bus, exige además MFA de los últimos 5 minutos y un motivo (RS24). Cada reproceso y cada purga quedan en la auditoría (D9) | Pendiente | — |
+| RF23 | El `cliente-admin` edita la persona de un bot: nombre, rol, tono y descripción, con los mismos límites que al crearlo (RS11). El `cliente-analista` la ve y no la cambia. Cada cambio crea una versión (RF26) | Pendiente: hoy solo se fija al crear el bot | — |
+| RF24 | El `cliente-admin` edita o borra una regla de un bot. Cada cambio crea una versión (RF26) | Pendiente: hoy las reglas solo se añaden | — |
+| RF25 | El `cliente-admin` rota el `verifyToken` de un bot. Hive genera uno nuevo y aleatorio, y el anterior deja de valer en el momento. Meta solo lo usa al verificar la suscripción: lo ya suscrito sigue recibiendo, y el valor nuevo se pone en la app de Meta la próxima vez que se verifique. Solo lo ve el `cliente-admin` (D6), y la rotación queda en la auditoría | Pendiente | — |
+| RF26 | Cada cambio de la configuración de un bot (persona, reglas, intents y guardrails) crea una versión, con quién la hizo y cuándo. El `cliente-admin` vuelve a una versión anterior, y volver crea una versión nueva, así que nada se reescribe. Al volver, los destinos de los intents se validan otra vez (RS16). El `cliente-analista` ve las versiones y en qué se diferencian, pero no vuelve. Las credenciales de Meta y el `verifyToken` no se versionan. Las versiones se borran con el bot (RF10) | Pendiente | — |
+| RF27 | Cada bot lleva una base de guardrails de la plataforma que nadie desactiva: la inyección de instrucciones, los intentos de sacar datos de otros contactos o de la plataforma, y el fallo cerrado si el filtro no responde (RS26). Sobre esa base, el `cliente-admin` añade sus propios temas y elige para cada uno qué pasa ante una violación: bloquear con una respuesta fija, o solo registrar. Cada violación queda registrada con el bot, el tema y la acción, sin el texto del mensaje (RS07) | Parcial: el clasificador del motor ya filtra la entrada con un rail fijo y falla cerrado (ADR-0005 del motor); falta la configuración por bot | — |
+| RF28 | El `cliente-admin` y el `cliente-analista` califican las respuestas de los bots de su cliente. Para eso leen el historial completo de la conversación del contacto (RF14), sin su número. Cada calificación dice quién la hizo, y cada vez que se abre una conversación para calificar queda en la auditoría del cliente (RF18). Los dos ven las métricas de cumplimiento de cada bot: las respuestas que el evaluador aprobó o rechazó (ADR-0008 del motor), los mensajes bloqueados por los guardrails y las calificaciones de las personas. Las calificaciones se borran con el contacto (RF09) | Pendiente | — |
 
 ## Requisitos no funcionales
 
@@ -318,8 +351,39 @@ requirementDiagram
     }
     IdentidadDePersonas - satisfies -> RS22
     IdentidadDePersonas - satisfies -> RS23
+    requirement RS24 {
+      id: RS24
+      text: Lo destructivo del operador con MFA reciente y motivo
+      risk: high
+      verifymethod: test
+    }
+    requirement RS25 {
+      id: RS25
+      text: Auditoria y versiones de solo anadir
+      risk: medium
+      verifymethod: test
+    }
+    requirement RS26 {
+      id: RS26
+      text: Base de guardrails que nadie desactiva
+      risk: high
+      verifymethod: test
+    }
+    element AprobacionReforzada {
+      type: "sin construir"
+    }
+    element RegistroDeSoloAnadir {
+      type: "sin construir"
+    }
+    element GuardrailsDePlataforma {
+      type: "rail fijo del clasificador, sin configuracion por bot"
+    }
+    AprobacionReforzada - satisfies -> RS24
+    RegistroDeSoloAnadir - satisfies -> RS25
+    GuardrailsDePlataforma - satisfies -> RS26
 ```
-*Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08. Los
+*Eje trazabilidad · fase 01 · Gate 0. Los requisitos de riesgo alto, RF09 y, desde el refactor, RS20 y RNF08; desde
+la D9, RS24–RS26. Los
 elementos "sin construir" no tienen todavía ni componente ni prueba que los verifique; tres de ellos (autorización,
 cifrado y derechos) se construyeron en el Gate 2 y el diagrama no se ha vuelto a trazar.*
 
@@ -353,6 +417,9 @@ OWASP Top 10 en su edición 2025.
 | RS21 | Cada worker del motor tiene su propia credencial, que dice qué rutas de la API de gestión alcanza: el notificador, los tokens de Meta; el clasificador y el coordinador, reglas y herramientas (D3) | Construido en la API (I6a, [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md)): una clave por cliente y por worker, con sus rutas. Las seis claves de un cliente las da de alta `ops.engine_keys` (I6b), con la parte privada en Andvari. Pendiente: los usuarios de Bifröst por worker (I6c) | V4.1, V4.2 | A01 |
 | RS22 | Toda persona entra con MFA, passkey o TOTP. Hive lo exige también en el intercambio del token, por el `amr`. La sesión del área del cliente vive en un BFF y el navegador solo tiene una cookie `__Host-` `HttpOnly`, `Secure` y `SameSite=Lax`, con protección contra CSRF ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | V2.2, V3.4, V3.5 | A07 |
 | RS23 | El cliente y el rol de una persona salen de Hive y no del IdP. Una persona sin registro en Hive, bloqueada o de baja no consigue token. Cada acción de una persona queda atribuida a ella ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md)) | Pendiente | V4.1, V4.2, V7.1 | A01 |
+| RS24 | El mantenimiento destructivo del operador (purgar o borrar mensajes del bus) muestra antes a qué afecta y exige MFA de los últimos 5 minutos y un motivo escrito, que quedan en la auditoría (RF22) | Pendiente | V3.7, V7.2 | A01 |
+| RS25 | La auditoría y las versiones de un bot son de solo añadir: ninguna persona ni credencial las edita ni las borra. Solo desaparecen al caducar o con la baja de su bot o su cliente (RF10). La auditoría del operador no lleva datos de los contactos ni contenido de mensajes (RF20) | Pendiente | V7.2, V7.3 | A09 |
+| RS26 | La base de guardrails de la plataforma se aplica a todo bot, ningún cliente la desactiva, y falla cerrado: si el filtro no responde, el mensaje se trata como bloqueado (RF27) | Parcial: el rail fijo del clasificador falla cerrado (ADR-0005 del motor); falta que la base y los temas del cliente sean por bot | V5.2, V11.1 | A05, A06 |
 
 ## Threat assessment inicial
 
@@ -505,6 +572,24 @@ control construido y una prueba que lo verifica.
 | Retención del historial | 12 meses por mensaje como máximo, que cada cliente puede acortar | RNF05, ADR-0017 |
 | Adjuntos en el historial | Solo su tipo: la URL de Meta caduca y puede llevar datos del contacto | RF14, ADR-0017 |
 | Cómo se conecta Instagram | *Facebook Login* a través de la página del cliente (`graph.facebook.com` y token de página): la misma app y el mismo token que Messenger, sin una credencial nueva | RF13 |
+
+### Tomadas el 2026-10-29 para las capacidades de la D9 (Jeremi Alcala)
+
+| Decisión | Resultado | Dónde queda |
+|---|---|---|
+| Qué hace el webhook con los bots de un cliente suspendido | Acepta y publica como siempre. El bus lo retiene hasta 7 días sin que nadie lo procese, y al reactivar se procesa lo que no haya caducado | RF19 |
+| Qué cuenta como aprobación humana con un solo operador | Ver antes a qué afecta, MFA de los últimos 5 minutos y un motivo escrito | RF22, RS24 |
+| Qué ve quien califica una respuesta | La conversación completa del contacto, sin su número, y cada apertura queda en la auditoría del cliente | RF28 |
+| Hasta dónde configura el cliente los guardrails | Sobre una base de la plataforma que no se desactiva, añade sus temas, cada uno con su acción: bloquear con una respuesta fija, o solo registrar | RF27, RS26 |
+
+### Por decidir en el diseño (D9)
+
+- **La retención de la auditoría,** de la plataforma y de cada cliente. Propuesta: 12 meses, como un contacto sin
+  actividad (RNF05).
+- **La retención de las versiones de un bot.** Propuesta: mientras exista el bot.
+- **Cómo pide Hive a Zitadel una MFA de los últimos 5 minutos** para RS24: con `max_age` en la petición y
+  comprobando `auth_time` y `amr` en el ID token. Va en una ADR.
+- **Dónde se guardan las calificaciones y las métricas:** en Hive, o en el evaluador del motor.
 
 ### Datos por aportar
 
