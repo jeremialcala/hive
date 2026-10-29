@@ -242,6 +242,32 @@ def test_what_meta_says_no_to_gives_only_its_code(http, caller, repo, bot, meta,
     assert repo.list_templates(bot.uuid) == []
 
 
+def test_an_account_the_token_does_not_reach_says_what_to_check(http, caller, repo, bot, meta, logged):
+    code, content = error(100)
+    content["error"]["error_subcode"] = 33
+    meta.answers = [(code, content)]
+
+    response = http.get(f"/chat/{bot.uuid}/templates", headers=caller.auth, params={"sync": "true"})
+
+    assert response.status_code == 422
+    message = response.json()["message"]
+    assert message.startswith("META_REFUSED") and "100/33" in message
+    assert "wabaId" in message and "whatsapp_business_management" in message
+    assert "100/33" in logged() and "text-marker" not in response.text + logged()
+
+
+@pytest.mark.parametrize("subcode", ["33", True, None, [33]])
+def test_a_subcode_that_is_not_a_number_is_not_kept(http, caller, bot, meta, subcode):
+    code, content = error(100)
+    content["error"]["error_subcode"] = subcode
+    meta.answers = [(code, content)]
+
+    response = create(http, caller, bot)
+
+    assert response.status_code == 422
+    assert response.json()["message"] == "META_REFUSED: Meta did not take it, with its code 100"
+
+
 @pytest.mark.parametrize("answer", [(500, {}), (503, {"error": {"code": 2}}), error(4), error(80008), (429, {})])
 def test_when_meta_cannot_answer_now_the_client_can_try_again_later(http, caller, repo, bot, meta, answer):
     meta.answers = [answer]
