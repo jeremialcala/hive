@@ -310,3 +310,50 @@ def test_an_event_of_notices_without_its_shape_cannot_be_ingested(bot):
 
 def test_messenger_has_no_notices_of_templates():
     assert template_changes("page", notification(change("APPROVED"))["entry"]) == []
+
+
+# --- The log ----------------------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def warned(caplog):
+    """What was logged at the level production keeps: WARNING and above."""
+    import logging
+    caplog.set_level(logging.WARNING)
+    return lambda: "\n".join(record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING)
+
+
+def test_an_applied_notice_is_in_the_log_production_keeps(repo, bot, warned):
+    stored(repo, bot)
+
+    notify(bot.uuid, notification(change("APPROVED")))
+
+    assert f"Template {META_ID} of chatbot {bot.uuid} is APPROVED by Meta's notice" in warned()
+
+
+def test_a_notice_of_another_account_says_which_account(repo, bot, warned):
+    stored(repo, bot)
+
+    notify(bot.uuid, notification(change("APPROVED"), account="0"))
+
+    assert f"template {META_ID} for chatbot {bot.uuid} is of account 0, not of the chatbot's {WABA}" in warned()
+
+
+@pytest.mark.parametrize("template_id,at,why", [("999999999", None, "Hive has no such template"),
+                                                 (META_ID, 1000, "older than what its copy knows")])
+def test_a_notice_not_applied_says_why(repo, bot, warned, template_id, at, why):
+    stored(repo, bot)
+
+    notify(bot.uuid, notification(change("PAUSED", template_id=template_id), at=at))
+
+    assert f"template {template_id} for chatbot {bot.uuid}, PAUSED: {why}, not applied" in warned()
+
+
+def test_what_is_not_an_id_does_not_reach_the_log(repo, bot, warned):
+    event = {"schemaVersion": 2, "botId": str(bot.uuid), "clientId": str(bot.clientId), "channel": "templates",
+             "receivedAt": "2026-10-29T12:00:00+00:00",
+             "changes": [{"account": "address-marker\nFORGED", "templateId": META_ID, "event": "APPROVED"},
+                         {"account": WABA, "templateId": "id-marker\nFORGED", "event": "APPROVED"}]}
+
+    assert asyncio.run(ingest_notification(event)) == {"of another account": 1, "malformed": 1}
+    assert "of account ?," in warned()
+    assert "FORGED" not in warned() and "marker" not in warned()

@@ -584,6 +584,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **Cada aviso de plantilla deja su rastro en el log de producción** (HIG-86). Producción solo guarda desde
+  `WARNING`, y el cambio aplicado iba en `INFO`, así que no quedaba nada. El primer aviso real (2026-10-29) se
+  descartó «de otra cuenta» sin decir cuál. Ahora cada aviso deja un `WARNING` con su plantilla y su estado:
+  - aplicado;
+  - de otra cuenta, con la cuenta del aviso y la del bot;
+  - de una plantilla que Hive no tiene;
+  - anterior a lo que la copia sabe;
+  - o sin su forma.
+  Solo se escriben ids de Meta. Lo que no tiene forma de id sale como `?`.
 - **Un no de Meta a las plantillas dice también su subcódigo** (HIG-85). Con solo el código, el `100` del primer
   sync en producción (2026-10-29) no distinguía una cuenta equivocada de un token sin permiso. Ahora la respuesta
   y el log llevan `código/subcódigo`, solo si son números. El `100/33` explica qué revisar: el `wabaId` y el
