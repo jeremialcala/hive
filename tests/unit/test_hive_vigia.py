@@ -44,7 +44,8 @@ def pasada(midgard, salud: dict, ahora=AHORA, uptime=86400, aviso=True, **entorn
     for nombre in os.listdir(falso / "salud"):
         os.remove(falso / "salud" / nombre)
     for nombre, valor in salud.items():
-        (falso / "salud" / nombre).write_text(valor, encoding="utf-8")
+        # «unhealthy» a secas es un contenedor en marcha; «exited unhealthy», uno parado.
+        (falso / "salud" / nombre).write_text(valor if " " in valor else f"running {valor}".rstrip(), encoding="utf-8")
     for registro in ("reiniciados", "avisos"):
         (falso / registro).unlink(missing_ok=True)
     env = {**os.environ, "PATH": f"{falso}:{os.environ['PATH']}", "FALSO": str(falso),
@@ -73,6 +74,14 @@ def test_reinicia_lo_unhealthy_y_avisa(midgard):
 def test_sin_nada_unhealthy_no_toca_nada_ni_avisa(midgard):
     # Un contenedor sin healthcheck, o que no existe, no es unhealthy.
     assert pasada(midgard, {"hive-api": "healthy", "hive-webhook": ""})[:2] == ([], [])
+
+
+def test_lo_que_alguien_paro_se_queda_parado(midgard):
+    """Docker marca unhealthy un contenedor parado, y `docker restart` lo arrancaría (2026-10-28)."""
+    salud = {"hive-api": "exited unhealthy", "hive-webhook": "restarting unhealthy",
+             "hive-coordinator": "paused unhealthy"}
+
+    assert pasada(midgard, salud)[:2] == ([], [])
 
 
 def test_recien_arrancado_midgard_no_reinicia_nada(midgard):
