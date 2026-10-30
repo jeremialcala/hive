@@ -663,6 +663,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **A la cuenta de servicio de Zitadel sin su rol se la reconoce como tal** (HIG-94). En la primera invitación real
+  (2026-10-30), Zitadel respondió `404 membership not found (AUTHZ-cdgFk)`: el rol `ORG_USER_MANAGER` se había creado
+  como rol del proyecto, no en *Administrator Roles*. Hive lo daba como `422 IDP_REFUSED (404)`, como si Zitadel
+  rechazara a la persona.
+  - **El id del error:** Hive guarda el id que Zitadel pone al final del mensaje (`AUTHZ-…`, `COMMAND-…`). Nunca
+    guarda el mensaje, que puede llevar el correo.
+  - **Los errores de autorización** (`AUTHZ-`, `AUTH-`) son de la cuenta de servicio: dan `503`, y el log dice qué
+    rol le falta.
+  - **Un no de Zitadel** a la persona da `422 IDP_REFUSED (<estado>, <id>)`.
+  - **La guía de autenticación** (0.5.2) dice dónde va el rol.
 - **La guía guardaba el token de Zitadel donde `hive-api` no lo podía leer** (HIG-94). Lo dejaba como fichero de
   root, pero el contenedor corre como el usuario 10001, como los otros secretos de `keys/`. Ahora la guía (0.5.1)
   lo deja de ese usuario, en modo `400`. Se vio al desplegar, antes de crear el token.

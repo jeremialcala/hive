@@ -12,7 +12,9 @@
 
     (zitadel.com/docs, User Service v2, read on 2026-10-30; to be checked against the version on Nidavellir.)
 
-    Of an answer that is not good, only its HTTP status is kept: its message may carry the email.
+    Of an answer that is not good, only its HTTP status and Zitadel's id of the error are kept, such as AUTHZ-cdgFk:
+    its message may carry the email. An error of authorization (AUTHZ-, AUTH-) is the service account's, not the
+    person's: it is for the operator to fix, like a token Zitadel turns away.
 """
 import pathlib
 import re
@@ -26,6 +28,10 @@ TIMEOUT = 10  # seconds
 APPLICATION = "Hive"
 # What Zitadel's ids look like: anything else is not put into an address, nor stored.
 USER_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
+# Zitadel's id of an error, at the end of its message: AUTHZ-cdgFk, COMMAND-k2unb... Only this is read of it.
+ERROR_ID = re.compile(r"\(([A-Z]{2,16}-[0-9A-Za-z]{2,16})\)\s*$")
+# The errors of authorization: the service account lacks a role (ORG_USER_MANAGER, in «Administrator Roles»).
+NOT_ALLOWED = ("AUTHZ-", "AUTH-")
 
 
 class ZitadelUnavailable(Exception):
@@ -33,11 +39,16 @@ class ZitadelUnavailable(Exception):
 
 
 class ZitadelRefused(Exception):
-    """Zitadel said no: it carries the HTTP status, never the message."""
+    """Zitadel said no: it carries the HTTP status and its id of the error, never the message."""
 
-    def __init__(self, status: int):
-        super().__init__(f"Zitadel {status}")
+    def __init__(self, status: int, error_id: str | None = None):
+        super().__init__(f"Zitadel {status}" + (f" {error_id}" if error_id else ""))
         self.status = status
+        self.error_id = error_id
+
+    @property
+    def reason(self) -> str:
+        return f"{self.status}, {self.error_id}" if self.error_id else str(self.status)
 
 
 class ZitadelUsers:
@@ -66,10 +77,13 @@ class ZitadelUsers:
             raise ZitadelUnavailable(type(e).__name__) from None
         if response.status_code >= 500 or response.status_code == 429:
             raise ZitadelUnavailable(f"Zitadel {response.status_code}")
-        if response.status_code in (401, 403):
-            raise ZitadelUnavailable(f"the service account was turned away: {response.status_code}")
+        error_id = self._error_id(response) if response.status_code != 200 else None
+        if response.status_code in (401, 403) or (error_id or "").startswith(NOT_ALLOWED):
+            raise ZitadelUnavailable(f"the service account was turned away: {response.status_code}"
+                                     + (f" {error_id}" if error_id else "")
+                                     + ("; it needs ORG_USER_MANAGER in its Administrator Roles" if error_id else ""))
         if response.status_code != 200:
-            raise ZitadelRefused(response.status_code)
+            raise ZitadelRefused(response.status_code, error_id)
         try:
             answer = response.json()
         except ValueError:
@@ -77,6 +91,15 @@ class ZitadelUsers:
         if not isinstance(answer, dict):
             raise ZitadelUnavailable("an answer that is not an object")
         return answer
+
+    @staticmethod
+    def _error_id(response) -> str | None:
+        try:
+            message = response.json().get("message")
+        except (ValueError, AttributeError):
+            return None
+        found = ERROR_ID.search(message) if isinstance(message, str) and len(message) <= 1000 else None
+        return found.group(1) if found else None
 
     def find_by_email(self, email: str) -> str | None:
         """The id of the user of the organization with that email, or None."""
