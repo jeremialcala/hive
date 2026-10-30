@@ -1,0 +1,76 @@
+# The end-to-end test (HIG-135, Gate 3): a person writes to a chatbot and gets its answer through every piece of
+# production, the images of the gateway, the engine and the portal built from this commit, with Bifröst as it is
+# configured; and a person of the client signs in to the PWA, in Chromium, and sends a template (HIG-141).
+# On the pull requests to main, which are the releases (docs/05-deployment/releases.md); on those to develop that
+# change the test itself, the portal or how production is deployed; and by hand.
+#
+# Bifröst's configuration and provisioning live in the private repository higerotech/bifrost: the deploy key
+# BIFROST_DEPLOY_KEY reads it, and nothing else. A pull request from a fork gets no secrets, and this does not run.
+name: e2e
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: e2e · del webhook a la respuesta
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Toward develop, only when the test, the portal or the deployment changes; toward main and by hand, always.
+      - name: Whether this change needs it
+        id: needed
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE" != "develop" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed="$(git diff --name-only "origin/$BASE...HEAD")"
+          if printf '%s\n' "$changed" | grep -qE '^(tests/e2e/|deploy/|engine/deploy/|portal/deploy/|portal/src/|\.github/workflows/e2e\.yml$|Dockerfile$|engine/Dockerfile$|portal/Dockerfile$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing of the end-to-end test or of the deployment changes: it does not run."
+          fi
+
+      - name: Bifröst, as it is configured
+        if: steps.needed.outputs.run == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: higerotech/bifrost
+          ref: develop
+          ssh-key: ${{ secrets.BIFROST_DEPLOY_KEY }}
+          path: .e2e/bifrost
+          persist-credentials: false
+
+      - if: steps.needed.outputs.run == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/e2e/requirements.lock
+
+      # The driver signs as a client would, with shared/, and drives Chromium with Playwright: its own lock, which
+      # takes in the gateway's development dependencies. Chromium, with what it needs of the system.
+      - if: steps.needed.outputs.run == 'true'
+        run: |
+          pip install --require-hashes -r tests/e2e/requirements.lock
+          python -m playwright install --with-deps chromium
+
+      - if: steps.needed.outputs.run == 'true'
+        run: pytest tests/e2e -p no:cacheprovider -v
+        env:
+          E2E: "1"
+          BIFROST_DIR: .e2e/bifrost

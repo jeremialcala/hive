@@ -7,6 +7,59 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-30
+
+### Seguridad
+- **`hive-api` y el webhook mandan las cabeceras de una API JSON** (HIG-138, A02 de la matriz OWASP). Antes no
+  mandaban ninguna; el portal y la documentación sí.
+  - **Qué cabeceras:** HSTS (un año, con subdominios), `nosniff`, `Referrer-Policy: no-referrer`,
+    `X-Frame-Options: DENY` y `Cache-Control: no-store`. Fuera de desarrollo, además
+    `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
+  - **Dónde:** en toda respuesta, también en un `404`, un `413` o un `500`. Las pone el interceptor de
+    `src/service.py` sin pisar las que ya trae una ruta.
+  - **Pruebas:** `tests/security/test_security_headers.py`. La matriz OWASP pasa a la 1.3.0.
+
+### Añadido
+- **El recorrido de la PWA, de punta a punta** (HIG-141, Gate 3; [e2e](docs/04-testing/e2e.md#el-recorrido-de-la-pwa)).
+  Chromium, con Playwright, contra `hive-portal` construido del mismo commit, junto al gateway y al motor de la prueba
+  de punta a punta.
+  - **El login:** con un Zitadel falso, en `tests/e2e/fakes.py`, que da un ID token con `amr` `mfa`. Las personas
+    entran por el camino real: `POST /people` las crea en Zitadel y su primer login las deja activas.
+  - **El recorrido:** los bots, una plantilla con su vista previa, su aprobación al sincronizar con Meta y su envío a
+    un contacto, seguido hasta que Meta lo acepta.
+  - **Lo que comprueba además:** la cookie `__Host-hive-session` `HttpOnly`, la sesión sellada en Bifröst, el logout,
+    ninguna violación de la CSP y que el `cliente-analista` no ve los botones de admin.
+  - **Sus dependencias:** van en su propio lock, `tests/e2e/requirements.lock`, que `Seguridad` audita.
+  - **Cuándo corre:** el workflow `e2e` instala Chromium, y en los PR a `develop` también corre si cambia el portal.
+- **El objetivo de latencia de punta a punta, RNF10** (HIG-136, Gate 3;
+  [medición](docs/04-testing/medicion-punta-a-punta.md)). Desde que el webhook recibe el mensaje hasta que Meta acepta
+  la respuesta.
+  - **El objetivo**, decidido por Jeremi el 2026-10-30: mediana de 10 s o menos y p95 de 20 s o menos, sobre todos los
+    mensajes respondidos. Cuenta con 20 respuestas o más.
+  - **`tests/performance/measure_end_to_end.py`:** el script que vivía suelto en midgard, ahora en el repositorio.
+    Lee de Bifröst las últimas 24 horas de tráfico real y da la mediana y el p95 de la espera y de cada paso, con su
+    veredicto. Imprime solo tiempos, y lo prueba `tests/unit/test_measure_end_to_end.py`.
+  - **La primera medición** (2026-10-30, con 3 respuestas, que no cuentan todavía): mediana 9,5 s y p95 10,0 s. La
+    ingesta tarda 1,8 s y el redactor 3,1 s.
+- **La prueba de punta a punta del webhook a la respuesta** (HIG-135, Gate 3;
+  [e2e](docs/04-testing/e2e.md)). Una persona escribe a un bot y recibe su respuesta, pasando por cada pieza de
+  producción.
+  - **Qué levanta:** las imágenes del gateway y del motor, construidas del mismo commit, con
+    `ENVIRONMENT=production` y TLS. Bifröst va con su configuración y su aprovisionamiento reales, del repo
+    `higerotech/bifrost`. OpenBao tiene TLS y la configuración de Andvari. Además, MongoDB y RabbitMQ, y un Meta y
+    un LLM falsos (`tests/e2e/compose.yaml`).
+  - **Cómo se prepara:** como lo haría un operador. Se registra la clave del operador y se da de alta un cliente,
+    con su bot, sus credenciales y las claves del motor (`tests/e2e/conftest.py`).
+  - **Qué comprueba:**
+    - Meta recibe el texto del LLM desde el número del bot y con su token;
+    - el historial guarda el mensaje y su respuesta;
+    - el bot queda en `ACT`;
+    - una firma con otro secreto da `403` y no llega nada.
+  - **El workflow `e2e`** corre en los PR a `main` y a mano, y lee Bifröst con la clave de despliegue
+    `BIFROST_DEPLOY_KEY`. Si falla, el informe lleva el log de cada servicio. En local tarda unos 30 s con las
+    imágenes construidas.
+  - La matriz OWASP pasa a la 1.2.0.
+
 ## [0.5.0] - 2026-10-30
 
 ### Seguridad
@@ -1189,7 +1242,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jeremialcala/hive/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jeremialcala/hive/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.2.0...v0.3.0

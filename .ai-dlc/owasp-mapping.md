@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.1.0
+* **Versión:** 1.3.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -18,14 +18,14 @@ Cómo se lee:
 Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine · test` y `portal · test`.
 - **La suite de seguridad del gateway** se corre sola con `pytest -m security`: son `tests/security/` y las
   pruebas unitarias de esta matriz, que `tests/conftest.py` marca.
-- **`tests/e2e/`** sigue vacío (HIG-135).
+- **`tests/e2e/`** recorre del webhook a la respuesta con las imágenes de producción ([e2e](../docs/04-testing/e2e.md)).
 
 ## Resumen
 
 | ID | Riesgo | Estado | Lo que más lo sostiene | Lo que falta |
 |---|---|---|---|---|
 | A01 | Control de acceso | Cubierto en la API | Aislamiento por cliente y matriz rol × acción, probados ruta por ruta | DAST con varios roles (HIG-90); RS20, RS24 |
-| A02 | Configuración insegura | Parcial | Contenedores sin root, endurecidos; documentación solo en desarrollo; cabeceras en el portal | Cabeceras en `hive-api` (HIG-138); escaneo de imagen y de compose (HIG-20) |
+| A02 | Configuración insegura | Parcial | Contenedores sin root, endurecidos; documentación solo en desarrollo; cabeceras en el portal, `hive-api` y el webhook | Escaneo de imagen y de compose (HIG-20) |
 | A03 | Cadena de suministro | Parcial | Locks con hashes, imágenes por digest, `pip-audit`, gitleaks, CodeQL con umbral | SBOM, Actions por SHA, Dependabot (HIG-20) |
 | A04 | Fallos criptográficos | Cubierto, con una salvedad | Clave de datos por cliente en Andvari, AES-GCM con el cliente autenticado, sesiones selladas | Cifrado de lo que viaja por el bus (RS08); RS28 |
 | A05 | Inyección | Parcial | Solo ODM por el repositorio; ids, operadores y anidamiento hostiles en cada ruta; 422 sin eco | DAST (HIG-90); RS11 |
@@ -90,6 +90,13 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Prueba:** `ptu/test_portal.py::test_every_page_says_what_the_browser_may_load`,
     `test_the_pwa_s_files_are_asked_again_after_a_deploy`.
   - **Decidido en:** ADR-0026, ADR-0027, ADR-0034.
+- **Las cabeceras de una API JSON en `hive-api` y el webhook** (`SECURITY_HEADERS` en `src/service.py`, HIG-138), en
+  toda respuesta, también en un `404`, un `413` o un `500`:
+  - HSTS, `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` y `Cache-Control: no-store`;
+  - fuera de desarrollo, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
+  - **Prueba:** `tests/security/test_security_headers.py` (`test_every_answer_carries_the_headers_of_a_json_api`,
+    `test_a_failure_carries_them_too`).
+  - **Decidido en:** OWASP REST Security Cheat Sheet.
 - **Sin secretos en el repositorio ni en las imágenes** (`.gitignore`, `.dockerignore`).
   - **Prueba:** gitleaks («Fuga de secretos», `seguridad.yml`), sobre toda la historia.
   - **Decidido en:** `SECURITY.md`; RS13.
@@ -97,7 +104,6 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   del CI. Los rulesets viven en GitHub, no en el repositorio.
 
 **Huecos:**
-- **`hive-api` y `hive-webhook` no mandan cabeceras de seguridad** (HIG-138).
 - **No hay escaneo de imagen** (Trivy) **ni de compose o Dockerfile** (hadolint), que son gates de Gate 4 (HIG-20).
 
 ## A03 — Cadena de suministro
@@ -246,7 +252,9 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **La firma de Meta** (`X-Hub-Signature-256`), un HMAC sobre el cuerpo crudo con el App Secret de cada bot
   (`src/utils/security.py`, `src/webhook.py`).
   - **Prueba:** `tu/test_webhook_security.py::test_signature_matches_only_the_signed_body`,
-    `tu/test_webhook_answers.py::test_without_a_good_signature_the_answer_is_403_and_the_body_is_not_read`.
+    `tu/test_webhook_answers.py::test_without_a_good_signature_the_answer_is_403_and_the_body_is_not_read`, y con las
+    imágenes de producción,
+    `tests/e2e/test_del_webhook_a_la_respuesta.py::test_a_notification_signed_with_another_secret_reaches_nothing`.
   - **Decidido en:** ADR-0004, ADR-0007; RS03.
 - **Contratos versionados** del bus, de la cola y de la API.
   - **Prueba:** `tests/contract/` (`test_bus_contract.py`, `test_queue_contract.py`, `test_openapi_contract.py`) y

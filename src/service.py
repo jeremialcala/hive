@@ -48,6 +48,26 @@ MAX_BODY_BYTES = 3 * 1024 * 1024
 # The method of a request as the log names it: one of these, never the text that was sent.
 METHODS = {method: method for method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")}
 
+# What every answer of both services says to whoever reads it (HIG-138, A02 of .ai-dlc/owasp-mapping.md), as the
+# OWASP REST Security Cheat Sheet asks of a JSON API: HTTPS only from now on, no guessing its type, no address given to
+# whoever it links to, no page of ours inside another, and nothing kept by a cache along the way, as what it carries
+# is a client's. A route that says otherwise keeps its own (setdefault).
+def security_headers(environment: str) -> dict:
+    headers = {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store",
+    }
+    # A JSON API loads nothing and is shown in no frame. Not in development: the interactive documentation is a page.
+    if environment != "development":
+        headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return headers
+
+
+SECURITY_HEADERS = security_headers(settings.environment)
+
 
 def documentation(environment: str) -> dict:
     """
@@ -122,6 +142,8 @@ async def interceptor(request: Request, call_next):
         finally:
             process_time = "{:f}".format(time.time() - s_time)
             response.headers[PROCESSING_TIME] = str(process_time)
+            for name, value in SECURITY_HEADERS.items():
+                response.headers.setdefault(name, value)
             # The one line a request leaves, written once it is known which route it was.
             log.info(f"{request_line(request)} code:{response.status_code} time: {process_time}")
             current.set(**request_attributes(request), **{"http.response.status_code": response.status_code})

@@ -1,0 +1,187 @@
+# Hive end to end (HIG-135, HIG-141): the gateway, the engine and the portal of production, with Bifröst as it is
+# configured (higerotech/bifrost), OpenBao with TLS, MongoDB, RabbitMQ (Hermod, while the ingestion still feeds the
+# `llm` queue) and a fake Meta, LLM and Zitadel. tests/e2e/conftest.py makes the secrets in $E2E_DIR and drives it:
+#
+#   E2E=1 BIFROST_DIR=../bifrost pytest tests/e2e
+#
+# What changes from deploy/docker-compose.yml, engine/deploy/docker-compose.yml and portal/deploy/docker-compose.yml:
+# the images are the ones just built, the secrets are born in $E2E_DIR, Meta, the LLM and Zitadel are
+# tests/e2e/fakes.py, the portal is at http://localhost:15004 instead of behind the tunnel, and nothing restarts. The
+# rest, as in production: ENVIRONMENT=production, TLS to Bifröst and to Andvari, the workers read-only and without
+# capabilities.
+name: hive-e2e
+
+x-gateway: &gateway
+  image: ${GATEWAY_IMAGE:-hive-gateway:e2e}
+  env_file: ["${E2E_DIR:?E2E_DIR is required}/gateway.env"]
+  volumes: ["${E2E_DIR}:/run/e2e:ro"]
+  networks: [e2e]
+
+x-worker: &worker
+  image: ${ENGINE_IMAGE:-hive-engine:e2e}
+  volumes: ["${E2E_DIR}:/run/e2e:ro"]
+  networks: [e2e]
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+x-andvari: &andvari
+  ANDVARI_ADDR: https://openbao:8200
+  ANDVARI_CA_FILE: /run/e2e/tls/ca.crt
+  LOG_LEVEL: INFO
+
+x-llm: &llm
+  LLM_URL: http://fakes:8080
+  LLM_API_KEY_FILE: /run/e2e/llm-api-key
+  LLM_CALENTAR_CADA: "0"
+  LOG_LEVEL: INFO
+
+# Zitadel, by one name for the browser and for the containers: the browser maps it to 127.0.0.1 (conftest.py).
+x-zitadel: &zitadel
+  IDP_ISSUER: http://zitadel.e2e.test:18090
+  OIDC_CLIENT_ID: "300000000000000001"
+  IDP_ORGANIZATION_ID: "300000000000000002"
+  PORTAL_URL: http://localhost:15004
+
+x-to-gateway: &to-gateway
+  GATEWAY_URL: http://hive-api:5002
+  GATEWAY_AUDIENCE: ${GATEWAY_AUDIENCE:-https://hive-api.e2e.test}
+  GATEWAY_PUBLIC_KEYS_FILE: /run/e2e/gateway-public.json
+
+services:
+  # --- What Hive runs on ---------------------------------------------------------------------------------------------
+
+  nats:
+    image: nats:2.14.8-alpine@sha256:f9512b17aae6d41b6a615a7afad7b328633639ddae025744623e69b26fe686be
+    command: ["-c", "/etc/nats/bifrost.conf"]
+    env_file: ["${E2E_DIR}/bifrost.env"]
+    volumes:
+      - "${BIFROST_DIR:?BIFROST_DIR is required}/nats/bifrost.conf:/etc/nats/bifrost.conf:ro"
+      - "${E2E_DIR}/tls:/etc/nats/tls:ro"
+    ports: ["127.0.0.1:18222:8222"]
+    networks: [e2e]
+
+  openbao:
+    image: openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+    command: ["server", "-config=/run/e2e/openbao.hcl"]
+    volumes: ["${E2E_DIR}:/run/e2e:ro"]
+    ports: ["127.0.0.1:18200:8200"]
+    networks: [e2e]
+
+  mongo:
+    image: mongo:7.0.45@sha256:8bb4442761a63a8dda452744082cdac9644b429807eb977b42324a63cef59ca4
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: hive
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/e2e/mongo-password
+    volumes: ["${E2E_DIR}:/run/e2e:ro"]
+    networks: [e2e]
+
+  rabbitmq:
+    image: rabbitmq:4.3.5-management@sha256:57bddb6fbc3498b5d8b5a14dc6f4506073ebcf94c66ba2a7678c335faa8dd631
+    env_file: ["${E2E_DIR}/rabbitmq.env"]
+    networks: [e2e]
+
+  fakes:
+    image: python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    command: ["python", "-I", "/fakes/fakes.py"]
+    environment: *zitadel
+    volumes: ["./fakes.py:/fakes/fakes.py:ro", "${E2E_DIR}:/run/e2e:ro"]
+    ports: ["127.0.0.1:18080:8080", "127.0.0.1:18090:18090"]
+    networks:
+      e2e:
+        aliases: [zitadel.e2e.test]
+
+  # --- The gateway ---------------------------------------------------------------------------------------------------
+
+  hive-api:
+    <<: *gateway
+    env_file: ["${E2E_DIR}/gateway.env", "${E2E_DIR}/nats-gestion.env"]
+    environment:
+      GATEWAY_KEYS_FILE: /run/e2e/gateway-keys.json
+      GATEWAY_URLS: http://hive-api:5002,http://127.0.0.1:15002
+      ERASURES_DIR: /tmp/erasures
+      # The people (ADR-0029): the ID tokens of Zitadel for the portal, and its service account to invite them.
+      IDP_ISSUER: http://zitadel.e2e.test:18090
+      IDP_AUDIENCE: "300000000000000001"
+      IDP_ORGANIZATION_ID: "300000000000000002"
+      IDP_TOKEN_FILE: /run/e2e/zitadel-token
+    tmpfs: [/tmp]
+    ports: ["127.0.0.1:15002:5002"]
+
+  webhook:
+    <<: *gateway
+    command: ["uvicorn", "webhook:app", "--host", "0.0.0.0", "--port", "5002", "--no-access-log"]
+    env_file: ["${E2E_DIR}/gateway.env", "${E2E_DIR}/nats-webhook.env"]
+    ports: ["127.0.0.1:15003:5002"]
+
+  ingest:
+    <<: *gateway
+    command: ["python", "ingest.py"]
+    env_file: ["${E2E_DIR}/gateway.env", "${E2E_DIR}/nats-ingesta.env"]
+
+  # One-off: the operations of the gateway image, as the operator runs them (docs/03-implementation/autenticacion.md).
+  ops:
+    <<: *gateway
+    profiles: [operations]
+    entrypoint: ["python", "-m"]
+    environment:
+      GATEWAY_URL: http://hive-api:5002
+      GATEWAY_PUBLIC_KEYS_FILE: /run/e2e/gateway-public.json
+      OPERATOR_KEY_FILE: /run/e2e/operador.json
+      ENGINE_KEYS_SECRET_ID_FILE: /run/e2e/motor-claves-secret-id
+
+  # --- The portal (HIG-141) ------------------------------------------------------------------------------------------
+
+  portal:
+    image: ${PORTAL_IMAGE:-hive-portal:e2e}
+    env_file: ["${E2E_DIR}/nats-portal.env"]
+    environment:
+      <<: *zitadel
+      ENVIRONMENT: production
+      HIVE_API_URL: http://hive-api:5002
+      OIDC_CLIENT_SECRET_FILE: /run/e2e/oidc-client-secret
+      SESSION_KEY_FILE: /run/e2e/session-key
+    volumes: ["${E2E_DIR}:/run/e2e:ro"]
+    ports: ["127.0.0.1:15004:8080"]
+    networks: [e2e]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  # --- The engine ----------------------------------------------------------------------------------------------------
+
+  classifier:
+    <<: *worker
+    command: ["python", "-m", "src.workers.classifier"]
+    env_file: ["${E2E_DIR}/nats-classifier.env"]
+    environment:
+      <<: *llm
+
+  coordinator:
+    <<: *worker
+    command: ["python", "-m", "src.workers.coordinator"]
+    env_file: ["${E2E_DIR}/nats-coordinator.env", "${E2E_DIR}/role-coordinator.env"]
+    environment:
+      <<: [*andvari, *to-gateway]
+      ENGINE_SECRET_ID_FILE: /run/e2e/coordinator-secret-id
+
+  responder:
+    <<: *worker
+    command: ["python", "-m", "src.workers.responder"]
+    env_file: ["${E2E_DIR}/nats-responder.env"]
+    environment:
+      <<: *llm
+
+  notifier:
+    <<: *worker
+    command: ["python", "-m", "src.workers.notifier"]
+    env_file: ["${E2E_DIR}/nats-notifier.env", "${E2E_DIR}/role-notifier.env"]
+    environment:
+      <<: [*andvari, *to-gateway]
+      ENGINE_SECRET_ID_FILE: /run/e2e/notifier-secret-id
+      GRAPH_URL: http://fakes:8080
+
+networks:
+  e2e:

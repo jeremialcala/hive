@@ -284,6 +284,7 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RNF07 | Disponibilidad del webhook: sin cifra comprometida mientras el servidor no tenga UPS. Se mide desde el primer despliegue | Sin medir |
 | RNF08 | Los mensajes de una misma conversación (bot y remitente) se procesan en el orden en que llegaron, también con varios consumidores por etapa: cada evento lleva una clave de orden y el bus la respeta | Pendiente (R3 del plan) |
 | RNF09 | Cada mensaje se puede seguir de un servicio a otro: cada evento lleva el contexto de traza W3C (`traceparent`) y cada servicio emite sus spans con OpenTelemetry | Construido en el gateway (I5, [trazas](../03-implementation/trazas.md)): cada servicio emite sus spans y cada evento lleva el `traceparent` del span que lo publica. Probado en midgard: el evento de `WEBHOOK` y el mensaje identificado comparten traza. Falta dónde verlas: no hay colector |
+| RNF10 | Una persona recibe la respuesta del bot con una mediana de 10 s o menos y un percentil 95 de 20 s o menos, desde que el webhook recibe su mensaje hasta que Meta acepta la respuesta, sobre todos los mensajes respondidos. Cuenta con 20 respuestas o más (decisión de Jeremi del 2026-10-30, HIG-136) | Medido el 2026-10-30, con 3 respuestas, que no cuentan todavía: mediana 9,5 s y p95 10,0 s ([medición](../04-testing/medicion-punta-a-punta.md); `tests/performance/measure_end_to_end.py`) |
 
 ## Trazabilidad de requisitos
 
