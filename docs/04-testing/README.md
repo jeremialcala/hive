@@ -16,3 +16,5 @@ Pruebas de punta a punta:
 Mediciones:
 
 - [I1: cuánto tarda hoy el webhook en responder a Meta](medicion-webhook-i1.md), la línea base de RNF01.
+- [Cuánto espera una persona la respuesta](medicion-punta-a-punta.md): el objetivo de punta a punta (RNF10), cómo se
+  mide y cada medición.
