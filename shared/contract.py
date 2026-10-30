@@ -17,6 +17,9 @@ SCHEMA_VERSION = 2
 
 Channel = Literal["whatsapp", "messenger", "instagram"]
 
+# Where the management API says that a chatbot's configuration changed (ADR-0035): plain NATS, not a stream.
+CONFIGURED_SUBJECT = "gateway.bot.configured"
+
 
 def identified_subject(partition: int, bot_id, contact_id) -> str:
     """Where the ingestion publishes a message identified, in the stream MENSAJES."""
@@ -45,6 +48,19 @@ class _Event(BaseModel):
     botId: UUID
     # The client that owns the chatbot: which key the worker signs with (ADR-0022).
     clientId: UUID
+
+
+class BotConfigured(_Event):
+    """
+        BotConfigurado: the management API changed the configuration of a chatbot, and says which version it is at now
+        (RF26, ADR-0035). A notice on CONFIGURED_SUBJECT that nobody keeps: whoever remembers the chatbot forgets what
+        it had from a version before this one. Only identifiers and the number.
+    """
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    uuid: UUID
+    version: int = Field(ge=1, strict=True)
+    configuredAt: datetime
 
 
 class Contact(BaseModel):

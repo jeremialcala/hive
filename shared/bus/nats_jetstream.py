@@ -116,6 +116,18 @@ class NatsPublisher:
             raise BusUnavailable(type(e).__name__) from None
         return Published(stream=ack.stream, sequence=ack.seq, duplicate=bool(ack.duplicate))
 
+    async def announce(self, subject: str, payload: bytes, headers: dict[str, str] | None = None) -> None:
+        """
+            Sends a notice to whoever listens now, without the bus keeping it: nobody acknowledges it, and whoever is
+            not listening misses it. Returns once Bifröst has it. Raises BusUnavailable.
+        """
+        await self._connect()
+        try:
+            await self._connection.publish(subject, payload, headers=headers)
+            await self._connection.flush(timeout=ACK_TIMEOUT)
+        except (nats.errors.Error, OSError, asyncio.TimeoutError) as e:
+            raise BusUnavailable(type(e).__name__) from None
+
     async def count(self, bucket: str, key: str) -> int:
         """
             Adds one to the counter `key` of the bucket and says how many it holds now. Two callers at the same time

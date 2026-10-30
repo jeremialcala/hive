@@ -13,6 +13,7 @@ from constants import APPLICATION_JSON, CONTENT_TYPE, CONTENT_LENGTH
 from enums import Status
 from repository import TenantRepository, NotFound
 from utils import describe
+from .bot_versions import INTENT_CHANGED, INTENT_CREATED, INTENT_DELETED, versioned
 from .events import ctr_notify_action
 
 __all__ = ["ctr_create_intent", "ctr_get_intents", "ctr_get_intent", "ctr_update_intent", "ctr_delete_intent",
@@ -53,7 +54,8 @@ def _build_actions(request: IntentRequest) -> list:
     return actions
 
 
-def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, author: str,
+                      eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -80,7 +82,8 @@ def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: st
             samplePhrases=request.samplePhrases,
             actions=_build_actions(request)
         )
-        repo.add_intent(bot_id, _intent)
+        with versioned(repo, bot_id, author, INTENT_CREATED):
+            repo.add_intent(bot_id, _intent)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data=_intent.intent_info())
 
@@ -218,7 +221,7 @@ def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId:
     return response
 
 
-def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str,
+def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str, author: str,
                             eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -245,7 +248,8 @@ def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: st
         _intent.samplePhrases = request.samplePhrases
         _intent.actions = _build_actions(request)
         _intent.statusDate = _intent.statusDate
-        repo.save_intent(_intent)
+        with versioned(repo, bot_id, author, INTENT_CHANGED):
+            repo.save_intent(_intent)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data=_intent.intent_info())
 
@@ -276,7 +280,8 @@ def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: st
     return response
 
 
-def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
+def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, author: str,
+                      eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -298,7 +303,8 @@ def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, event
     try:
         _intent = repo.get_intent(bot_id, intent_id)
         _intent.status = Status.DIS.value
-        repo.save_intent(_intent)
+        with versioned(repo, bot_id, author, INTENT_DELETED):
+            repo.save_intent(_intent)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data=None)
 

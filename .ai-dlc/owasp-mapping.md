@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.4.0
+* **Versión:** 1.5.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -63,6 +63,11 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **Los destinos de los intents, solo HTTPS público** (anti-SSRF): `shared/destinations.py`.
   - **Prueba:** `tu/test_intent_destinations.py::test_a_destination_that_could_reach_the_platform_is_refused`.
   - **Decidido en:** `docs/03-implementation/destinos-de-los-intents.md`; RS16.
+- **Volver a una versión de un bot no trae un destino que hoy no se permite.** Los intents de la versión vuelven a
+  pasar las reglas de hoy, y el `cliente-analista` ve las versiones pero no vuelve (`src/controller/bot_versions.py`).
+  - **Prueba:** `tu/test_bot_versions.py::test_going_back_to_an_intent_whose_destination_is_not_allowed_any_more_changes_nothing`
+    y `tu/test_bot_versions.py::test_the_analyst_sees_the_versions_and_what_changed_but_does_not_go_back`.
+  - **Decidido en:** ADR-0035; RF26, RS16, AB29.
 
 **Huecos:**
 - el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90) va sin token: no prueba cuentas de distinto rol, solo que

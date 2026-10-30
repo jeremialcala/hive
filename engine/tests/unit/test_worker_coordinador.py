@@ -16,7 +16,7 @@ from shared import bus
 from shared.auth.gateway_keys import new_key, public_part
 from src.domain.models.sobre import Clasificacion, MensajePedido, Persona, Vuelta
 from src.domain.ports.fuente_del_bot import FuenteDelBot, FuenteNoDisponible, NoEncontrado
-from src.workers.coordinator import Coordinar, preparar
+from src.workers.coordinator import Coordinar, al_configurar, preparar
 from src.workers.runtime import Resultado
 from src.workers.settings import CoordinatorSettings
 
@@ -187,3 +187,72 @@ def test_al_arrancar_lee_la_clave_del_gateway_de_su_fichero(tmp_path):
             await cerrar()
 
     assert asyncio.run(arrancar()) == ("coordinator", "http://hive-api:8000", 4)
+
+
+# --- Los avisos de configuración (ADR-0035 del gateway) ----------------------------------------------------------
+
+class Fuente:
+    def __init__(self):
+        self.olvidados = []
+
+    def configuracion_cambiada(self, client_id, bot_id, version):
+        self.olvidados.append((client_id, bot_id, version))
+
+
+def aviso(**cambios) -> bytes:
+    datos = {"schemaVersion": 2, "uuid": str(uuid4()), "clientId": str(CLIENTE), "botId": str(BOT), "version": 4,
+             "configuredAt": "2026-10-30T16:00:00+00:00", **cambios}
+    return json.dumps(datos).encode()
+
+
+def test_un_aviso_de_configuracion_hace_olvidar_la_version_anterior():
+    fuente = Fuente()
+
+    asyncio.run(al_configurar(fuente)(SimpleNamespace(data=aviso())))
+
+    assert fuente.olvidados == [(CLIENTE, BOT, 4)]
+
+
+@pytest.mark.parametrize("roto", [b"no es json", aviso(version=0), aviso(version="4"), aviso(schemaVersion=1),
+                                  aviso(otro="campo"), aviso(botId="no-es-un-uuid")],
+                         ids=["no JSON", "version 0", "version de texto", "otro esquema", "un campo de más",
+                              "bot que no es UUID"])
+def test_un_aviso_roto_se_ignora_y_no_dice_que_traia(roto, caplog):
+    fuente = Fuente()
+
+    asyncio.run(al_configurar(fuente)(SimpleNamespace(data=roto)))
+
+    assert fuente.olvidados == []
+    assert "gateway.bot.configured se ignora" in caplog.text and "no-es-un-uuid" not in caplog.text
+
+
+class Conexion:
+    def __init__(self):
+        self.sujetos, self.bajas = [], 0
+
+    async def subscribe(self, sujeto, cb):
+        self.sujetos.append(sujeto)
+        conexion = self
+
+        class Suscripcion:
+            async def unsubscribe(self):
+                conexion.bajas += 1
+        return Suscripcion()
+
+
+def test_al_arrancar_escucha_los_avisos_de_configuracion_y_al_cerrar_deja_de_hacerlo(tmp_path):
+    fichero = tmp_path / "gateway-public.json"
+    fichero.write_text(json.dumps({"keys": [public_part(new_key())]}), encoding="utf-8")
+    settings = CoordinatorSettings(nats_url="tls://bifrost:4222", andvari_addr="https://andvari:8200",
+                                   engine_role_id="rol", engine_secret_id_file="/run/andvari/secret-id",
+                                   gateway_url="http://hive-api:8000", gateway_audience="https://bots.example.com",
+                                   gateway_public_keys_file=str(fichero))
+    conexion = Conexion()
+
+    async def arrancar():
+        _, cerrar = await preparar(settings, 4, store=object(), conexion=conexion)
+        await cerrar()
+
+    asyncio.run(arrancar())
+
+    assert (conexion.sujetos, conexion.bajas) == (["gateway.bot.configured"], 1)

@@ -20,7 +20,8 @@ import pytest
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamConfig
 
 from src.domain.models.sobre import MensajePedido, Persona, Vuelta
-from src.workers.coordinator import CONSUMIDOR, STREAM, Coordinar
+from shared.contract import CONFIGURED_SUBJECT
+from src.workers.coordinator import CONSUMIDOR, STREAM, Coordinar, al_configurar
 from src.workers.runtime import conectar, consumir, publicador
 from src.workers.settings import WorkerSettings
 
@@ -131,3 +132,40 @@ def test_el_coordinador_lee_lo_clasificado_publica_el_pedido_y_confirma(motor):
     assert leido.pedido.respuesta == "modelo" and leido.pedido.persona.reglas == ["Be kind"]
     # El pedido no vuelve a entrar al coordinador: su filtro es motor.clasificado.>.
     assert asyncio.run(_como_admin(motor, confirmado))
+
+
+def test_el_coordinador_oye_los_avisos_de_configuracion_con_su_usuario(url):
+    """Con los permisos de Bifröst, el usuario del coordinador se suscribe a gateway.bot.configured."""
+    bot, cliente = uuid4(), uuid4()
+    aviso = {"schemaVersion": 2, "uuid": str(uuid4()), "clientId": str(cliente), "botId": str(bot), "version": 7,
+             "configuredAt": datetime.now(timezone.utc).isoformat()}
+
+    class Fuente:
+        def __init__(self):
+            self.olvidados = []
+
+        def configuracion_cambiada(self, client_id, bot_id, version):
+            self.olvidados.append((client_id, bot_id, version))
+
+    async def correr():
+        settings = WorkerSettings(nats_url=url, nats_user="coordinator", nats_password="test",
+                                  nats_inbox_prefix="_INBOX_coordinator", andvari_addr="https://andvari:8200",
+                                  engine_role_id="no-se-usa", engine_secret_id_file="/no/se/usa")
+        fuente = Fuente()
+        conexion = await conectar(settings, "coordinator")
+        admin = await nats.connect(url, user="admin", password="test")
+        try:
+            await conexion.subscribe(CONFIGURED_SUBJECT, cb=al_configurar(fuente))
+            await conexion.flush()
+            await admin.publish(CONFIGURED_SUBJECT, json.dumps(aviso).encode())
+            await admin.flush()
+            for _ in range(50):
+                if fuente.olvidados:
+                    break
+                await asyncio.sleep(0.1)
+        finally:
+            await admin.close()
+            await conexion.drain()
+        return fuente.olvidados
+
+    assert asyncio.run(correr()) == [(cliente, bot, 7)]

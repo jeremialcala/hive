@@ -322,8 +322,8 @@ def test_the_report_says_what_came_back_and_deletes_nothing(restored, register_o
 
     # Each person wrote one message, and it came back with them: its history counts as a document too.
     assert report == {"contact": {"recorded": 1, "back": 1, "documents": 2},
-                      "chatbot": {"recorded": 1, "back": 1, "documents": 6},
-                      "client": {"recorded": 1, "back": 1, "documents": 7},
+                      "chatbot": {"recorded": 1, "back": 1, "documents": 9},
+                      "client": {"recorded": 1, "back": 1, "documents": 10},
                       "unreadable lines": 0}
     assert copy_of_the_database() == before and written(register_of_erasures) == register
 
