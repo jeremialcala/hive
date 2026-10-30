@@ -6,6 +6,7 @@ from .events import *
 from .amqp_broker import *
 from .intents import *
 from .bot_versions import *
+from .bot_config import *
 from .clients import *
 from .credentials import *
 from .contacts import *

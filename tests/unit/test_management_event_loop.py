@@ -24,7 +24,7 @@ SLOW = 1.5
 # then told to the engine on the bus (ADR-0035).
 COROUTINES = {"oauth_token", "delete_chatbot", "delete_contact", "delete_client", "health", "send_message",
               "add_chatbot_rule", "add_chatbot_intent", "update_chatbot_intent", "delete_chatbot_intent",
-              "restore_version"}
+              "restore_version", "change_chatbot_rule", "delete_chatbot_rule", "set_chatbot_persona"}
 
 
 def slowly(error: Exception):

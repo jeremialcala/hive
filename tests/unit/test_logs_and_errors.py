@@ -144,7 +144,8 @@ def set_up(http, caller) -> dict:
     assert [response.status_code for response in done] == [200] * 6
     intent = call(http, caller, "GET", f"/chat/{bot}/intents").json()["data"][0]["uuid"]
     contacts = call(http, caller, "GET", f"/chat/{bot}/contacts").json()["data"]["contacts"]
-    return {"bot": bot, "intent": intent, "contact": contacts[0]["uuid"], "verify": created["verifyToken"]}
+    return {"bot": bot, "intent": intent, "contact": contacts[0]["uuid"], "verify": created["verifyToken"],
+            "rule": done[2].json()["data"][0]["uuid"]}
 
 
 # --- Nothing that is sent reaches the log --------------------------------------------------------------------------
@@ -337,6 +338,8 @@ BODIES = {
     ("POST", "/bot"): BOT,
     ("POST", "/chat/{bot_id}/phones"): PHONE,
     ("POST", "/chat/{bot_id}/rules"): RULES,
+    ("PUT", "/chat/{bot_id}/rules/{rule_id}"): {"rule": "rule-text-marker, changed"},
+    ("PUT", "/chat/{bot_id}/persona"): {**BOT, "tone": "bot-tone-marker, changed"},
     ("POST", "/chat/{bot_id}/intents"): INTENT,
     ("PUT", "/chat/{bot_id}/intents/{intent_id}"): INTENT,
     ("PUT", "/chat/{bot_id}/credentials"): SECRETS,
@@ -363,7 +366,7 @@ def test_no_route_writes_what_its_address_carries(http, operator, logged, method
     made = set_up(http, operator)
     parts = {"bot_id": made["bot"], "intent_id": made["intent"], "contact_id": made["contact"],
              "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID,
-             "person_id": str(uuid4()), "request_id": str(uuid4()), "version": "1"}
+             "person_id": str(uuid4()), "request_id": str(uuid4()), "version": "1", "rule_id": made["rule"]}
     parts[planted] = "address-marker%0AFORGED"
 
     response = call(http, operator, method, path.format(**parts), BODIES.get((method, path)))
@@ -394,7 +397,7 @@ def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, lo
     made = set_up(http, operator)
     address = path.format(bot_id=made["bot"], intent_id=made["intent"], contact_id=made["contact"],
                           client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID,
-                          person_id=uuid4(), request_id=uuid4(), version=1)
+                          person_id=uuid4(), request_id=uuid4(), version=1, rule_id=made["rule"])
     # Adding a key of its own needs a proof for the token of that same request: the body cannot be made ahead.
     request = (operator.adding(new_signing_key()) if (method, path) == ("POST", "/keys") else
                {"headers": operator.auth, "json": BODIES.get((method, path))})

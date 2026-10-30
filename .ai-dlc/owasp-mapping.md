@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.5.0
+* **Versión:** 1.6.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -186,12 +186,19 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
     trece `404` y `400` que devolvían el id o el nombre recibidos, ya corregidos.
   - **Prueba:** `tests/security/test_hostile_input.py` (`test_a_hostile_id_in_the_address_is_a_4xx_that_matches_nothing`,
     `test_a_mongodb_operator_where_text_is_expected_is_refused`).
+- **La persona y las reglas de un bot no rompen el `system` del modelo** (`src/classes/bot_text.py`, HIG-105,
+  HIG-106).
+  - **Qué rechaza:** caracteres de control, saltos de línea donde el texto es de una línea y las marcas con las que
+    un modelo separa roles (`<|...|>`, `[INST]`, `<<SYS>>`, `<s>`), con los mismos límites al crear que al editar.
+  - **Prueba:** `tu/test_bot_config.py` (`test_a_line_of_the_persona_refuses_what_could_break_the_system`,
+    `test_a_rule_refuses_what_could_break_the_system`).
+  - **Decidido en:** RS11; las decisiones del 2026-10-30 en el PRD.
 - **Los destinos de los intents:** ver A01.
 
 **Huecos:**
 - no hay fuzzing de los cuerpos de las rutas con token: el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90)
   solo llega hasta su `401`;
-- los modelos de gestión no acotan todos sus campos (RS11);
+- los modelos de gestión no acotan todos sus campos (RS11): la persona y las reglas sí, desde HIG-105 y HIG-106;
 - el catálogo de herramientas MCP sigue pendiente (RS29).
 
 ## A06 — Diseño inseguro
