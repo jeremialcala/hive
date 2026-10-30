@@ -382,3 +382,19 @@ def another():
         return fresh
 
     return renamed
+
+
+# The security suite (Gate 3, HIG-134): tests/security/, and the unit tests that check a control of the OWASP matrix
+# (.ai-dlc/owasp-mapping.md). `pytest -m security` runs them alone, and the CI counts them apart.
+SECURITY_MODULES = {
+    "test_authentication", "test_bot_state", "test_client_encryption", "test_client_isolation",
+    "test_data_access_boundary", "test_dpop", "test_intent_destinations", "test_key_proof", "test_logs_and_errors",
+    "test_owasp_mapping", "test_people", "test_role_matrix", "test_service_credential", "test_token_limits",
+    "test_webhook_security",
+}
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if item.path.parent.name == "security" or item.path.stem in SECURITY_MODULES:
+            item.add_marker(pytest.mark.security)
