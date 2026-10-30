@@ -217,9 +217,13 @@ Sin token solo se llaman las dos rutas del webhook (`GET` y `POST /chat/{bot_id}
 |---|---|---|---|
 | `POST` | `/bot` | `ChatbotRequest` | Crea un chatbot del cliente que llama. Genera un `uuid` y un `verifyToken` firmado (JWT). Devuelve `BotResponse`. |
 | `GET` | `/bots` | — | Los bots del cliente y qué credenciales de Meta tiene cargadas cada uno, nunca su valor (HIG-87). |
+| `PUT` | `/chat/{bot_id}/persona` | `PersonaRequest` | Cambia la persona del bot: los cuatro campos, con los mismos límites que al crearlo. Es una versión (RF23, RF26). `409` si es la que ya tiene. |
 | `DELETE` | `/bot/{bot_id}` | — | Borra un chatbot con todo lo guardado para él: contactos, números, reglas e intents. No se puede deshacer. Desde entonces su webhook responde `404`: también hay que quitar la suscripción en Meta. |
 
-Campos de `ChatbotRequest`: `name`, `role`, `description`, `tone`. Hay que enviarlos todos: el modelo todavía tiene valores de ejemplo, y el que falta se rellena con uno.
+Campos de `ChatbotRequest` y de `PersonaRequest`: `name`, `role`, `description` y `tone`, todos obligatorios, sin
+valores de ejemplo y sin campos de más (RS11). `name`, `role` y `tone`: de 1 a 100 caracteres, en una línea.
+`description`: hasta 2000. Ninguno admite caracteres de control ni las marcas con las que un modelo separa roles
+(`<|...|>`, `[INST]`, `<<SYS>>`, `<s>`, `</s>`). Lo que no cumple es un `422`.
 
 Dar de alta un bot, de punta a punta:
 
@@ -241,8 +245,10 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | `GET`  | `/chat/{bot_id}/info` | Devuelve la información guardada del bot (`chatbot_info()`) y su token de verificación. De las credenciales de Meta solo dice cuáles están cargadas. |
 | `PUT`  | `/chat/{bot_id}/credentials` | Carga o rota las credenciales de Meta del bot (`BotCredentialsRequest`: `facebookToken`, `whatsappToken`, `appSecret`) y el id de su cuenta de WhatsApp Business (`wabaId`, que no es secreto). No devuelve las credenciales. |
 | `GET`  | `/chat/{bot_id}/tokens` | Los tokens de Meta del bot, **solo para el notificador del motor de respuestas**, con la clave que tiene para el cliente dueño del bot. Cada entrega queda en el log. |
-| `GET`  | `/chat/{bot_id}/rules` | La persona del bot y sus reglas, como datos (`name`, `role`, `tone`, `description`, `rules`): el motor escribe con ellos el `system` del modelo. |
-| `POST` | `/chat/{bot_id}/rules` | Añade una o varias reglas al bot (`RulesRequest.rules: list[str]`). |
+| `GET`  | `/chat/{bot_id}/rules` | La persona del bot y sus reglas, como datos (`name`, `role`, `tone`, `description`, `rules`): el motor escribe con ellos el `system` del modelo. Lleva también `ruleList`, las reglas con su id, y `version`, la versión de la configuración. |
+| `POST` | `/chat/{bot_id}/rules` | Añade una o varias reglas al bot (`RulesRequest.rules`: de 1 a 50, cada una de 1 a 1000 caracteres, con las mismas marcas prohibidas que la persona). Un bot tiene 50 reglas como mucho (`422 TOO_MANY_RULES`). Devuelve las añadidas, con su id. |
+| `PUT`  | `/chat/{bot_id}/rules/{rule_id}` | Cambia una regla (`RuleRequest.rule`, con los mismos límites). `409` si ya dice eso (RF24). |
+| `DELETE` | `/chat/{bot_id}/rules/{rule_id}` | Borra una regla. Vuelve, con el mismo id, al volver a la versión anterior (RF24, RF26). |
 
 ### Contactos — etiqueta `Contacts`
 
@@ -295,11 +301,27 @@ Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToke
 | `DELETE` | `/chat/{bot_id}/intents/{intent_id}` | Borra un intent. |
 | `GET`  | `/chat/{bot_id}/tools` | Devuelve las acciones activas de los intents activos del bot como una lista plana de definiciones de herramientas para el LLM. |
 
+`IntentRequest` todavía rellena con ejemplos lo que falta: un intent sin `actions` recibe la acción de ejemplo
+`get_order`. Hay que enviar todos sus campos, también `parameters` y el `apiCall` entero de cada acción, como hace
+la PWA.
+
+### Versiones — etiqueta `Versions`
+
+Cada cambio de la persona, las reglas o los intents de un bot es una versión, con quién lo hizo y cuándo (RF26,
+[ADR-0035](docs/00-project/adr/0035-versiones-de-la-configuracion-del-bot.md)). El `cliente-analista` las ve y no vuelve.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET`  | `/chat/{bot_id}/versions?offset=&limit=` | Las versiones, la más nueva primero. |
+| `GET`  | `/chat/{bot_id}/versions/{version}?against=` | Una versión, con lo que cambió respecto de la anterior o de `against`. |
+| `POST` | `/chat/{bot_id}/versions/{version}/restore` | Vuelve a ella como una versión nueva. `422` si algo de ella ya no cumple las reglas de hoy; `409` si el bot ya la tiene. |
+
 ### Clientes y claves — etiqueta `Clients`
 
 | Método | Ruta | Quién | Descripción |
 |---|---|---|---|
 | `GET` | `/gateway/keys` | cualquiera con token | La audiencia y las claves públicas del gateway a las que se cifran las aserciones. Se vuelve a pedir cuando el gateway rota la suya. |
+| `GET` | `/client` | el cliente y sus personas | Su id y su nombre, sin claves: lo que muestra la PWA en la tarjeta del cliente (HIG-126). |
 | `GET` | `/keys` | el cliente | Sus claves registradas. |
 | `POST` | `/keys` | el cliente | Registra una segunda clave pública para rotar. La clave nueva firma una prueba ligada al token de la misma petición. |
 | `DELETE` | `/keys/{kid}` | el cliente | Revoca una de sus claves. La última no se puede quitar. |
