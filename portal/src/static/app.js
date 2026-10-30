@@ -4,7 +4,7 @@
 // stays 'self'. The role comes from the session: a cliente-analista sees no button that would only answer 403.
 import { session, signIn, api, explain } from "./api.js";
 import { BotCardPage, TABS } from "./bot.js";
-import { More, PageCall, PageHeader, Pending, Shell, applyTheme, go, isPending, savedTheme, sectionsFor } from "./shell.js";
+import { More, PageCall, PageHeader, Pending, Shell, applyTheme, go, isPending, lockup, savedTheme, sectionsFor } from "./shell.js";
 
 const { useState, useEffect } = window.React;
 const html = window.htm.bind(window.React.createElement);
@@ -79,7 +79,9 @@ function App() {
 
   if (who === undefined) return html`<${LoadingState} kind="spinner" message="Comprobando la sesión…" />`;
   if (who === null) {
-    return html`<main class="pwa-main pwa-main-alone"><${EmptyState} title="Entra en el área del cliente de Hive" actionLabel="Entrar"
+    return html`<main class="pwa-main pwa-main-alone pwa-signin">
+      <img class="pwa-signin-logo" src=${lockup(theme, true)} alt="Hive" width="146" height="207" />
+      <${EmptyState} title="Entra en el área del cliente de Hive" actionLabel="Entrar"
         onAction=${signIn}>Con tu cuenta y su segundo factor.<//></main>`;
   }
   const admin = who.role === "cliente-admin";

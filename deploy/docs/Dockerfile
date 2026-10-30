@@ -16,3 +16,4 @@ FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e
 COPY deploy/docs/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=page /build/csp.conf /etc/nginx/csp.conf
 COPY --from=page /build/out/ /usr/share/nginx/html/docs/
+COPY assets/logos/hive-favicon.svg /usr/share/nginx/html/docs/favicon.svg

@@ -33,6 +33,11 @@ if (`sha384-${digest("sha384", readFileSync(BUNDLE))}` !== integrity) {
   throw new Error("The Redoc of the npm package is not the one Redocly CLI pins");
 }
 page = page.replace(tag, `<script src="redoc.standalone.js" integrity="${integrity}"></script>`);
+// The favicon of assets/logos, beside the page (ADR-0027).
+if (!page.includes("</head>")) {
+  throw new Error("The page has no </head> to put the favicon in");
+}
+page = page.replace("</head>", '<link rel="icon" href="favicon.svg" type="image/svg+xml"></head>');
 
 const loaded = page.match(/<(?:script|img|iframe)[^>]+src="(?:https?:)?\/\/[^"]*"|<link[^>]+href="(?:https?:)?\/\/[^"]*"/g);
 if (loaded) {

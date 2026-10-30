@@ -74,6 +74,9 @@ Todas las pantallas comparten el esqueleto del diseño (HIG-126, `src/static/she
 | `ds/` | `tokens.css`, `bundle.css` y `bundle.js` del sistema de diseño (`window.Hive`) | Copia de `assets/design-system/`. Un test comprueba que son iguales byte a byte. |
 | `vendor/` | React y ReactDOM 18.3.1 (`*.production.min.js`), htm 3.1.1 (`htm.umd.js`), con sus licencias | El registro de npm, con el `integrity` sha512 comprobado. |
 | `fonts/` | Geist y JetBrains Mono (400, 500 y 700, latín), con sus licencias OFL | `@fontsource` y `geist` del registro de npm. |
+| `logos/` | El favicon, el isotipo y los lockups horizontal y vertical, oscuro y claro | Copia de `assets/logos/`. Un test comprueba que son iguales byte a byte. |
+| `icons/` | Los iconos de la app en PNG: `any` y `maskable` a 192 y 512, y el de Apple a 180 | Exportados de `hive-app-icon.svg` y `hive-app-icon-maskable.svg` con Chromium, sobre `#0f1115`. Un test comprueba que miden lo que dice el manifest. |
+| `manifest.webmanifest` | El manifest de la PWA: nombre, `start_url`, `standalone`, `theme_color` y `background_color` en `#0f1115`, y los iconos | Escrito a mano (ADR-0027). |
 
 Para verla sin Zitadel ni `hive-api`, basta con un servidor que entregue `src/static/` con la CSP del portal y
 responda `/auth/session` y `/api/*` con datos de prueba.

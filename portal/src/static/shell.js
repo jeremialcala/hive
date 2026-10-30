@@ -70,6 +70,12 @@ function ThemeButton({ theme, onTheme }) {
 
 // --- The side bar and the phone's bar -------------------------------------------------------------------------------
 
+// The marks of assets/logos (its README): the lockup for the theme's ground, the mark alone where there is no room.
+// The hexagon of `Cell` names bots and clients; it is not the logo.
+export function lockup(theme, stacked = false) {
+  return `/logos/hive-logo-${stacked ? "stacked-" : ""}${theme === "light" ? "light" : "dark"}.svg`;
+}
+
 function shortId(id) {
   return id && id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id || "";
 }
@@ -97,7 +103,8 @@ function SideBar({ who, client, admin, section, theme, onTheme }) {
   return html`
     <aside class="pwa-sidebar">
       <a class="pwa-brand" href="#/" aria-label="Hive, inicio">
-        <span class="pwa-hex" aria-hidden="true"></span><span>Hive</span><span class="mono pwa-muted pwa-brand-tag">PWA</span>
+        <img class="pwa-logo" src=${lockup(theme)} alt="" width="132" height="42" />
+        <span class="mono pwa-muted pwa-brand-tag">PWA</span>
       </a>
       <nav class="pwa-nav" aria-label="Área del cliente">
         ${sectionsFor(admin).map((each) => html`
@@ -114,7 +121,9 @@ function PhoneBar({ client, section }) {
   const current = TABS.some((tab) => tab.value === section) ? section : "mas";
   return html`
     <header class="pwa-phonebar">
-      <a class="pwa-brand" href="#/" aria-label="Hive, inicio"><span class="pwa-hex" aria-hidden="true"></span>Hive</a>
+      <a class="pwa-brand" href="#/" aria-label="Hive, inicio">
+        <img class="pwa-mark" src="/logos/hive-mark.svg" alt="" width="28" height="28" /><span>Hive</span>
+      </a>
       <span class="mono pwa-muted pwa-phonebar-client">${(client && client.name) || ""}</span>
     </header>
     <footer class="pwa-tabbar">
