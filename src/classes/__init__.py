@@ -1,6 +1,7 @@
 from .tool_settings import Settings
 
 from .entity_client import Client
+from .entity_client_user import ClientUser
 from .entity_seen_token import SeenToken
 from .entity_chatbot import ChatBot
 from .entity_chatbot_phones import ChatbotPhone

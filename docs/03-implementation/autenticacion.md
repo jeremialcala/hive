@@ -1,10 +1,10 @@
 # Autenticación: cómo se llama al servicio y cómo se opera
 
 * **Estado:** review
-* **Fecha:** 2026-10-29
+* **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.3.0
+* **Versión:** 0.4.0
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -148,6 +148,71 @@ hace una propia y prueba que la tiene. Contra eso está la revocación de la tab
 No se puede borrar la última clave: el cliente se quedaría fuera. Si pierde su clave, es el operador quien le
 registra otra.
 
+## Para el BFF: el token de una persona
+
+Una persona de un cliente no firma aserciones: entra por Zitadel, con MFA, y el BFF de la PWA (`hive-portal`) cambia
+su ID token por un token de Hive ([ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md), RFC 8693). Zitadel
+dice quién es la persona. Hive dice de qué cliente es, con qué rol, y si todavía puede entrar.
+
+1. **El BFF tiene su propio par P-256**, que genera al arrancar y guarda solo en memoria
+   ([ADR-0033](../00-project/adr/0033-dpop-en-los-tokens-de-acceso.md), punto 2). No es una clave registrada en Hive.
+   Firma con él la prueba DPoP de cada petición, también la del intercambio.
+2. **El intercambio:**
+
+   ```
+   POST /oauth/token
+   Content-Type: application/x-www-form-urlencoded
+   DPoP: <una prueba de la clave del BFF, para POST y https://<gateway>/oauth/token, sin ath>
+
+   grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+   &subject_token=<el ID token que Zitadel dio al BFF para esa persona>
+   &subject_token_type=urn:ietf:params:oauth:token-type:id_token
+   &hive_client=<el uuid del cliente: solo si la persona es de más de uno>
+   ```
+
+   Puede llevar `requested_token_type=urn:ietf:params:oauth:token-type:access_token`, que es lo único que se emite.
+   Cualquier otro parámetro da `invalid_request`.
+3. **Lo que Hive comprueba del ID token:**
+   - la firma, con una clave del JWKS de Zitadel, `RS256` o `ES256`;
+   - el `iss`, que es `IDP_ISSUER`;
+   - el `aud`, que incluye `IDP_AUDIENCE`, el client id del BFF en Zitadel. Si trae más de una audiencia, el `azp`
+     tiene que ser ese mismo;
+   - el `exp` y el `iat`, con 30 segundos de margen;
+   - que el `amr` sea una lista con `mfa`. Sin segundo factor no hay token, aunque la contraseña sea buena.
+4. **Lo que Hive comprueba de la persona:** la busca por `iss` y `sub`. Tiene que estar invitada o activa, y su
+   cliente activo. La primera vez que consigue un token pasa de invitada a activa.
+5. **La respuesta:**
+
+   ```json
+   {"access_token": "…", "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+    "token_type": "DPoP", "expires_in": 600}
+   ```
+
+   El token es como el de una máquina, pero dice también quién es la persona y su rol (`hive_user`,
+   `hive_user_role`), y no lleva clave del cliente. Está atado a la clave del BFF: cada petición con él lleva una
+   prueba nueva firmada por esa clave, como en [La prueba DPoP](#la-prueba-dpop).
+6. **Los errores:**
+
+   | Respuesta | Cuándo |
+   |---|---|
+   | `400 invalid_request` | La petición no es la del punto 2 |
+   | `400 unsupported_grant_type` | Este `hive-api` no tiene un IdP configurado |
+   | `400 invalid_dpop_proof` | Falta la prueba, o no vale |
+   | `400 invalid_grant` | El ID token no vale, no tiene `mfa`, o su persona no está en Hive, está bloqueada o de baja, o su cliente no está activo. Siempre la misma respuesta, sin el motivo, que queda en el log |
+   | `400 invalid_target` | La persona es de más de un cliente y `hive_client` no dice cuál |
+   | `429 temporarily_unavailable` | Un límite de la [ADR-0028](../00-project/adr/0028-limite-de-peticiones-en-oauth-token.md). Los tokens se cuentan por persona, 30 por hora, como los de una clave |
+   | `503 temporarily_unavailable` | No se pudieron leer las claves de Zitadel. Se reintenta más tarde |
+
+7. **Cada 10 minutos, otra vez:** el BFF repite el intercambio con el ID token de la sesión antes de que caduque el
+   token de Hive. Si falla, cierra la sesión. Así una persona bloqueada o dada de baja pierde el acceso en
+   10 minutos como mucho (AB26).
+
+**Lo que alcanza cada rol** está en la [matriz rol × acción](../02-design/matriz-rol-accion.md#rutas-y-roles):
+- **`cliente-admin`:** todo lo de su cliente, como la credencial de máquina. Si su cliente es el del operador, también
+  el registro de clientes.
+- **`cliente-analista`:** solo lee y envía plantillas aprobadas. Cualquier otra ruta le responde `403`, también un
+  envío de texto libre. La ficha del bot le llega sin el `verifyToken`.
+
 ## Para el operador
 
 Los comandos se ejecutan con la imagen del servicio, en el servidor.
@@ -174,6 +239,23 @@ usuario `10001`, que tiene que poder leer el fichero: `chown 10001` y `chmod 400
 
 El paso 3 existe porque todos los endpoints piden un token y nadie puede firmar uno antes de tener una clave
 registrada. Devuelve el `uuid` del cliente del operador y el `kid` de su clave.
+
+### El IdP de las personas
+
+Para que el intercambio funcione, `hive-api` necesita en su `.env`:
+
+```
+IDP_ISSUER=https://hive-auth.higerotech.com      # el iss de los ID tokens de Zitadel
+IDP_AUDIENCE=<el client id del BFF en Zitadel>   # el aud de esos ID tokens
+# IDP_JWKS_URL=https://hive-auth.higerotech.com/oauth/v2/keys   (es el valor por defecto)
+```
+
+Sin `IDP_ISSUER` o sin `IDP_AUDIENCE`, el intercambio responde `unsupported_grant_type` y solo entran las
+credenciales de máquina. `hive-api` lee las claves de Zitadel por su nombre público, con TLS, y las guarda una hora.
+Si llega un ID token firmado por una clave que no tiene, las vuelve a leer, como mucho una vez por minuto.
+
+Las personas todavía no se invitan por la API: eso es HIG-94. Hasta entonces, nadie consigue un token de persona en
+producción, lo que además respeta la condición de los 14 días de estabilidad de Nidavellir (ADR-0029, enmienda).
 
 ### Alta de un cliente
 
@@ -333,7 +415,7 @@ máquina, y la undécima recibe la respuesta de bloqueo de Cloudflare, no la de 
   worker de `hive-api`, cada uno lleva los suyos.
 - **Un cliente no se puede desactivar por la API.** Revocar sus claves lo deja sin tokens nuevos; el estado del
   cliente solo se cambia en la base.
-- **El token de acceso no está atado a la clave del cliente** (DPoP, RFC 9449): quien lo robe lo usa hasta que
-  caduque. Queda para cuando haya clientes externos (ADR-0025).
+- **Un token de persona sigue valiendo hasta que caduca**, aunque la persona se bloquee entretanto: como mucho
+  10 minutos (ADR-0029, punto 8).
 - **La clave privada del gateway es un fichero.** Pasará a Andvari cuando el gateway se integre con él para el
   cifrado de datos (ADR-0013).

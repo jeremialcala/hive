@@ -86,7 +86,9 @@ def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId:
     return response
 
 
-def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
+def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None,
+                              with_verify_token: bool = True) -> Response:
+    """The card of a chatbot. A cliente-analista gets it without the verifyToken (D6 of the role × action matrix)."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
 
@@ -108,9 +110,10 @@ def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str =
     try:
         _chatbot = repo.get_bot(_uuid)
         # The verification token is the client's to paste into Meta. The Meta tokens are not returned.
-        body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
-                            data={**_chatbot.chatbot_info(),
-                                  "verifyToken": repo.bot_secrets(_chatbot).verify_token})
+        info = _chatbot.chatbot_info()
+        if with_verify_token:
+            info["verifyToken"] = repo.bot_secrets(_chatbot).verify_token
+        body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully", data=info)
     except KeyServiceUnavailable as e:
         log.error(f"Key service unavailable: {e}")
         body = ResponseData(code=status.HTTP_503_SERVICE_UNAVAILABLE, message="SERVICE UNAVAILABLE",

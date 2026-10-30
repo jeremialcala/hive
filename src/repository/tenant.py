@@ -11,16 +11,16 @@ from uuid import UUID
 from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import (ChatBot, ChatbotPhone, Client, Contact, ConversationMessage, Intent, MessageTemplate,
-                     OutboundRequest, Rule)
+from classes import (ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
+                     MessageTemplate, OutboundRequest, Rule)
 from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING
-from crypto.fields import ClientCipher
-from enums import Status
+from crypto.fields import ClientCipher, normalize_email
+from enums import PersonRole, PersonStatus, Status
 
 from . import erasures, kept_bots
 from .data_keys import cipher_for
-from .errors import NotFound
+from .errors import Conflict, NotFound
 
 # What is stored encrypted with the client's data key. The documents always hold the ciphertext: whoever
 # needs the value asks the repository for it, so a document saved again never writes it in clear.
@@ -149,8 +149,9 @@ class TenantRepository:
             self._own(document, **{field: bot_uuid}).count() for _, document, field in OF_A_BOT)
 
     def stored(self) -> int:
-        """How many documents there are of the client, its chatbots included."""
-        return self._own(ChatBot).count() + sum(self._own(document).count() for _, document, _ in OF_A_BOT)
+        """How many documents there are of the client, its chatbots and its people included."""
+        return (self._own(ChatBot).count() + self._own(ClientUser).count()
+                + sum(self._own(document).count() for _, document, _ in OF_A_BOT))
 
     # The erase_ methods delete without writing it down in the register of erasures. They are for the delete_
     # methods, which write it down first, and for making again the deletions the register holds.
@@ -172,6 +173,8 @@ class TenantRepository:
         kept_bots.forget()
         for name, document, _ in OF_A_BOT:
             deleted[name] = self._own(document).delete()
+        # The people of the client: nobody gets in as one of them any more.
+        deleted["people"] = self._own(ClientUser).delete()
         return deleted
 
     def erase_contacts(self, bot_uuid: UUID, contacts: list) -> dict:
@@ -193,6 +196,48 @@ class TenantRepository:
             document.delete()
             raise NotFound(bot_id)
         return document
+
+    # --- People (ADR-0029) -------------------------------------------------------------------------------------------
+
+    def add_person(self, email: str, issuer: str, subject: str, role: PersonRole, invited_by: str,
+                   status: PersonStatus = PersonStatus.PENDING) -> ClientUser:
+        """
+            A person of the client, with their identity in the IdP. Their email is stored encrypted and searched by
+            its blind index. Raises Conflict if the same person of the IdP is already a person of the client.
+        """
+        person = ClientUser(key=ClientUser.key_for(self.client_id, issuer, subject), clientId=self.client_id,
+                            issuer=issuer, subject=subject, role=role.value, status=status.value, invitedBy=invited_by,
+                            email=self._cipher.encrypt("ClientUser.email", normalize_email(email)),
+                            emailIndex=self._cipher.blind_index("ClientUser.email", email, normalize_email))
+        try:
+            person.save(force_insert=True)
+        except NotUniqueError:
+            raise Conflict("person") from None
+        if not Client.objects(uuid=self.client_id, status=Status.ACT.value).count():
+            # The client was deleted while this was on its way: nobody is left behind in its name.
+            person.delete()
+            raise NotFound(self.client_id)
+        return person
+
+    def get_person(self, person_id) -> ClientUser:
+        person = self._own(ClientUser, uuid=as_uuid(person_id)).first()
+        if person is None:
+            raise NotFound(person_id)
+        return person
+
+    def find_person_by_email(self, email: str) -> ClientUser | None:
+        return self._own(ClientUser, emailIndex=self._cipher.blind_index("ClientUser.email", email,
+                                                                         normalize_email)).first()
+
+    def person_email(self, person: ClientUser) -> str:
+        if person.clientId != self.client_id:
+            raise NotFound(person.uuid)
+        return self._cipher.decrypt("ClientUser.email", person.email)
+
+    def set_person_status(self, person: ClientUser, status: PersonStatus) -> ClientUser:
+        """Lets a person in, blocks them or removes them: from their next exchange of a token on (ADR-0029, point 8)."""
+        person.status, person.statusDate = status.value, datetime.now(timezone.utc)
+        return self._save_own(person)
 
     # --- Phones -----------------------------------------------------------------------------------------------------
 

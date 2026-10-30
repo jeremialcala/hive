@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-26
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.3.1
+* **Versión:** 1.4.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -65,9 +65,11 @@ Meta no es un rol: llama al webhook, que se autentica por bot con el `verifyToke
 Columna **Contrato**: ✅ la ruta está en `openapi.yaml` · ⚠️ hay requisito en el PRD, pero no ruta · ❌ no hay
 requisito: viene del borrador o del mapa de estilo (ADR-0027).
 
-Lo que hoy puede `cliente-admin` lo puede cualquier credencial de cliente, porque hoy solo existe ese tipo, y con la
-D3 la credencial de máquina lo conserva. La columna `cliente-analista` está decidida (D1, D2, D6), pero nada de ella
-está construido.
+Lo que puede `cliente-admin` lo puede también la credencial de máquina del cliente (D3). Desde HIG-92, el código
+aplica la columna `cliente-analista` en las rutas que existen: la lista `ANALYST_ROUTES`, la ficha sin el
+`verifyToken` (D6) y el envío solo de plantillas (D10). La sección [Rutas y roles](#rutas-y-roles) lo dice ruta por
+ruta, y una prueba la compara con el código. Los «nuevo» de esa columna que tienen ruta ya están construidos; los
+que no la tienen, todavía no.
 
 ## Matriz
 
@@ -197,6 +199,56 @@ Califica respuestas cuando exista la evaluación, y para eso lee la conversació
 y dejando rastro en la auditoría (RF28). Envía plantillas aprobadas a los contactos, pero no texto libre. No
 crea ni cambia configuración, no toca credenciales, no ve el `verifyToken`, no gestiona usuarios ni claves, y no
 exporta ni borra contactos. Es el perfil de un analista de calidad o de un agente de soporte.
+
+## Rutas y roles
+
+Lo que hoy aplica el código, ruta por ruta (HIG-92). Una tabla para cada ruta de `hive-api` que pide token, y `tests/unit/test_role_matrix.py` la compara con el código: una ruta nueva, o un rol que cambie, la hace fallar hasta que se escriba aquí.
+
+- **cliente-admin**: también la credencial de máquina de un cliente (D3) y el operador en sus propios bots.
+- **cliente-analista**: la lista `ANALYST_ROUTES` de `src/app.py`. El resto le responde `403`. Además, la ficha del bot le llega sin el `verifyToken` (D6), y en el envío solo valen plantillas (D10).
+- **motor**: `WORKER_ROUTES`. Cada worker alcanza solo las suyas (sección «El motor, worker por worker»).
+- **solo el operador**: las rutas que dependen de `require_operator`. Una persona del operador las alcanza si es `cliente-admin`.
+
+| Ruta | cliente-admin | cliente-analista | motor | solo el operador |
+|---|---|---|---|---|
+| `POST /bot` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /bot/{bot_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/contacts` | ✅ | ✅ | ⛔ | ⛔ |
+| `DELETE /chat/{bot_id}/contacts/{contact_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/contacts/{contact_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /chat/{bot_id}/contacts/{contact_id}/consent` | ✅ | ⛔ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/contacts/{contact_id}/consent` | ✅ | ⛔ | ⛔ | ⛔ |
+| `POST /chat/{bot_id}/contacts/{contact_id}/messages` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/contacts/{contact_id}/turns` | ⛔ | ⛔ | ✅ | ⛔ |
+| `PUT /chat/{bot_id}/credentials` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/info` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/intents` | ✅ | ✅ | ⛔ | ⛔ |
+| `POST /chat/{bot_id}/intents` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /chat/{bot_id}/intents/{intent_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/intents/{intent_id}` | ✅ | ✅ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/intents/{intent_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/phones` | ✅ | ✅ | ⛔ | ⛔ |
+| `POST /chat/{bot_id}/phones` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/rules` | ✅ | ✅ | ✅ | ⛔ |
+| `POST /chat/{bot_id}/rules` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/templates` | ✅ | ✅ | ⛔ | ⛔ |
+| `POST /chat/{bot_id}/templates` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /chat/{bot_id}/templates/{template_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/templates/{template_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/tokens` | ⛔ | ⛔ | ✅ | ⛔ |
+| `GET /chat/{bot_id}/tools` | ✅ | ✅ | ✅ | ⛔ |
+| `GET /clients` | ⛔ | ⛔ | ⛔ | ✅ |
+| `POST /clients` | ⛔ | ⛔ | ⛔ | ✅ |
+| `DELETE /clients/{client_id}` | ⛔ | ⛔ | ⛔ | ✅ |
+| `POST /clients/{client_id}/keys` | ⛔ | ⛔ | ⛔ | ✅ |
+| `DELETE /clients/{client_id}/keys/{kid}` | ⛔ | ⛔ | ⛔ | ✅ |
+| `POST /clients/{client_id}/service-keys` | ⛔ | ⛔ | ⛔ | ✅ |
+| `DELETE /clients/{client_id}/service-keys/{kid}` | ⛔ | ⛔ | ⛔ | ✅ |
+| `POST /contacts/search` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /gateway/keys` | ✅ | ⛔ | ✅ | ⛔ |
+| `GET /keys` | ✅ | ⛔ | ⛔ | ⛔ |
+| `POST /keys` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /keys/{kid}` | ✅ | ⛔ | ⛔ | ⛔ |
 
 ## Decisiones
 

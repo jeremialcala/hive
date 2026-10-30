@@ -7,6 +7,7 @@
 """
 import time
 from inspect import currentframe
+from uuid import UUID
 from urllib.parse import parse_qs
 
 from fastapi import Depends, Header, HTTPException, Query, Request, status
@@ -18,8 +19,9 @@ from fastapi.security.utils import get_authorization_scheme_param
 
 from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE
 from shared.auth.gateway_keys import GatewayKeys
-from auth.principal import Principal, authenticate, exchange
+from auth.principal import ClientNotChosen, Principal, authenticate, exchange, exchange_id_token
 from auth import dpop, token_limits
+from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
@@ -56,6 +58,11 @@ GATEWAY_URLS = tuple(sorted({url.strip().rstrip("/") for url in (settings.gatewa
 # RFC 9449, section 7.1: how a request without a good token or proof is told what this service takes.
 DPOP_CHALLENGE = f'DPoP algs="{dpop.ALGORITHM}"'
 
+# The IdP of the people of a client (ADR-0029). Without it configured, nobody exchanges an ID token: only machines
+# get in.
+IDP = (IdentityProvider(settings.idp_issuer, settings.idp_audience, settings.idp_jwks_url)
+       if settings.idp_issuer and settings.idp_audience else None)
+
 # Every deletion is written down here before it is made. It is only reached when needed.
 erasures.configure(settings.erasures_dir)
 
@@ -76,6 +83,13 @@ oauth2 = OAuth2(flows=OAuthFlows(clientCredentials=OAuthFlowClientCredentials(to
 MAX_TOKEN_REQUEST = 16 * 1024
 FORM = "application/x-www-form-urlencoded"
 TOKEN_PARAMETERS = ("grant_type", "client_assertion_type", "client_assertion")
+# RFC 8693: the BFF exchanges the ID token of a person for an access token of Hive (ADR-0029).
+TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+ID_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token"
+ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+EXCHANGE_PARAMETERS = ("grant_type", "subject_token", "subject_token_type")
+# What else the exchange may say: which token it wants, and which client, for a person of more than one.
+EXCHANGE_OPTIONS = ("requested_token_type", "hive_client")
 # RFC 6749, section 5.1: neither the token nor an error about it is kept by a cache.
 NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
@@ -97,6 +111,16 @@ WORKER_ROUTES = {
     Worker.EVALUATOR: {GATEWAY_KEYS_ROUTE, RULES},
     Worker.NOTIFIER: {GATEWAY_KEYS_ROUTE, TOKENS},
 }
+# What a cliente-analista may call (ADR-0029, the role × action matrix: D1, D2, D6, D10): it reads what its client
+# has, and sends approved templates. Any other route answers 403 to them, and so does any route added later until it
+# is written down here. A machine credential and a cliente-admin reach everything of their client (D3).
+ANALYST_ROUTES = {
+    ("GET", "/chat/{bot_id}/info"), ("GET", "/chat/{bot_id}/phones"), ("GET", "/chat/{bot_id}/rules"),
+    ("GET", "/chat/{bot_id}/intents"), ("GET", "/chat/{bot_id}/intents/{intent_id}"),
+    ("GET", "/chat/{bot_id}/tools"), ("GET", "/chat/{bot_id}/contacts"), ("POST", "/contacts/search"),
+    ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"), ("GET", "/chat/{bot_id}/templates"),
+}
+
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
 # of it until the engine moves to one key per worker; then they are taken out.
 SERVICE_ROUTES = set().union(*WORKER_ROUTES.values())
@@ -122,8 +146,11 @@ def get_principal(request: Request,
         challenge = DPOP_CHALLENGE if not authorization else f'{DPOP_CHALLENGE}, error="{error}"'
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="HTTP_401_UNAUTHORIZED",
                             headers={"WWW-Authenticate": challenge}) from None
+    route = (METHODS.get(request.method), getattr(request.scope.get("route"), "path", None))
+    if principal.is_analyst and route not in ANALYST_ROUTES:
+        log.warning(f"A cliente-analista was denied a route: client {principal.client_id}, {principal.actor}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
     if principal.role is Role.SERVICE:
-        route = (METHODS.get(request.method), getattr(request.scope.get("route"), "path", None))
         if route not in WORKER_ROUTES.get(principal.worker, SERVICE_ROUTES):
             log.warning(f"The response engine was denied a route with its key for client {principal.client_id}, "
                         f"worker {principal.worker_name}")
@@ -201,12 +228,20 @@ OAUTH_ERROR = {"type": "object", "required": ["error"], "properties": {"error": 
 # What the contract says of /oauth/token: the route reads its form by hand, so FastAPI cannot infer it.
 TOKEN_CONTRACT = {
     "parameters": [{"name": "DPoP", "in": "header", "required": True, "schema": {"type": "string"},
-                    "description": "A DPoP proof (RFC 9449) for POST and this URL, signed with the same key as the "
-                                   "assertion, without ath."}],
+                    "description": "A DPoP proof (RFC 9449) for POST and this URL, without ath: signed with the same "
+                                   "key as the assertion, or, in an exchange, with the BFF's own key."}],
     "requestBody": {"required": True, "content": {FORM: {"schema": {
-        "type": "object", "required": list(TOKEN_PARAMETERS),
+        "type": "object", "required": ["grant_type"],
+        "description": "client_credentials takes client_assertion_type and client_assertion; token-exchange "
+                       "(RFC 8693, ADR-0029), subject_token and subject_token_type.",
         "properties": {
-            "grant_type": {"type": "string", "enum": [GRANT_TYPE]},
+            "grant_type": {"type": "string", "enum": [GRANT_TYPE, TOKEN_EXCHANGE]},
+            "subject_token": {"type": "string", "description": (
+                "token-exchange: the ID token Zitadel gave the person, for the BFF, with mfa in its amr.")},
+            "subject_token_type": {"type": "string", "enum": [ID_TOKEN_TYPE]},
+            "requested_token_type": {"type": "string", "enum": [ACCESS_TOKEN_TYPE]},
+            "hive_client": {"type": "string", "format": "uuid", "description": (
+                "token-exchange: the client the person enters, only needed for a person of more than one.")},
             "client_assertion_type": {"type": "string", "enum": [ASSERTION_TYPE]},
             "client_assertion": {"type": "string", "description": (
                 "A JWT the client signs (ES256, with the kid of its registered key; iss and sub, the client; aud, "
@@ -214,26 +249,34 @@ TOKEN_CONTRACT = {
                 "(RSA-OAEP-256, A256CBC-HS512, cty JWT).")},
         }}}}},
     "responses": {
-        "200": _oauth_answer("An access token, good for 10 minutes.", {
+        "200": _oauth_answer("An access token, good for 10 minutes. An exchange also says issued_token_type.", {
             "type": "object", "required": ["access_token", "token_type", "expires_in"],
             "properties": {"access_token": {"type": "string"}, "token_type": {"type": "string", "enum": ["DPoP"]},
-                           "expires_in": {"type": "integer"}}}),
+                           "expires_in": {"type": "integer"},
+                           "issued_token_type": {"type": "string", "enum": [ACCESS_TOKEN_TYPE]}}}),
         "400": _oauth_answer("invalid_request, unsupported_grant_type, or invalid_dpop_proof: the DPoP header is "
-                             "missing, is not good, or is not signed by the key that signed the assertion.",
-                             OAUTH_ERROR),
+                             "missing, is not good, or is not signed by the key that signed the assertion. In an "
+                             "exchange, invalid_grant: the ID token is not good, has no second factor, or its person "
+                             "is not in Hive, is blocked or removed, or their client is not active, whatever the "
+                             "reason; and invalid_target: the person is of more than one client, and hive_client "
+                             "does not say which.", OAUTH_ERROR),
         "401": _oauth_answer("invalid_client: the assertion is not good, whatever the reason.", OAUTH_ERROR),
         "429": {**_oauth_answer("temporarily_unavailable: too many requests from this origin, too many rejected "
                                 "assertions from it, or too many tokens for this key in the last hour (ADR-0028). "
                                 "Retry-After says in how many seconds to ask again.", OAUTH_ERROR),
                 "headers": {"Retry-After": {"description": "Seconds to wait.", "schema": {"type": "integer"}}}},
+        "503": _oauth_answer("temporarily_unavailable: in an exchange, the keys of the IdP could not be read.",
+                             OAUTH_ERROR),
     },
 }
 
 
 @app.post(path="/oauth/token", tags=["OAuth"], openapi_extra=TOKEN_CONTRACT,
-          summary="An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)",
-          description="The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 "
-                      "(ADR-0025), and gets an access token the gateway signs, for every other route.")
+          summary="An access token, for a client that proves who it is or for a person of a client",
+          description="A machine credential authenticates with an assertion its key signed (client_credentials, "
+                      "RFC 7523, section 2.2, ADR-0025). The BFF of the PWA exchanges the ID token of a person "
+                      "(token-exchange, RFC 8693, ADR-0029), and the token says the person and their role in their "
+                      "client. Either way, an access token the gateway signs, for every other route.")
 async def oauth_token(request: Request):
     # Before anything of the request is read (ADR-0028): an origin that asks too often, or failed too often, waits.
     origin = token_limits.origin_of(request.headers, request.client.host if request.client else None)
@@ -252,7 +295,14 @@ async def _token_answer(request: Request) -> JSONResponse:
         return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
     body = await request.body()
     form = _form(body) if len(body) <= MAX_TOKEN_REQUEST else None
-    if form is None or any(name not in form for name in TOKEN_PARAMETERS):
+    if form is None or "grant_type" not in form:
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
+    if form["grant_type"] == TOKEN_EXCHANGE:
+        # Without an IdP configured, this service does not take the grant.
+        if IDP is None:
+            return _oauth_error(status.HTTP_400_BAD_REQUEST, "unsupported_grant_type")
+        return await _exchange_answer(request, form)
+    if any(name not in form for name in TOKEN_PARAMETERS):
         return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
     if form["grant_type"] != GRANT_TYPE:
         return _oauth_error(status.HTTP_400_BAD_REQUEST, "unsupported_grant_type")
@@ -283,6 +333,55 @@ async def _token_answer(request: Request) -> JSONResponse:
     log.info(f"Access token for client {caller.client_id}, key {caller.kid}, worker {caller.worker_name}")
     return JSONResponse(status_code=status.HTTP_200_OK, headers=NO_STORE,
                         content={"access_token": token, "token_type": "DPoP", "expires_in": lifetime})
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        return str(UUID(value)) == value
+    except ValueError:
+        return False
+
+
+async def _exchange_answer(request: Request, form: dict) -> JSONResponse:
+    """
+        RFC 8693, for the BFF (ADR-0029): an ID token of Zitadel for an access token of Hive, bound to the key of the
+        request's proof, the BFF's own. Whatever is wrong with the ID token or the person is the same invalid_grant.
+    """
+    if (any(name not in form for name in EXCHANGE_PARAMETERS)
+            or any(name not in EXCHANGE_PARAMETERS + EXCHANGE_OPTIONS for name in form)
+            or form["subject_token_type"] != ID_TOKEN_TYPE
+            or form.get("requested_token_type", ACCESS_TOKEN_TYPE) != ACCESS_TOKEN_TYPE
+            or not _is_uuid(form.get("hive_client", str(UUID(int=0))))):
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_request")
+    try:
+        jkt = dpop.check(request.headers.getlist("dpop"), request.method, _urls_of(request), None, time.time())
+    except dpop.InvalidProof as e:
+        log.warning(f"Rejected an exchange for an access token: {e}")
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_dpop_proof")
+    try:
+        # It may read Zitadel's keys, and reads the people of the IdP's person: in a thread, not in the event loop.
+        token, lifetime, caller = await run_in_threadpool(exchange_id_token, form["subject_token"],
+                                                          form.get("hive_client"), IDP, GATEWAY_KEYS,
+                                                          settings.gateway_audience, jkt)
+    except IdpUnavailable as e:
+        log.error(f"The keys of the IdP could not be read: {e}")
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, headers=NO_STORE,
+                            content={"error": "temporarily_unavailable"})
+    except ClientNotChosen as e:
+        log.warning(f"Rejected an exchange for an access token: {e}")
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_target")
+    except InvalidToken as e:
+        log.warning(f"Rejected an exchange for an access token: {e}")
+        return _oauth_error(status.HTTP_400_BAD_REQUEST, "invalid_grant")
+    refusal = token_limits.LIMITS.issue(caller.client_id, caller.limited_as)
+    if refusal is not None:
+        log.warning(f"Turned away an exchange for an access token: client {caller.client_id}, {caller.actor} got "
+                    f"their share of tokens this hour")
+        return _too_many(refusal.retry_after)
+    log.info(f"Access token for client {caller.client_id}, {caller.actor}, {caller.user_role.value}")
+    return JSONResponse(status_code=status.HTTP_200_OK, headers=NO_STORE,
+                        content={"access_token": token, "issued_token_type": ACCESS_TOKEN_TYPE, "token_type": "DPoP",
+                                 "expires_in": lifetime})
 
 
 @app.post(path="/bot", tags=["Bot"], response_model=BotResponse)
@@ -334,10 +433,12 @@ def get_chatbot_phones(bot_id, req: Request, repo: TenantRepository = Depends(ge
 
 
 @app.get(path="/chat/{bot_id}/info", tags=["Chat"])
-def get_chatbot_info(bot_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+def get_chatbot_info(bot_id, req: Request, principal: Principal = Depends(get_principal)):
+    """The card of a chatbot, with its verifyToken; a cliente-analista gets it without it (D6)."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_get_chatbot_from_uuid(repo, bot_id, eventId=req.state.event_id)
+        response = ctr_get_chatbot_from_uuid(TenantRepository(principal.client_id), bot_id, eventId=req.state.event_id,
+                                             with_verify_token=not principal.is_analyst)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -391,9 +492,14 @@ async def send_message(bot_id: str, contact_id: str, message: OutboundMessageReq
         The Idempotency-Key header is required: the same key within 24 hours gives back the same request and sends
         nothing more. 60 sends a minute for each chatbot and 1 000 a day for each client: more get 429 with
         Retry-After.
+
+        A cliente-analista only sends approved templates (D10): a text from them gets 403.
     """
+    if principal.is_analyst and message.type != "template":
+        log.warning(f"A cliente-analista was denied sending a text: client {principal.client_id}, {principal.actor}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
     return await ctr_send_message(TenantRepository(principal.client_id), bot_id, contact_id, message,
-                                  idempotency_key, sent_by=f"key {principal.kid}")
+                                  idempotency_key, sent_by=principal.actor)
 
 
 @app.put(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)

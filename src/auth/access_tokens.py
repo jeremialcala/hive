@@ -8,6 +8,9 @@
     signing key of the gateway, its type, its issuer and audience, and its lifetime. Revoking a key of a client stops
     it getting a new token at once; one it already has is good until it expires.
 
+    A token of a person of a client (ADR-0029), issued for an ID token of the IdP, says also who the person is and their
+    role there (`hive_user`, `hive_user_role`), and has no key of the client: the key it is bound to is the BFF's.
+
     Nothing here touches the database. The reasons a token is turned away are fixed texts, never anything taken from
     the token, so they can go to the log.
 """
@@ -18,7 +21,7 @@ from uuid import UUID, uuid4
 
 from jwcrypto import jws
 
-from enums import Role, Worker
+from enums import PersonRole, Role, Worker
 from shared.auth.gateway_keys import SIGNING_ALGORITHM, GatewayKeys
 from shared.auth.tokens import CLOCK_SKEW, MAX_TOKEN_SIZE, InvalidToken, is_a_number, is_compact
 
@@ -33,25 +36,33 @@ class Access:
     """What a valid access token says, all of it signed by the gateway."""
     client_id: UUID
     role: Role
-    # The registered key the client signed its assertion with.
-    kid: str
+    # The registered key the client signed its assertion with. None in the token of a person.
+    kid: str | None
     jti: str
     # The thumbprint of the key every proof that goes with this token is signed with (RFC 9449, section 6).
     jkt: str
     worker: Worker | None = None
+    # The person of the client, and their role there, in the token of a person.
+    user_id: UUID | None = None
+    user_role: PersonRole | None = None
 
 
-def issue(gateway_keys: GatewayKeys, audience: str, client_id: UUID, role: Role, worker: Worker | None, kid: str,
-          jkt: str, now: float | None = None) -> tuple[str, int]:
+def issue(gateway_keys: GatewayKeys, audience: str, client_id: UUID, role: Role, worker: Worker | None,
+          kid: str | None, jkt: str, now: float | None = None, user_id: UUID | None = None,
+          user_role: PersonRole | None = None) -> tuple[str, int]:
     """
         A new access token for that client, bound to the key with thumbprint `jkt` and signed with the newest signing
-        key of the gateway, and how long it lasts.
+        key of the gateway, and how long it lasts. For a person, `user_id` and `user_role` instead of `kid`.
     """
+    if (kid is None) == (user_id is None) or (user_id is None) != (user_role is None):
+        raise ValueError("a token is either of a key or of a person with their role")
     issued = int(time.time() if now is None else now)
     claims = {"iss": audience, "aud": audience, "sub": str(client_id), "client_id": str(client_id),
               "iat": issued, "exp": issued + LIFETIME, "jti": str(uuid4()),
               "hive_role": role.value, "hive_worker": worker.value if worker else None, "hive_key": kid,
               "cnf": {"jkt": jkt}}
+    if user_id is not None:
+        claims.update(hive_user=str(user_id), hive_user_role=user_role.value)
     signer_kid, key = gateway_keys.signer()
     signed = jws.JWS(json.dumps(claims).encode())
     signed.add_signature(key, alg=SIGNING_ALGORITHM,
@@ -106,10 +117,22 @@ def _check(claims: dict, audience: str, now: float) -> Access:
     if claims.get("client_id") != str(client_id):
         raise InvalidToken("no client, role or worker")
     kid, jti = claims.get("hive_key"), claims.get("jti")
-    if not isinstance(kid, str) or not kid or not isinstance(jti, str) or not jti:
+    user_id, user_role = None, None
+    if claims.get("hive_user") is not None:
+        try:
+            user_id, user_role = UUID(claims["hive_user"]), PersonRole(claims.get("hive_user_role"))
+        except (ValueError, TypeError):
+            raise InvalidToken("no person or role") from None
+        # A person is not the response engine, nor signs with a key of the client.
+        if kid is not None or worker is not None or role is Role.SERVICE:
+            raise InvalidToken("no person or role")
+    elif not isinstance(kid, str) or not kid:
+        raise InvalidToken("no key or jti")
+    if not isinstance(jti, str) or not jti:
         raise InvalidToken("no key or jti")
     confirmation = claims.get("cnf")
     jkt = confirmation.get("jkt") if isinstance(confirmation, dict) else None
     if not isinstance(jkt, str) or not jkt:
         raise InvalidToken("not bound to a key")
-    return Access(client_id=client_id, role=role, kid=kid, jti=jti, jkt=jkt, worker=worker)
+    return Access(client_id=client_id, role=role, kid=kid, jti=jti, jkt=jkt, worker=worker, user_id=user_id,
+                  user_role=user_role)
