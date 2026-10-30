@@ -8,6 +8,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **El recorrido de la PWA, de punta a punta** (HIG-141, Gate 3; [e2e](docs/04-testing/e2e.md#el-recorrido-de-la-pwa)).
+  Chromium, con Playwright, contra `hive-portal` construido del mismo commit, junto al gateway y al motor de la prueba
+  de punta a punta.
+  - **El login:** con un Zitadel falso, en `tests/e2e/fakes.py`, que da un ID token con `amr` `mfa`. Las personas
+    entran por el camino real: `POST /people` las crea en Zitadel y su primer login las deja activas.
+  - **El recorrido:** los bots, una plantilla con su vista previa, su aprobación al sincronizar con Meta y su envío a
+    un contacto, seguido hasta que Meta lo acepta.
+  - **Lo que comprueba además:** la cookie `__Host-hive-session` `HttpOnly`, la sesión sellada en Bifröst, el logout,
+    ninguna violación de la CSP y que el `cliente-analista` no ve los botones de admin.
+  - **Sus dependencias:** van en su propio lock, `tests/e2e/requirements.lock`, que `Seguridad` audita.
+  - **Cuándo corre:** el workflow `e2e` instala Chromium, y en los PR a `develop` también corre si cambia el portal.
 - **El objetivo de latencia de punta a punta, RNF10** (HIG-136, Gate 3;
   [medición](docs/04-testing/medicion-punta-a-punta.md)). Desde que el webhook recibe el mensaje hasta que Meta acepta
   la respuesta.
