@@ -220,7 +220,7 @@ def test_a_send_is_accepted_then_sent_when_the_history_has_it(http, caller, repo
 @pytest.mark.parametrize("code,reason,said", [
     (131047, "rejected", "window_closed"), (132015, "rejected", "template_paused"),
     (132016, "rejected", "template_disabled"), (132000, "rejected", "template_parameters"),
-    (131049, "rejected", "marketing_limit"), (999999, "rejected", "rejected"),
+    (131049, "rejected", "marketing_limit"), (131058, "rejected", "sample_template"), (999999, "rejected", "rejected"),
     (None, "no_token", "no_token"), (None, "gave_up", "gave_up")])
 def test_a_send_that_failed_says_why(http, caller, repo, bot, ana, bifrost, logged, code, reason, said):
     wrote(repo, ana, hours_ago=1)

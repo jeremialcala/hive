@@ -18,6 +18,8 @@ export const REASONS = {
   marketing_limit: "Meta limita los mensajes de marketing que recibe cada persona: inténtalo dentro de 24 horas.",
   not_deliverable: "Meta no pudo entregar el mensaje: el número quizá no usa WhatsApp.",
   unsupported: "Meta no admite este tipo de mensaje para este contacto.",
+  sample_template: "hello_world es la plantilla de muestra de Meta: solo sale desde sus números públicos de prueba. "
+    + "Envía una plantilla propia aprobada.",
   no_token: "El bot no tiene token de WhatsApp: cárgalo antes de enviar.",
   gave_up: "No se pudo enviar después de varios intentos: inténtalo más tarde.",
   rejected: "Meta rechazó el mensaje.",

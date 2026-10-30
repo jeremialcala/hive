@@ -32,7 +32,10 @@ log = logging.getLogger(settings.environment)
 # What each code of Meta means for a send of the client, in a word the PWA explains.
 REASONS = {131047: "window_closed", 132015: "template_paused", 132016: "template_disabled",
            132000: "template_parameters", 132001: "template_missing", 131049: "marketing_limit",
-           131026: "not_deliverable", 131051: "unsupported"}
+           131026: "not_deliverable", 131051: "unsupported",
+           # Not in Meta's codes; what it said on 2026-10-30: «Hello World templates can only be sent from the Public
+           # Test Numbers».
+           131058: "sample_template"}
 MESSAGES = 50
 
 UNAVAILABLE = "SERVICE UNAVAILABLE"
