@@ -159,7 +159,16 @@ async def _publish(event: dict, item: dict, contact: Contact, message: IncomingM
 STATUS_OF = {"REINSTATED": APPROVED, "FLAGGED": None}
 
 
+def _id_or_unknown(value) -> str:
+    """A Meta id for a line of the log, only when it looks like one: whatever else came is not written."""
+    return value if isinstance(value, str) and META_ID.fullmatch(value) else "?"
+
+
 def _apply_template_changes(event: dict, bot: ChatBot) -> dict:
+    """
+        Each notice applied or not leaves a warning with its ids, the level production keeps: the log is the trace
+        of what Meta's notices changed, and of what they would have changed and did not.
+    """
     repo = TenantRepository(bot.clientId)
     received_at = datetime.fromisoformat(event["receivedAt"])
     outcome = Counter()
@@ -168,10 +177,14 @@ def _apply_template_changes(event: dict, bot: ChatBot) -> dict:
                 and META_ID.fullmatch(change["templateId"]) and isinstance(change.get("event"), str)
                 and WORD.fullmatch(change["event"])):
             outcome["malformed"] += 1
+            log.warning(f"A notice of a template for chatbot {bot.uuid} without its shape: not applied")
             continue
         if not bot.wabaId or change.get("account") != bot.wabaId:
             # Of a WhatsApp Business Account that is not the chatbot's: its templates are not this chatbot's.
             outcome["of another account"] += 1
+            log.warning(f"A notice of template {change['templateId']} for chatbot {bot.uuid} is of account "
+                        f"{_id_or_unknown(change.get('account'))}, not of the chatbot's "
+                        f"{bot.wabaId or 'none'}: not applied")
             continue
         at = change.get("at")
         when = (datetime.fromtimestamp(at, timezone.utc) if isinstance(at, int) and not isinstance(at, bool) and at > 0
@@ -186,10 +199,12 @@ def _apply_template_changes(event: dict, bot: ChatBot) -> dict:
                 raise DatabaseUnavailable(type(e).__name__) from None
             raise
         if applied == "applied":
-            log.info(f"Template {change['templateId']} of chatbot {bot.uuid} is {change['event']} by Meta's notice")
+            log.warning(f"Template {change['templateId']} of chatbot {bot.uuid} is {change['event']} by Meta's notice")
+        else:
+            why = "Hive has no such template" if applied == "unknown" else "older than what its copy knows"
+            log.warning(f"A notice of template {change['templateId']} for chatbot {bot.uuid}, {change['event']}: "
+                        f"{why}, not applied")
         outcome[applied] += 1
-    if outcome.keys() - {"applied"}:
-        log.warning(f"Notices of templates for chatbot {bot.uuid} not applied: {dict(outcome)}")
     return dict(outcome)
 
 
