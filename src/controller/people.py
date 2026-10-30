@@ -78,8 +78,8 @@ def ctr_invite_person(repo: TenantRepository, request: PersonInviteRequest, acto
     except ZitadelUnavailable as e:
         return _unavailable(e)
     except ZitadelRefused as e:
-        log.warning(f"Zitadel did not take a person invited to client {repo.client_id}: {e.status}")
-        return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, f"IDP_REFUSED: Zitadel did not take it ({e.status})")
+        log.warning(f"Zitadel did not take a person invited to client {repo.client_id}: {e.reason}")
+        return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, f"IDP_REFUSED: Zitadel did not take it ({e.reason})")
     except Conflict:
         return answer(status.HTTP_409_CONFLICT, "ALREADY_INVITED: this person is already of the client")
     except KeyServiceUnavailable as e:

@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.5.1
+* **Versión:** 0.5.2
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -261,8 +261,15 @@ en la consola de Zitadel, `https://hive-auth.higerotech.com/ui/console`:
 
 1. **El usuario de servicio.** En la organización de las personas de Hive: *Users → Service Users → New*. Nombre
    `hive-api`, tipo de token *Bearer*.
-2. **Su permiso.** *Organization → Managers → +*: el usuario `hive-api`, con el rol `ORG_USER_MANAGER`. Le basta
-   para buscar, crear e invitar usuarios de esa organización, y nada más.
+2. **Su permiso.** En el usuario `hive-api`, *Administrator Roles → New*, a nivel **Organization**, con el rol
+   `ORG_USER_MANAGER`. También se llega desde *Organization*, en la lista de administradores. Le basta para buscar,
+   crear e invitar usuarios de esa organización, y nada más.
+
+   **No es un rol de proyecto.** Un rol `ORG_USER_MANAGER` creado en el proyecto y asignado en *Role Assignments*
+   no da ningún permiso en Zitadel. Así pasó el 2026-10-30: la búsqueda seguía funcionando, porque solo devuelve lo
+   que la cuenta ve, pero crear daba `membership not found (AUTHZ-cdgFk)`. Ahora `POST /people` responde `503` y el
+   log de `hive-api` dice `the service account was turned away: 404 AUTHZ-cdgFk; it needs ORG_USER_MANAGER in its
+   Administrator Roles`.
 3. **Su token.** En el usuario, *Personal Access Tokens → New*. Zitadel lo enseña una sola vez: va directo al fichero
    de midgard, sin pasar por el chat ni por un comando con argumentos.
 

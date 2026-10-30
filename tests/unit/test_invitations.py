@@ -217,6 +217,37 @@ def test_what_zitadel_says_no_to_gives_only_its_status(http, acme, logged):
     assert EMAIL not in response.text + logged()
 
 
+def test_a_service_account_without_its_administrator_role_is_for_the_operator_to_fix(http, acme, logged):
+    """As on 2026-10-30, with the role made in the project instead of in «Administrator Roles»."""
+    FakeZitadel.fail = (404, {"code": 5, "message": "membership not found (AUTHZ-cdgFk)"})
+
+    response = invite(http, acme)
+
+    assert response.status_code == 503
+    assert "AUTHZ-cdgFk" in logged() and "ORG_USER_MANAGER" in logged()
+    assert ClientUser.objects(clientId=acme.client_id).count() == 0
+
+
+def test_the_id_of_zitadel_s_error_goes_with_its_status_and_never_its_message(http, acme, logged):
+    FakeZitadel.fail = (409, {"code": 6, "message": f"User with {EMAIL} already exists (COMMAND-k2unb)"})
+
+    response = invite(http, acme)
+
+    assert response.status_code == 422
+    assert response.json()["message"] == "IDP_REFUSED: Zitadel did not take it (409, COMMAND-k2unb)"
+    assert EMAIL not in response.text + logged()
+
+
+@pytest.mark.parametrize("message", ["no id at all", "an id in the middle (COMMAND-k2unb) and more",
+                                     "(lower-case1)", None, 42, "x" * 2000 + " (COMMAND-k2unb)"])
+def test_what_is_not_an_id_at_the_end_of_the_message_is_not_kept(http, acme, message):
+    FakeZitadel.fail = (400, {"code": 3, "message": message})
+
+    response = invite(http, acme)
+
+    assert response.json()["message"] == "IDP_REFUSED: Zitadel did not take it (400)"
+
+
 def test_a_service_account_turned_away_is_for_the_operator_to_fix(http, acme, service_account, logged):
     service_account.write_text("a-token-zitadel-does-not-know", encoding="utf-8")
 
