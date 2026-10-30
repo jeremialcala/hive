@@ -2142,6 +2142,22 @@ paths:
       summary: Restore Version
       tags:
       - Versions
+  /client:
+    get:
+      description: 'The client of whoever calls: its id and its name, for the PWA to say whose area it is. No keys.'
+      operationId: own_client_client_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+      security:
+      - OAuth2: []
+      summary: Own Client
+      tags:
+      - Clients
   /clients:
     get:
       operationId: list_clients_clients_get
