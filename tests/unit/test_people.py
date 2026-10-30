@@ -273,8 +273,9 @@ def test_a_person_of_a_client_that_is_not_active_gets_no_token(http, zitadel, ac
 def test_a_client_deleted_takes_its_people_with_it(http, zitadel, acme, operator):
     person(acme)
 
-    assert http.delete(f"/clients/{acme.client_id}", headers=operator.auth).status_code == 200
+    deleted = http.delete(f"/clients/{acme.client_id}", headers=operator.auth)
 
+    assert deleted.status_code == 200
     assert ClientUser.objects(clientId=acme.client_id).count() == 0
     assert exchange(http, zitadel.id_token()).json() == {"error": "invalid_grant"}
 
