@@ -129,7 +129,8 @@ class SentReply(_Event):
 class FailedSend(_Event):
     """
         EnvioFallido (HIG-87): a request of the client that the notifier did not send, and will not. Meta's code, when
-        it was Meta that said no; and the reason, a word of the notifier: rejected, no_token, gave_up.
+        it was Meta that said no, or the last one it gave before the notifier gave up; and the reason, a word of the
+        notifier: rejected, no_token, gave_up. A code of the token or its permissions puts the chatbot in ERR (HIG-74).
     """
     contactId: UUID
     channel: Channel

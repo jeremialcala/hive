@@ -123,6 +123,19 @@ class TenantRepository:
         kept_bots.forget(saved.uuid)
         return saved
 
+    def move_bot(self, bot_uuid: UUID, start: tuple[Status, ...], to: Status) -> bool:
+        """
+            Moves a chatbot to `to`, but only from one of `start`, in one update that says whether it matched: two
+            processes that see the same bot do not undo each other, and nothing takes it out of LOK or DIS. Says
+            whether it moved.
+        """
+        moved = self._own(ChatBot, uuid=bot_uuid, status__in=[each.value for each in start]).update(
+            set__status=to.value, set__statusDate=datetime.now(timezone.utc))
+        if moved:
+            # The webhook keeps the chatbot it found: this process sees the new state at once, the others in KEEP_FOR.
+            kept_bots.forget(bot_uuid)
+        return bool(moved)
+
     def list_bots(self) -> list:
         """The chatbots of the client, oldest first."""
         return list(self._own(ChatBot).order_by("createdAt"))

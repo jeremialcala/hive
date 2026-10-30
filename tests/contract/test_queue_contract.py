@@ -18,6 +18,7 @@ from jsonschema import Draft202012Validator
 import controller.ingestion as ingestion
 import controller.messages as messages
 from classes import FacebookRequest
+from enums import Status
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ASYNCAPI = yaml.safe_load((ROOT / "docs" / "02-design" / "contracts" / "asyncapi.yaml").read_text(encoding="utf-8"))
@@ -55,7 +56,9 @@ def published(monkeypatch):
 
     def run(payload):
         captured.clear()
-        asyncio.run(messages.ctr_process_messages(req=FacebookRequest(**payload), _bot=SimpleNamespace(uuid=BOT_ID, clientId=CLIENT_ID)))
+        # A live chatbot: its notification does not also activate it (HIG-75).
+        live = SimpleNamespace(uuid=BOT_ID, clientId=CLIENT_ID, status=Status.ACT.value)
+        asyncio.run(messages.ctr_process_messages(req=FacebookRequest(**payload), _bot=live))
         (only,) = captured
         return dict(only)
 

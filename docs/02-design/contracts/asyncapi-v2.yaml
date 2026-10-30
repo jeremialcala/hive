@@ -527,7 +527,10 @@ components:
               description: El `uuid` del PedidoDeEnvio.
             code:
               type: [integer, 'null']
-              description: El código de error de Meta, cuando fue Meta quien dijo que no.
+              description: >-
+                El código de error de Meta, cuando fue Meta quien dijo que no. Con `gave_up`, el del último intento,
+                si lo hubo. Un 0 o un 190 (el token) y un 10 o un 131005 (sus permisos) ponen el bot en `ERR`
+                (HIG-74).
             reason:
               enum: [rejected, no_token, gave_up]
             failedAt:

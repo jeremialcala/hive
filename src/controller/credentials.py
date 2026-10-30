@@ -15,6 +15,7 @@ from auth.principal import Principal
 from repository import NotFound, TenantRepository
 
 from .answers import answer
+from .bot_state import bot_accepted
 
 __all__ = ["ctr_set_bot_credentials", "ctr_get_bot_tokens"]
 
@@ -33,6 +34,9 @@ def ctr_set_bot_credentials(repo: TenantRepository, bot_id: str, request: BotCre
         log.error(f"Key service unavailable: {e}")
         return answer(status.HTTP_503_SERVICE_UNAVAILABLE, "SERVICE UNAVAILABLE")
     log.info(f"Credentials loaded for chatbot {bot.uuid}")
+    if request.whatsappToken or request.facebookToken:
+        # A new token: a chatbot in ERR is given its chance again (HIG-74). If Meta turns it away too, it goes back.
+        bot_accepted(repo, bot.uuid, "the client loaded a new token", bot.status)
     return answer(status.HTTP_200_OK, data={"uuid": str(bot.uuid), "credentials": bot.chatbot_info()["credentials"]})
 
 

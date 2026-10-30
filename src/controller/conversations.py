@@ -18,7 +18,6 @@ from fastapi.responses import JSONResponse
 from classes import Settings
 from classes.tool_clock import as_utc
 from crypto.key_service import KeyServiceUnavailable
-from enums import Status
 from repository import NotFound, TenantRepository
 
 from .answers import answer
@@ -35,7 +34,9 @@ REASONS = {131047: "window_closed", 132015: "template_paused", 132016: "template
            131026: "not_deliverable", 131051: "unsupported",
            # Not in Meta's codes; what it said on 2026-10-30: «Hello World templates can only be sent from the Public
            # Test Numbers».
-           131058: "sample_template"}
+           131058: "sample_template",
+           # The chatbot's token, or its permissions: these put it in ERR too (bot_state, HIG-74).
+           0: "token_rejected", 190: "token_rejected", 10: "permission", 131005: "permission"}
 MESSAGES = 50
 
 UNAVAILABLE = "SERVICE UNAVAILABLE"
@@ -48,8 +49,7 @@ def _unavailable(e: Exception) -> JSONResponse:
 
 def ctr_list_bots(repo: TenantRepository) -> JSONResponse:
     """The chatbots of the client: what each is and which credentials it has loaded, never their values."""
-    bots = [{**bot.chatbot_info(), "uuid": str(bot.uuid), "status": Status(bot.status).name,
-             "createdAt": as_utc(bot.createdAt)}
+    bots = [{**bot.chatbot_info(), "uuid": str(bot.uuid), "createdAt": as_utc(bot.createdAt)}
             for bot in repo.list_bots()]
     return answer(status.HTTP_200_OK, data={"bots": bots})
 
@@ -94,8 +94,9 @@ def ctr_send_status(repo: TenantRepository, bot_id: str, contact_id: str, reques
     if request is None:
         return answer(status.HTTP_404_NOT_FOUND, "This request to send was not found")
     reason = request.failureReason
-    if reason == "rejected":
-        reason = REASONS.get(request.failureCode, "rejected")
+    if reason in ("rejected", "gave_up"):
+        # Given up with Meta's last code: a token or a permission says more than «tried several times» (HIG-74).
+        reason = REASONS.get(request.failureCode, reason)
     return answer(status.HTTP_200_OK, data={
         "uuid": str(request.uuid), "status": request.status, "kind": request.kind, "template": request.template,
         "createdAt": as_utc(request.createdAt), "sentAt": as_utc(request.sentAt) if request.sentAt else None,

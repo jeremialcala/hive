@@ -196,7 +196,8 @@ class Salientes:
                 if 0 < self._max_deliver <= entregas(mensaje):
                     log.error("El pedido de envío %s del bot %s no se pudo enviar en la última entrega: %s",
                               pedido.uuid, pedido.botId, e)
-                    await self._avisar_sin_esperar(pedido, "gave_up")
+                    # Con el último código de Meta, si lo hubo: un 190 o un 10 ponen el bot en ERR (HIG-74).
+                    await self._avisar_sin_esperar(pedido, "gave_up", _codigo_de(e))
                     resultado = Resultado.DESCARTADO
                 else:
                     log.warning("El pedido de envío %s del bot %s se intentará otra vez: %s", pedido.uuid,
@@ -276,10 +277,10 @@ class Salientes:
         except bus.BusUnavailable as e:
             raise _Esperar(f"Bifröst: {e}") from None
 
-    async def _avisar_sin_esperar(self, pedido: OutboundRequest, motivo: str) -> None:
+    async def _avisar_sin_esperar(self, pedido: OutboundRequest, motivo: str, codigo: int | None = None) -> None:
         """En la última entrega ya no hay después: si Bifröst no toma el aviso, queda solo en el log."""
         try:
-            await self._avisar(pedido, motivo)
+            await self._avisar(pedido, motivo, codigo)
         except _Esperar as e:
             log.error("El fallo del pedido de envío %s del bot %s no se pudo avisar: %s", pedido.uuid, pedido.botId, e)
 

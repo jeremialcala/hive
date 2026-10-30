@@ -22,6 +22,7 @@ import webhook as webhook_module
 import controller.facebook as facebook
 import controller.ingestion as ingestion
 from classes import ChatBot
+from enums import Status
 from repository import TenantRepository, delete_client, kept_bots
 
 # What Meta calls is its own service, apart from the management API.
@@ -84,7 +85,7 @@ def owner(register):
 @pytest.fixture
 def bot(owner):
     return owner.add_bot(ChatBot(name="Bot", role="Sales Assistant", description="A test chatbot", tone="helpful",
-                                 facebookToken="page-token"))
+                                 facebookToken="page-token", status=Status.ACT.value))
 
 
 def notify(bot_id, payload, secret=APP_SECRET):
