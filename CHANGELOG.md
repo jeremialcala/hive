@@ -8,6 +8,14 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **Los logos de `assets/logos/` en la PWA y en la documentación** (ADR-0027).
+  - **La PWA:** el lockup en la barra lateral, según el tema; el isotipo en la barra del teléfono; y el lockup
+    vertical en la pantalla de entrada. Sustituyen al hexágono dibujado con CSS: según el brand book, el hexágono
+    de `Cell` identifica bots y clientes, y no es el logo.
+  - **Favicon y manifest:** la PWA tiene `hive-favicon.svg` y un manifest con los iconos de la app en PNG, `any` y
+    `maskable` a 192 y 512. Antes, `/favicon.ico` y el manifest daban `404`.
+  - **La documentación de la API** tiene el favicon.
+  - **Las copias** son iguales byte a byte a `assets/logos/`, y lo comprueban sus pruebas.
 - **La ficha del bot en la PWA** (HIG-121; RF23, RF24, RF26; las pantallas 05 a 08 del canvas).
   - **La cabecera:** el estado REG/ACT/ERR, el `bot_id` y la versión. En ERR dice qué hacer.
   - **Identidad:** el `cliente-admin` cambia la persona; guardar crea la versión siguiente y un rechazo de RS11 sale

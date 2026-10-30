@@ -44,6 +44,20 @@ Manifest de la PWA: `theme_color` y `background_color` = `#0f1115`; exporta los 
 - Segmentos de circuito y nodos laterales: `success-green` #10b981 (los nodos "activos", como un bot ACT).
 - Núcleo de los nodos: `slate-black` #0f1115 sobre oscuro; blanco en los monocromos para fondo claro.
 
+## Dónde se usan
+
+| Superficie | Archivos |
+|---|---|
+| PWA (`hive-app`), barra lateral | `hive-logo-dark.svg` o `-light.svg`, según el tema |
+| PWA, barra del teléfono | `hive-mark.svg` |
+| PWA, pantalla de entrada | `hive-logo-stacked-dark.svg` o `-light.svg`, según el tema |
+| PWA, pestaña y manifest | `hive-favicon.svg`; `hive-app-icon.svg` y `hive-app-icon-maskable.svg` en PNG (`portal/src/static/icons/`) |
+| Documentación de la API (`hive.higerotech.com/docs`) | `hive-favicon.svg` |
+
+Las copias de `portal/src/static/logos/` tienen que ser iguales byte a byte a estas: lo comprueba
+`portal/tests/unit/test_portal.py`. El job `gateway · docs` del CI comprueba que el favicon del sitio de
+documentación es este.
+
 ## Reglas
 
 - Área de respeto: la mitad del alto del isotipo por cada lado. Tamaño mínimo: isotipo completo 24px, favicon 16px, lockup horizontal 120px de ancho, lockup vertical 96px de ancho.

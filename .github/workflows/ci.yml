@@ -119,4 +119,9 @@ jobs:
           grep -q "<title>Hive management API</title>" page.html
           grep -qi "^content-security-policy: default-src 'none'; script-src 'self' 'sha256-" headers.txt
           curl -fsS -o /dev/null http://127.0.0.1:8080/docs/redoc.standalone.js
+          # The favicon of assets/logos, linked from the page and served beside it (ADR-0027).
+          grep -q '<link rel="icon" href="favicon.svg" type="image/svg+xml">' page.html
+          curl -fsS -D favicon.txt -o favicon.svg http://127.0.0.1:8080/docs/favicon.svg
+          grep -qi "^content-type: image/svg+xml" favicon.txt
+          cmp favicon.svg assets/logos/hive-favicon.svg
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/openapi.json)" = 404
