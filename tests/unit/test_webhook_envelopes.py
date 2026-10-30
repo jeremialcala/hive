@@ -16,12 +16,15 @@ import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
-import app as app_module
+import webhook as webhook_module
 import controller.facebook as facebook
-import controller.messages as messages
+import controller.ingestion as ingestion
 from classes import ChatBot, Contact
 from controller import BrokerUnavailable
 from repository import TenantRepository
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 APP_SECRET = os.environ["FACEBOOK_APP_SECRET"]
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -67,7 +70,7 @@ def queue(monkeypatch):
         sent.append(json.loads(message.to_json()))
 
     publish.fail_at, publish.sent = None, sent
-    monkeypatch.setattr(messages, "send_message_to_queue", publish)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", publish)
     return publish
 
 
@@ -88,7 +91,7 @@ def bot(register):
 def notify(bot_id, payload):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return TestClient(app_module.app).post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                                            headers={"content-type": "application/json",
                                                     "X-Hub-Signature-256": signature})
 
@@ -193,7 +196,7 @@ def test_meta_is_asked_to_send_the_notification_again_if_one_of_its_messages_was
     assert identifiers(queue) == ["wamid.A"]
 
 
-def test_the_notification_sent_again_repeats_the_identifier_the_engine_deduplicates_by(bot, queue):
+def test_the_notification_sent_again_only_hands_over_what_was_not_handed_over(bot, queue):
     notification = whatsapp(value("wamid.A", "wamid.B"))
     queue.fail_at = 2
     notify(bot.uuid, copy.deepcopy(notification))
@@ -201,6 +204,5 @@ def test_the_notification_sent_again_repeats_the_identifier_the_engine_deduplica
 
     assert notify(bot.uuid, notification).status_code == 200
 
-    assert identifiers(queue) == ["wamid.A", "wamid.A", "wamid.B"]
-    first, again, _ = queue.sent
-    assert first["_uuid"] != again["_uuid"]
+    # wamid.A was handed over and stored in the history the first time: sent again, it is not handed over twice.
+    assert identifiers(queue) == ["wamid.A", "wamid.B"]

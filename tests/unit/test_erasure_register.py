@@ -21,11 +21,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as app_module
-import controller.messages as messages
+import webhook as webhook_module
+import controller.ingestion as ingestion
 from classes import ChatBot, ChatbotPhone, Client, Contact, Intent, Rule
 from migrations import replay_erasures
 from repository import RegisterUnavailable, TenantRepository, erasures
 from repository import clients as client_registry
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 APP_SECRET = "app-secret-of-this-test"
@@ -53,7 +57,7 @@ def queue(monkeypatch):
     async def discard(queue, message):
         pass
 
-    monkeypatch.setattr(messages, "send_message_to_queue", discard)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", discard)
 
 
 def new_bot(http, caller) -> str:
@@ -69,7 +73,7 @@ def new_bot(http, caller) -> str:
 def notify(http, bot_id, payload):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return http.post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                      headers={"content-type": "application/json", "X-Hub-Signature-256": signature})
 
 
@@ -316,9 +320,10 @@ def test_the_report_says_what_came_back_and_deletes_nothing(restored, register_o
 
     report = replay_erasures.run(apply=False)
 
-    assert report == {"contact": {"recorded": 1, "back": 1, "documents": 1},
-                      "chatbot": {"recorded": 1, "back": 1, "documents": 5},
-                      "client": {"recorded": 1, "back": 1, "documents": 6},
+    # Each person wrote one message, and it came back with them: its history counts as a document too.
+    assert report == {"contact": {"recorded": 1, "back": 1, "documents": 2},
+                      "chatbot": {"recorded": 1, "back": 1, "documents": 6},
+                      "client": {"recorded": 1, "back": 1, "documents": 7},
                       "unreadable lines": 0}
     assert copy_of_the_database() == before and written(register_of_erasures) == register
 
@@ -417,7 +422,7 @@ def test_a_line_that_cannot_be_read_is_counted_and_the_rest_is_used(http, acme, 
     report = replay_erasures.run(apply=True)
 
     assert report["unreadable lines"] == 3
-    assert report["contact"] == {"recorded": 1, "back": 1, "documents": 1}
+    assert report["contact"] == {"recorded": 1, "back": 1, "documents": 2}
     assert Contact.objects(_uuid=ana["uuid"]).count() == 0
 
 

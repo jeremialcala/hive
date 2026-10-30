@@ -1,10 +1,10 @@
 # Clasificación de datos
 
-* **Estado:** approved (Gate 0, 2026-10-12)
-* **Fecha:** 2026-10-12
+* **Estado:** approved (Gate 0 del refactor, 2026-10-18)
+* **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project
-* **Versión:** 0.1.0
+* **Versión:** 0.3.0
 * **Owner de datos (DPO):** `<TODO: designar o confirmar que no aplica>`
 * **Regulación aplicable:** GDPR (Reglamento (UE) 2016/679), adoptado como modelo de diseño
 
@@ -17,7 +17,7 @@ Niveles: Público < Interno < Confidencial < Restringido.
 | Responsable del tratamiento (art. 4.7) | Cada cliente, para los datos de los usuarios finales de sus bots | Decide finalidad y base jurídica; el gateway no las decide por él |
 | Encargado del tratamiento (art. 4.8) | El operador de la plataforma | Trata solo por instrucción del cliente y con las garantías del art. 28 |
 | Interesado | El usuario final que escribe a un bot | Titular de los derechos de los arts. 15 a 22 |
-| Subencargados | MongoDB Atlas (base de datos), Cloudflare (túnel y TLS) y, si el motor de respuestas usa inferencia gestionada, el proveedor del LLM | Deben constar en el contrato de encargo con cada cliente |
+| Subencargados | MongoDB Atlas (base de datos), Cloudflare (túnel y TLS), Resend (los correos de alta y recuperación de las personas del cliente, ADR-0029) y, si el motor de respuestas usa inferencia gestionada, el proveedor del LLM | Deben constar en el contrato de encargo con cada cliente |
 | Tercero necesario | Meta | Es el canal: recibe y entrega los mensajes bajo sus propios términos con el cliente |
 
 ## Inventario
@@ -29,7 +29,8 @@ Niveles: Público < Interno < Confidencial < Restringido.
 | Número de teléfono del contacto (`Contact.waId`) | **Restringido** (personal) | MongoDB; mensaje de la cola | Cifrado en MongoDB con la clave de datos del cliente, y localizable por un índice ciego. En claro en el mensaje de la cola. Fuera de los logs | Cifrado con la clave del cliente; localizable sin guardarlo en claro (RS05) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
 | Nombre y foto de perfil del contacto (`firstName`, `lastName`, `profilePic`) | **Confidencial** (personal) | MongoDB; el nombre viaja también en el mensaje de la cola | En claro | Acceso solo del cliente dueño (RS01) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
 | Identificador de Messenger del contacto (`fbId`, PSID) | **Confidencial** (personal) | MongoDB; mensaje de la cola | En claro | Acceso solo del cliente dueño (RS01) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
-| Contenido de los mensajes | **Restringido** (personal; puede incluir categorías especiales del art. 9) | Cola `llm` hasta que se consume; después, el motor de respuestas y su LLM. El gateway no lo guarda en MongoDB | En claro en la cola. Fuera de los logs | Fuera de los logs (RS07); protegido en la cola (RS08) | 24 horas en la cola como máximo |
+| Identificador de Instagram del contacto (IGSID) | **Confidencial** (personal) | Objetivo: MongoDB y el bus, como el PSID (RF13) | No existe todavía | Acceso solo del cliente dueño (RS01) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
+| Contenido de los mensajes | **Restringido** (personal; puede incluir categorías especiales del art. 9) | Hoy: el bus de eventos (stream `WEBHOOK`) y la cola `llm` hasta que se consumen; después, el motor de respuestas y su LLM. Desde I4a el gateway tiene el historial en MongoDB (colección `messages`), que escribe el worker de ingesta desde I4b. Objetivo (ADR-0017): además, el contexto del coordinador en un bucket de NATS | En claro en la cola. Fuera de los logs | Fuera de los logs y de las trazas (RS07, RS19); protegido en la cola y el bus (RS08); cifrado con la clave del cliente en el historial y en el contexto; de un adjunto, solo su tipo | 24 horas en la cola o el bus, salvo lo que llega de Meta sin procesar, 7 días como mucho; 12 meses por mensaje en el historial; 24 horas desde el último mensaje en el contexto |
 | Tokens de Meta del cliente (`facebookToken`, `whatsappToken`) y `appSecret` | **Restringido** (credencial) | MongoDB; el motor de respuestas necesita los tokens para enviar | Cifrados con la clave de datos del cliente; se cargan por la API y no se devuelven a quien los cargó. Los tokens solo se entregan al motor, con una clave por cliente y dejando rastro; el `appSecret` no se entrega a nadie | Cifrados en reposo, fuera de la API de gestión y accesibles solo para el motor con credencial de servicio (RS06) | Hasta la baja del bot |
 | Token de verificación del bot (`verifyToken`) | **Confidencial** (credencial) | MongoDB | Cifrado con la clave de datos del cliente; comparado en tiempo constante; solo lo lee su cliente | Igual que los tokens (RS06) | Hasta la baja del bot |
 | Número del bot (`ChatbotPhone.phoneNumber`, `phoneId`) | **Confidencial** | MongoDB | Cifrados con la clave de datos del cliente | Cifrado con la clave de cifrado de datos del cliente (RS05) | Hasta la baja del bot |
@@ -43,8 +44,13 @@ Niveles: Público < Interno < Confidencial < Restringido.
 | Claves privadas por evento (`certs/*.pem`) | **Restringido** | Disco del contenedor | Ignoradas por git y fuera de la imagen. Función desactivada | Decidir en el Gate 1 si se mantienen | Se decide en el Gate 1, junto con la función |
 | Registro de eventos (`Event`, `EventAction`) con IP de origen | **Interno** (la IP es dato personal) | MongoDB. Función desactivada | — | Definir antes de reactivarlo | Se decide en el Gate 1, junto con la función |
 | Logs de la aplicación | **Confidencial** | Salida del contenedor; Docker conserva 3 ficheros de 10 MB | En `production` solo avisos y errores. En ningún nivel llevan lo que envía quien llama ni lo que Meta envía sobre una persona: rutas, identificadores del servicio y el tipo de cada fallo | Sin datos personales en ningún nivel (RS07) | La rotación de Docker |
+| Trazas (spans de OpenTelemetry) | **Interno** | Objetivo: el colector de trazas (RNF09) | No existen | Ni números, ni texto de mensajes, ni nada que mande el llamante en sus atributos (RS19) | `<TODO: fijar con el colector>` |
+| Credenciales de cada servicio en el bus (NATS) | **Restringido** | Objetivo: Andvari, una por servicio (RS20) | No existen | Una por servicio, con permisos por sujeto | Hasta su rotación |
 | Registro de supresiones | **Interno** | Ficheros en el servidor, fuera de la base (`ERASURES_DIR`) | Identificadores del servicio y fechas, sin nombres ni números; legibles solo por la cuenta del servicio | Tiene que estar en los respaldos del servidor (ADR-0014) | 14 meses |
 | Respaldos de la base | **Restringido** | Los gestiona Atlas; `<TODO: confirmar plan y región>` | Sin comprobar | Cifrados, con acceso restringido y con caducidad | 365 días como máximo (ADR-0014); sin configurar ni comprobar en Atlas |
+| Correo de una persona del cliente (`ClientUser`) | **Confidencial** (personal) | Objetivo: MongoDB y Zitadel, en Nidavellir; Resend lo recibe para enviar los correos de alta y de recuperación ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existe todavía | En Hive, cifrado con la clave de datos del cliente y con un índice ciego para buscarlo, como el número de un contacto. En Zitadel, en su PostgreSQL de Nidavellir, con respaldos cifrados en el NAS | Mientras la persona pertenezca al cliente; se borra con su baja definitiva y con el cliente |
+| Credenciales de una persona: contraseña, segundo factor y passkeys | **Restringido** (credencial) | Objetivo: Zitadel, en Nidavellir ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existen todavía | Solo las guarda Zitadel: Hive nunca las ve | Hasta que la persona las cambie o se dé de baja |
+| Sesión del área del cliente: cookie y tokens del BFF | **Restringido** (credencial) | Objetivo: `hive-portal` y una cookie en el navegador ([ADR-0029](adr/0029-autenticacion-de-personas.md)) | No existe todavía | Los tokens solo del lado del servidor; en el navegador, una cookie `__Host-` `HttpOnly` (RS22) | 30 minutos sin uso, 12 horas como máximo |
 | Código, documentación e imagen | **Público** | GitHub y GHCR | Sin secretos | Igual | Indefinida |
 
 ## Reglas

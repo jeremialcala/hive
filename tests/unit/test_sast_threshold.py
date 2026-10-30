@@ -80,7 +80,8 @@ def test_the_rule_is_found_when_the_result_only_carries_the_rule_object(threshol
     assert threshold.evaluate(folder) == 1
 
 
-@pytest.mark.parametrize("path", ["tests/integration/test_openbao_key_service.py", "tests/conftest.py"])
+@pytest.mark.parametrize("path", ["tests/integration/test_openbao_key_service.py", "tests/conftest.py",
+                                  "engine/tests/unit/test_adapters.py"])
 def test_a_high_finding_in_test_code_is_reported_but_does_not_break_the_build(threshold, tmp_path, capsys, path):
     folder = write_sarif(tmp_path, [rule("py/clear-text-storage-sensitive-data", "7.5")],
                          [result("py/clear-text-storage-sensitive-data", path)])
@@ -92,7 +93,8 @@ def test_a_high_finding_in_test_code_is_reported_but_does_not_break_the_build(th
 
 
 @pytest.mark.parametrize("path", ["src/app.py", ".ai-dlc/scripts/gen_openapi.py", "src/tests/helper.py",
-                                  "deploy/tests/x.py", "testsuite.py"])
+                                  "deploy/tests/x.py", "testsuite.py", "engine/src/application/procesar_mensaje.py",
+                                  "engine/src/tests/helper.py"])
 def test_a_high_finding_anywhere_else_breaks_the_build(threshold, tmp_path, path):
     """Only the tests folder is test code: not what merely has the word in its path, nor the other scripts."""
     folder = write_sarif(tmp_path, [rule("py/code-injection", "9.3")], [result("py/code-injection", path)])

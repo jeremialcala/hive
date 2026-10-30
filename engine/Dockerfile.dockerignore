@@ -1,0 +1,18 @@
+# El contexto de la imagen del motor, que se construye desde la raíz del monorepo (docker build -f engine/Dockerfile .).
+# BuildKit lee este fichero en lugar del .dockerignore de la raíz. Por defecto no entra nada; solo lo que copia el
+# Dockerfile.
+**
+
+!engine/requirements.lock
+!engine/src/
+!shared/
+
+# Y de eso, nunca lo que no es código.
+**/__pycache__
+**/*.pyc
+**/*.log
+**/config.env
+**/*.env
+**/.env*
+**/*.pem
+**/*.key

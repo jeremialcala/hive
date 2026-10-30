@@ -1,0 +1,17 @@
+# /etc/systemd/system/hive-idp-vigia.service
+# El mismo vigía que en midgard (deploy/vigia/hive-vigia.sh), con los contenedores de Zitadel: reinicia los que Docker
+# marca unhealthy y avisa por ntfy, con el tema en /etc/hive-aviso.env.
+[Unit]
+Description=Hive: reinicia los contenedores de Zitadel unhealthy y avisa por ntfy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=VIGIA_CONTENEDORES="hive-idp hive-idp-db hive-idp-login hive-idp-proxy hive-idp-tunel"
+ExecStart=/usr/local/sbin/hive-vigia.sh
+TimeoutStartSec=120
+StateDirectory=hive-vigia
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes

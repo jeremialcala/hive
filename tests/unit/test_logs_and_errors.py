@@ -19,14 +19,19 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 import app as app_module
+import service
+import webhook as webhook_module
 import controller.clients as clients_controller
 import controller.facebook as facebook
-import controller.messages as messages
-from auth.client import new_signing_key, public_part
+import controller.ingestion as ingestion
+from shared.auth.client import new_signing_key, public_part
 from classes import ChatBot, Contact
 from controller import BrokerUnavailable
 from repository import TenantRepository
 from utils import configure_logging, describe
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 BOT = {"name": "bot-name-marker", "role": "bot-role-marker", "description": "bot-description-marker",
        "tone": "bot-tone-marker"}
@@ -71,7 +76,7 @@ def queue(monkeypatch):
     async def capture(queue, message):
         sent.append(json.loads(message.to_json()))
 
-    monkeypatch.setattr(messages, "send_message_to_queue", capture)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", capture)
     return sent
 
 
@@ -109,12 +114,22 @@ def logged(caplog):
 def notify(http, bot_id, payload, secret=SECRETS["appSecret"]):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return http.post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                      headers={"content-type": "application/json", "X-Hub-Signature-256": signature})
 
 
+def headers_of(caller) -> dict:
+    """
+        One access token per caller, as a client keeps it for its ten minutes (ADR-0025): the lines these tests count
+        are the calls', not the requests for a token.
+    """
+    if "headers" not in caller.__dict__:
+        caller.headers = caller.auth
+    return caller.headers
+
+
 def call(http, caller, method, path, body=None, **params):
-    return http.request(method, path, headers=caller.auth, json=body, params=params or None)
+    return http.request(method, path, headers=headers_of(caller), json=body, params=params or None)
 
 
 def set_up(http, caller) -> dict:
@@ -140,7 +155,7 @@ def test_nothing_a_caller_or_meta_sends_reaches_the_log(http, caller, operator, 
     new_key = new_signing_key()
     key = public_part(new_key)
     adding = caller.adding(new_key)
-    token = caller.token()
+    token = caller.access_token()
 
     answers = [
         call(http, caller, "GET", f"/chat/{bot}/info"),
@@ -154,9 +169,9 @@ def test_nothing_a_caller_or_meta_sends_reaches_the_log(http, caller, operator, 
         call(http, caller, "POST", "/contacts/search", {"waId": WA_ID}),
         call(http, caller, "POST", "/contacts/search", {"fbId": PSID}),
         call(http, caller, "GET", f"/chat/{bot}/contacts/{contact}"),
-        http.get(f"/chat/{bot}", params={"hub.mode": "subscribe", "hub.challenge": "challenge-marker",
+        META.get(f"/chat/{bot}", params={"hub.mode": "subscribe", "hub.challenge": "challenge-marker",
                                          "hub.verify_token": made["verify"]}),
-        http.get("/keys", headers={"Authorization": f"Bearer {token}"}),
+        http.get("/keys", headers={"Authorization": f"DPoP {token}"}),
         http.post("/keys", **adding),
         call(http, operator, "POST", "/clients", {"name": "client-name-marker", "signingKey": key}),
         call(http, caller, "DELETE", f"/chat/{bot}/intents/{intent}"),
@@ -177,10 +192,10 @@ def test_what_is_turned_away_does_not_reach_the_log_either(http, caller, logged)
     bot = made["bot"]
 
     answers = [
-        http.get(f"/chat/{bot}", params={"hub.mode": "subscribe", "hub.challenge": "challenge-marker",
+        META.get(f"/chat/{bot}", params={"hub.mode": "subscribe", "hub.challenge": "challenge-marker",
                                          "hub.verify_token": "wrong-verify-token-marker"}),
         notify(http, bot, WHATSAPP, secret="wrong-secret-marker"),
-        http.post(f"/chat/{bot}", content=b'{"object": "body-marker"', headers={"content-type": "application/json"}),
+        META.post(f"/chat/{bot}", content=b'{"object": "body-marker"', headers={"content-type": "application/json"}),
         http.get("/keys", headers={"Authorization": "Bearer bearer-marker"}),
         http.get("/keys", headers={"Authorization": "authorization-marker"}),
         call(http, caller, "PUT", f"/chat/{bot}/credentials", {"appSecret": ["rejected-secret-marker"]}),
@@ -229,15 +244,15 @@ def test_what_the_graph_api_answers_does_not_reach_the_log(http, caller, logged,
     assert [contact.firstName for contact in Contact.objects] == [None]
 
 
-def test_a_failure_of_the_broker_is_logged_by_its_kind(http, caller, logged, monkeypatch):
+def test_a_failure_of_the_broker_is_logged_by_its_kind(http, caller, logged, monkeypatch, another):
     made = set_up(http, caller)
 
     async def down(queue, message):
         raise BrokerUnavailable("amqp://user:broker-password-marker@broker-host-marker")
 
-    monkeypatch.setattr(messages, "send_message_to_queue", down)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", down)
 
-    assert notify(http, made["bot"], WHATSAPP).status_code == 503
+    assert notify(http, made["bot"], another(WHATSAPP)).status_code == 503
     for sent in (*SENT, "broker-password-marker", "broker-host-marker"):
         assert sent not in logged()
 
@@ -246,7 +261,7 @@ def test_a_failure_of_the_broker_is_logged_by_its_kind(http, caller, logged, mon
 
 def request_lines(text: str) -> list:
     """The lines the service writes of each request: they start with the method."""
-    return [line for line in text.splitlines() if line.split(" ")[0] in (*app_module.METHODS, "OTHER")]
+    return [line for line in text.splitlines() if line.split(" ")[0] in (*service.METHODS, "OTHER")]
 
 
 def test_a_request_leaves_one_line_with_its_route_and_its_identifiers(http, caller, logged):
@@ -307,10 +322,15 @@ def test_a_method_that_is_not_one_of_the_usual_is_not_written_as_sent(http, logg
 # --- The text of a failure -------------------------------------------------------------------------------------------
 
 LEAK = "failure-text-marker 12025550143 EAAG-token-in-the-failure"
-PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
-# It answers from what the service holds in memory: there is nothing in it to fail. And the tokens are only
-# for the response engine: the operator, who makes these calls, is turned away before anything can fail.
-NOTHING_TO_FAIL = {("GET", "/gateway/keys"), ("GET", "/chat/{bot_id}/tokens")}
+TEMPLATE = {"name": "order_update", "language": "es", "category": "UTILITY",
+            "components": [{"type": "BODY", "text": f"{LEAK} {{{{1}}}}", "example": {"body_text": [["A-1"]]}}]}
+TEMPLATE_ID = "1234567890"
+PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
+# It answers from what the service holds in memory: there is nothing in it to fail. And the tokens and the last
+# turns are only for the response engine: the operator, who makes these calls, is turned away before anything can
+# fail.
+NOTHING_TO_FAIL = {("GET", "/gateway/keys"), ("GET", "/chat/{bot_id}/tokens"),
+                   ("GET", "/chat/{bot_id}/contacts/{contact_id}/turns")}
 ROUTES = sorted({(method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
                  for method in route.methods} - PUBLIC - NOTHING_TO_FAIL)
 BODIES = {
@@ -323,7 +343,13 @@ BODIES = {
     ("POST", "/contacts/search"): {"waId": WA_ID},
     ("POST", "/clients"): {"name": "globex", "signingKey": public_part(new_signing_key())},
     ("POST", "/clients/{client_id}/keys"): {"signingKey": public_part(new_signing_key())},
-    ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key())},
+    ("POST", "/clients/{client_id}/service-keys"): {"signingKey": public_part(new_signing_key()), "worker": "notifier"},
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": LEAK},
+    ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": LEAK},
+    ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
+    ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
+    ("POST", "/people"): {"email": "failure-text-marker@acme.test", "role": "cliente-analista"},
+    ("PUT", "/people/{person_id}"): {"status": "blocked"},
 }
 
 
@@ -336,7 +362,8 @@ def test_no_route_writes_what_its_address_carries(http, operator, logged, method
     """One part of the address at a time is not an identifier, in every route that has one."""
     made = set_up(http, operator)
     parts = {"bot_id": made["bot"], "intent_id": made["intent"], "contact_id": made["contact"],
-             "client_id": str(operator.client_id), "kid": operator.kid}
+             "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID,
+             "person_id": str(uuid4()), "request_id": str(uuid4())}
     parts[planted] = "address-marker%0AFORGED"
 
     response = call(http, operator, method, path.format(**parts), BODIES.get((method, path)))
@@ -366,7 +393,8 @@ def everything_fails(monkeypatch):
 def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, logged, everything_fails, method, path):
     made = set_up(http, operator)
     address = path.format(bot_id=made["bot"], intent_id=made["intent"], contact_id=made["contact"],
-                          client_id=operator.client_id, kid=operator.kid)
+                          client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID,
+                          person_id=uuid4(), request_id=uuid4())
     # Adding a key of its own needs a proof for the token of that same request: the body cannot be made ahead.
     request = (operator.adding(new_signing_key()) if (method, path) == ("POST", "/keys") else
                {"headers": operator.auth, "json": BODIES.get((method, path))})
@@ -383,7 +411,7 @@ def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, lo
         assert part not in logged()
 
 
-def test_a_failure_while_a_message_is_processed_is_logged_by_its_kind(http, caller, logged, monkeypatch):
+def test_a_failure_while_a_message_is_processed_is_logged_by_its_kind(http, caller, logged, monkeypatch, another):
     made = set_up(http, caller)
 
     def fails(*args, **kwargs):
@@ -391,7 +419,7 @@ def test_a_failure_while_a_message_is_processed_is_logged_by_its_kind(http, call
 
     monkeypatch.setattr(TenantRepository, "find_contact_by_wa_id", fails)
 
-    notify(http, made["bot"], WHATSAPP)
+    notify(http, made["bot"], another(WHATSAPP))
 
     assert "RuntimeError at " in logged()
     for part in (LEAK, "failure-text-marker", *SENT):
@@ -475,7 +503,7 @@ def test_the_documentation_is_only_served_in_development(environment):
     """RD-16 of the dual review of Gate 2: it showed every route and model in every environment."""
     from fastapi import FastAPI
 
-    elsewhere = TestClient(FastAPI(**app_module.documentation(environment)))
+    elsewhere = TestClient(FastAPI(**service.documentation(environment)))
     here = TestClient(app_module.app)
 
     for path in ("/docs", "/redoc", "/openapi.json"):

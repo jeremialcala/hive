@@ -17,19 +17,38 @@ from classes import ChatBot, ChatbotPhone, Contact, Intent, Rule
 from repository import TenantRepository
 
 INTENT = {"name": "check_order", "description": "Order status"}
+TEMPLATE = {"name": "order_update", "language": "es", "category": "UTILITY",
+            "components": [{"type": "BODY", "text": "Your order {{1}} is on its way",
+                            "example": {"body_text": [["A-1"]]}}]}
 BODIES = {
     ("POST", "/chat/{bot_id}/phones"): {"phoneNumber": "12025550101", "phoneId": "100000000000001"},
     ("POST", "/chat/{bot_id}/rules"): {"rules": ["Be kind"]},
     ("POST", "/chat/{bot_id}/intents"): INTENT,
     ("PUT", "/chat/{bot_id}/intents/{intent_id}"): INTENT,
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "an-app-secret"},
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": "web form"},
+    ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": "Hello"},
+    ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
+    ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
 }
+# Sending is accepted with a 202 once the bus holds it, and only inside the window: test_outbound covers the owner.
+# Whoever is not the owner gets the same 404 here as anywhere else.
+SENDING = ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")
+# Making, editing and deleting a template goes to Meta: test_templates covers the owner, against a Meta of its own.
+IN_META = {("POST", "/chat/{bot_id}/templates"), ("PUT", "/chat/{bot_id}/templates/{template_id}"),
+           ("DELETE", "/chat/{bot_id}/templates/{template_id}")}
+TEMPLATE_ID = "1234567890"
+# A request to send that the owner never made: its status is 404 to the owner too, and test_send_status covers it.
+REQUEST_ID = "6f1c7e2a-0d2b-4c1e-9a77-2f3b6a1d9e10"
+SEND_STATUS = ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}")
+PEOPLE = [("DELETE", "/people/{person_id}"), ("GET", "/people"), ("POST", "/people"), ("PUT", "/people/{person_id}"),
+          ("GET", "/bots")]
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
 ROUTES = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
                 for method in route.methods)
 # What only the response engine gets, with the key it holds for a client: test_service_credential covers it.
-ENGINE_ONLY = {("GET", "/chat/{bot_id}/tokens")}
+ENGINE_ONLY = {("GET", "/chat/{bot_id}/tokens"), ("GET", "/chat/{bot_id}/contacts/{contact_id}/turns")}
 BOT_ROUTES = [route for route in ROUTES if route not in PUBLIC | ENGINE_ONLY and "{bot_id}" in route[1]]
 # What is not about one chatbot: creating one, and the registry of clients and keys.
 OTHER_ROUTES = [route for route in ROUTES if route not in PUBLIC | ENGINE_ONLY and route not in BOT_ROUTES]
@@ -63,24 +82,27 @@ def stored(owner):
 
 
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
-    return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id),
+    return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
+                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 16 and ENGINE_ONLY <= set(ROUTES)
+    assert len(BOT_ROUTES) == 25 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
-    assert OTHER_ROUTES == [
+    # The people of the client have their own tests in test_invitations, the isolation between clients included.
+    assert sorted(OTHER_ROUTES) == sorted([
         ("DELETE", "/clients/{client_id}"), ("DELETE", "/clients/{client_id}/keys/{kid}"),
         ("DELETE", "/clients/{client_id}/service-keys/{kid}"), ("DELETE", "/keys/{kid}"),
         ("GET", "/clients"), ("GET", "/gateway/keys"), ("GET", "/keys"), ("POST", "/bot"), ("POST", "/clients"),
         ("POST", "/clients/{client_id}/keys"), ("POST", "/clients/{client_id}/service-keys"),
-        ("POST", "/contacts/search"), ("POST", "/keys"),
-    ]
+        ("POST", "/contacts/search"), ("POST", "/keys"), ("POST", "/oauth/token"),
+    ] + PEOPLE)
 
 
-@pytest.mark.parametrize("method,path", BOT_ROUTES)
+@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES
+                                         if route not in IN_META | {SENDING, SEND_STATUS}])
 def test_the_owner_reaches_its_chatbot(http, owner, stored, method, path):
     bot, intent, contact = stored
 

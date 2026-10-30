@@ -1,0 +1,615 @@
+# Contrato AsyncAPI del bus de eventos, versión 2 (fase 02-design, Gate 1 del refactor).
+# Estado: approved (Gate 1 del refactor, 2026-10-18). Versión: 2.0.0.
+#
+# Lo que se publica en Bifröst (NATS JetStream), según R1, R2 y R3 del plan (ADR-0019, ADR-0021). Desde I3 el
+# webhook publica EventoWebhook, y tests/contract/test_bus_contract.py valida contra este fichero el evento que
+# construye el código. El resto de los eventos sigue siendo diseño. Mientras el motor lea la cola `llm` de Hermod,
+# el gateway publica también la versión 1 (asyncapi.yaml). test_bus_contract.py comprueba además que el fichero es
+# coherente: cada referencia existe y cada esquema es un JSON Schema válido.
+asyncapi: 3.0.0
+info:
+  title: Bus de eventos del gateway BaaS
+  version: 2.0.0
+  description: >-
+    Eventos entre el gateway y los workers del motor de respuestas. El webhook publica lo que Meta firmó, un evento
+    por notificación; el worker de ingesta lo identifica y lo publica en la partición de su conversación; el notificador
+    del motor publica lo que Meta aceptó enviar; y la API de gestión avisa de cada supresión. Todos los eventos
+    llevan el contexto de traza W3C en la cabecera `traceparent` (RNF09) y ninguno lleva en sus cabeceras datos
+    personales (RS19).
+defaultContentType: application/json
+servers:
+  bifrost:
+    host: 'bifrost:4222'
+    protocol: nats
+    description: >-
+      NATS JetStream 2.14 en midgard, alcanzable solo desde la red Docker `bifrost`, con TLS y una CA propia
+      (ADR-0020). Almacén en fichero cifrado, con fsync en cada escritura.
+    security:
+      - $ref: '#/components/securitySchemes/usuarioPorServicio'
+channels:
+  webhookMeta:
+    address: 'webhook.meta.{canal}'
+    description: >-
+      Stream `WEBHOOK`. Cada notificación de Meta verificada que trae algún mensaje de una persona, como un solo
+      evento, sin identificar. Cola de trabajo: el evento se borra al confirmarlo la ingesta, y caduca a los 7 días como
+      mucho, lo que reintenta Meta (ADR-0021).
+    parameters:
+      canal:
+        $ref: '#/components/parameters/canal'
+    messages:
+      eventoWebhook:
+        $ref: '#/components/messages/EventoWebhook'
+  webhookPlantillas:
+    address: 'webhook.meta.templates'
+    description: >-
+      Stream `WEBHOOK`, el mismo consumidor `ingesta`. Los avisos de Meta del cambio de estado de las plantillas de la
+      cuenta de WhatsApp Business del bot (`message_template_status_update`, HIG-86), como un solo evento por
+      notificación.
+    messages:
+      cambioDePlantilla:
+        $ref: '#/components/messages/CambioDePlantilla'
+  mensajeIdentificado:
+    address: 'gateway.message.{particion}.{botId}.{contactId}'
+    description: >-
+      Stream `MENSAJES`. El mensaje con su contacto identificado y ya guardado en el historial. Cada partición la
+      consume un solo worker con un mensaje en vuelo, y así se respeta el orden de cada conversación (RNF08).
+      Caduca a las 24 horas.
+    parameters:
+      particion:
+        $ref: '#/components/parameters/particion'
+      botId:
+        $ref: '#/components/parameters/botId'
+      contactId:
+        $ref: '#/components/parameters/contactId'
+    messages:
+      mensajeIdentificado:
+        $ref: '#/components/messages/MensajeIdentificado'
+  pedidoDeEnvio:
+    address: 'gateway.outbound.{particion}.{botId}.{contactId}'
+    description: >-
+      Stream `SALIENTES`. Lo que el cliente pide enviar a un contacto (ADR-0031): la API de gestión lo publica cuando
+      ya comprobó la ventana, la plantilla, el consentimiento y los límites, y solo el notificador lo envía. Cola de
+      trabajo, 24 horas: lleva el texto.
+    parameters:
+      particion:
+        $ref: '#/components/parameters/particion'
+      botId:
+        $ref: '#/components/parameters/botId'
+      contactId:
+        $ref: '#/components/parameters/contactId'
+    messages:
+      pedidoDeEnvio:
+        $ref: '#/components/messages/PedidoDeEnvio'
+  respuestaEnviada:
+    address: 'engine.reply.sent.{botId}'
+    description: >-
+      Stream `RESPUESTAS`. Lo que el notificador del motor envió y Meta aceptó, para el historial. Caduca a las
+      24 horas.
+    parameters:
+      botId:
+        $ref: '#/components/parameters/botId'
+    messages:
+      respuestaEnviada:
+        $ref: '#/components/messages/RespuestaEnviada'
+  envioFallido:
+    address: 'engine.reply.failed.{botId}'
+    description: >-
+      Stream `RESPUESTAS`, el mismo consumidor `historial`. Un pedido de envío del cliente que el notificador no envió
+      ni enviará (HIG-87): la API lo marca como fallido, y la PWA explica por qué. Caduca a las 24 horas.
+    parameters:
+      botId:
+        $ref: '#/components/parameters/botId'
+    messages:
+      envioFallido:
+        $ref: '#/components/messages/EnvioFallido'
+  supresion:
+    address: 'gateway.{entidad}.erased'
+    description: >-
+      Stream `SUPRESIONES`. Avisa de que se borró un contacto, un bot o un cliente, para que el coordinador borre el
+      contexto que guarda (ADR-0017). Caduca a los 7 días.
+    parameters:
+      entidad:
+        $ref: '#/components/parameters/entidad'
+    messages:
+      supresion:
+        $ref: '#/components/messages/Supresion'
+operations:
+  publicarEventoWebhook:
+    action: send
+    channel:
+      $ref: '#/channels/webhookMeta'
+    summary: El webhook publica cada notificación firmada que trae mensajes, como un solo evento.
+    description: >-
+      Responde 200 a Meta cuando Bifröst acusa el evento, y 503 si no. Una notificación sin mensajes de una persona
+      (acuses, ecos) no se publica. Una publicación repetida dentro de 2 minutos se descarta por `Nats-Msg-Id`.
+    messages:
+      - $ref: '#/channels/webhookMeta/messages/eventoWebhook'
+  consumirEventoWebhook:
+    action: receive
+    channel:
+      $ref: '#/channels/webhookMeta'
+    summary: La ingesta separa los mensajes de la notificación, identifica cada contacto y publica cada mensaje.
+    description: >-
+      Confirmación explícita, cuando ha tratado todos los mensajes de la notificación. Un mensaje cuyo bot e
+      identificador de Meta ya están en el historial se salta: es un reintento de Meta. Ante una caída de la base, de
+      Andvari o de Bifröst, no confirma y el evento se reentrega con espera creciente.
+    messages:
+      - $ref: '#/channels/webhookMeta/messages/eventoWebhook'
+  publicarCambioDePlantilla:
+    action: send
+    channel:
+      $ref: '#/channels/webhookPlantillas'
+    summary: El webhook publica los avisos de estado de las plantillas de una notificación firmada.
+    description: >-
+      Como EventoWebhook: 200 a Meta cuando Bifröst acusa el evento, 503 si no. Un aviso sin cuenta, sin plantilla o
+      sin estado no se publica. El `Nats-Msg-Id` lleva un resumen de los avisos con su hora, así que una plantilla
+      que vuelve a un estado que ya tuvo es otro evento.
+    messages:
+      - $ref: '#/channels/webhookPlantillas/messages/cambioDePlantilla'
+  consumirCambioDePlantilla:
+    action: receive
+    channel:
+      $ref: '#/channels/webhookPlantillas'
+    summary: La ingesta aplica cada aviso a la copia de su plantilla.
+    description: >-
+      Solo si el aviso es de la cuenta `wabaId` del bot y no es anterior a lo que la copia ya sabe (`statusAt`): un
+      aviso reentregado tarde no deshace uno posterior. El de una plantilla que Hive no tiene se ignora; la copia se
+      trae con `GET /chat/{bot_id}/templates?sync=true`. `REINSTATED` deja la plantilla `APPROVED`, y `FLAGGED` no
+      cambia su estado.
+    messages:
+      - $ref: '#/channels/webhookPlantillas/messages/cambioDePlantilla'
+  publicarMensajeIdentificado:
+    action: send
+    channel:
+      $ref: '#/channels/mensajeIdentificado'
+    summary: La ingesta publica el mensaje en la partición de su conversación.
+    messages:
+      - $ref: '#/channels/mensajeIdentificado/messages/mensajeIdentificado'
+  publicarPedidoDeEnvio:
+    action: send
+    channel:
+      $ref: '#/channels/pedidoDeEnvio'
+    summary: La API de gestión publica lo que el cliente pide enviar, con el `uuid` del pedido como `Nats-Msg-Id`.
+    messages:
+      - $ref: '#/channels/pedidoDeEnvio/messages/pedidoDeEnvio'
+  consumirPedidoDeEnvio:
+    action: receive
+    channel:
+      $ref: '#/channels/pedidoDeEnvio'
+    summary: El notificador lo envía a Meta y publica lo enviado en `RESPUESTAS`, como una respuesta del bot.
+    description: >-
+      Con un solo pedido en vuelo. Un pedido cuyo `uuid` ya está en el bucket `enviados` no se envía otra vez.
+    messages:
+      - $ref: '#/channels/pedidoDeEnvio/messages/pedidoDeEnvio'
+  publicarRespuestaEnviada:
+    action: send
+    channel:
+      $ref: '#/channels/respuestaEnviada'
+    summary: El notificador del motor publica lo que Meta aceptó enviar.
+    messages:
+      - $ref: '#/channels/respuestaEnviada/messages/respuestaEnviada'
+  publicarEnvioFallido:
+    action: send
+    channel:
+      $ref: '#/channels/envioFallido'
+    summary: El notificador publica un pedido del cliente que no envió, con el código de Meta si fue Meta.
+    description: >-
+      Cuando Meta lo rechaza para siempre (`rejected`, con su código: 131047 la ventana cerrada, 132015 la plantilla en
+      pausa, 132016 desactivada, 132000 otros valores, 131049 el límite de marketing), cuando el bot no tiene token
+      (`no_token`) y cuando se acabaron las entregas (`gave_up`). Lo que se reintenta no se publica.
+    messages:
+      - $ref: '#/channels/envioFallido/messages/envioFallido'
+  consumirEnvioFallido:
+    action: receive
+    channel:
+      $ref: '#/channels/envioFallido'
+    summary: La ingesta marca el pedido como fallido, si no estaba ya enviado.
+    messages:
+      - $ref: '#/channels/envioFallido/messages/envioFallido'
+  publicarSupresion:
+    action: send
+    channel:
+      $ref: '#/channels/supresion'
+    summary: La API de gestión avisa de cada supresión, después de hacerla.
+    messages:
+      - $ref: '#/channels/supresion/messages/supresion'
+components:
+  securitySchemes:
+    usuarioPorServicio:
+      type: userPassword
+      description: >-
+        Un usuario de Bifröst por servicio, con su lista de sujetos para publicar y suscribirse (RS20). Las
+        credenciales viven en Andvari.
+  parameters:
+    canal:
+      enum: [whatsapp, messenger, instagram]
+      description: Canal de Meta del que viene el mensaje.
+    particion:
+      description: >-
+        Número de 0 a 15: los cuatro primeros bytes del SHA-256 de `<botId>.<contactId>`, leídos como entero sin
+        signo big-endian, módulo 16. Cambiar el número de particiones obliga a vaciar el stream.
+    botId:
+      description: UUID del bot.
+    contactId:
+      description: UUID del contacto. Nunca su número ni su identificador de Meta.
+    entidad:
+      enum: [contact, bot, client]
+      description: Qué se borró.
+  messages:
+    EventoWebhook:
+      name: EventoWebhook
+      title: Notificación de Meta verificada
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/EventoWebhook'
+    CambioDePlantilla:
+      name: CambioDePlantilla
+      title: Avisos de estado de plantillas de Meta
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/CambioDePlantilla'
+    MensajeIdentificado:
+      name: MensajeIdentificado
+      title: Mensaje con su contacto identificado
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/MensajeIdentificado'
+    PedidoDeEnvio:
+      name: PedidoDeEnvio
+      title: Lo que el cliente pide enviar a un contacto
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/PedidoDeEnvio'
+    RespuestaEnviada:
+      name: RespuestaEnviada
+      title: Respuesta que Meta aceptó enviar
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/RespuestaEnviada'
+    EnvioFallido:
+      name: EnvioFallido
+      title: Pedido del cliente que no se envió
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/EnvioFallido'
+    Supresion:
+      name: Supresion
+      title: Aviso de supresión
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/Supresion'
+  schemas:
+    Cabeceras:
+      type: object
+      required: [Nats-Msg-Id, traceparent]
+      properties:
+        Nats-Msg-Id:
+          type: string
+          minLength: 1
+          description: >-
+            En `WEBHOOK`, `<botId>:` seguido del SHA-256 en hexadecimal de los identificadores de Meta de sus
+            mensajes, ordenados y unidos por comas; en los mensajes identificados y las respuestas,
+            `<botId>:<messageId>`; en los avisos, el UUID de la supresión. Con él JetStream descarta una publicación
+            repetida dentro de su ventana de 2 minutos.
+        traceparent:
+          type: string
+          pattern: '^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+          description: Contexto de traza W3C del mensaje (RNF09).
+    Base:
+      type: object
+      required: [schemaVersion, botId, clientId]
+      properties:
+        schemaVersion:
+          const: 2
+          description: Versión del evento. Un consumidor rechaza las que no conoce.
+        botId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+          description: Cliente dueño del bot, para que el worker sepa qué credencial usar (ADR-0022).
+    EventoWebhook:
+      description: >-
+        Lo que publica el webhook: una notificación de Meta verificada, con los mensajes de personas que trae, ya
+        separados pero sin identificar a quien los envía. Un solo evento por notificación (ADR-0021).
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [channel, receivedAt, messages]
+          properties:
+            channel:
+              enum: [whatsapp, messenger, instagram]
+            receivedAt:
+              type: string
+              format: date-time
+              description: Cuándo la recibió el webhook, con zona horaria.
+            messages:
+              type: array
+              minItems: 1
+              maxItems: 1000
+              description: Los mensajes de la notificación, en el orden en que los envió Meta.
+              items:
+                $ref: '#/components/schemas/MensajeDeMeta'
+    CambioDePlantilla:
+      description: >-
+        Lo que publica el webhook con los avisos `message_template_status_update` de una notificación firmada. No
+        lleva el texto de ninguna plantilla.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [channel, receivedAt, changes]
+          properties:
+            channel:
+              const: templates
+            receivedAt:
+              type: string
+              format: date-time
+            changes:
+              type: array
+              minItems: 1
+              maxItems: 1000
+              items:
+                type: object
+                required: [account, templateId, event]
+                additionalProperties: false
+                properties:
+                  account:
+                    type: string
+                    pattern: '^[0-9]{1,30}$'
+                    description: La cuenta de WhatsApp Business del aviso, el `id` de la entrada.
+                  templateId:
+                    type: string
+                    pattern: '^[0-9]{1,30}$'
+                    description: El id de Meta de la plantilla.
+                  event:
+                    type: string
+                    pattern: '^[A-Z_]{1,40}$'
+                    description: Su estado nuevo, o lo que le pasó (APPROVED, REJECTED, PAUSED, DISABLED, FLAGGED...).
+                  reason:
+                    type: string
+                    pattern: '^[A-Z_]{1,40}$'
+                    description: Por qué, si Meta lo dice. `NONE` no se publica.
+                  name:
+                    type: string
+                    pattern: '^[a-z0-9_]{1,512}$'
+                  language:
+                    type: string
+                  at:
+                    type: integer
+                    minimum: 1
+                    description: Cuándo, en segundos desde 1970, el `time` de la entrada.
+    MensajeDeMeta:
+      type: object
+      required: [messageId, message]
+      properties:
+        messageId:
+          type: string
+          minLength: 1
+          description: Identificador de Meta del mensaje (wamid o mid). Es el mismo en cada reintento.
+        message:
+          type: object
+          description: >-
+            El `value` del cambio de WhatsApp reducido a ese mensaje, o un elemento de `entry[].messaging[]` de
+            Messenger o de Instagram. Dato personal: puede llevar el número de quien escribe.
+    MensajeIdentificado:
+      description: Lo que publica la ingesta para el motor, un evento por mensaje.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - $ref: '#/components/schemas/MensajeDeMeta'
+        - type: object
+          required: [channel, receivedAt, contact, orderKey]
+          properties:
+            channel:
+              enum: [whatsapp, messenger, instagram]
+            receivedAt:
+              type: string
+              format: date-time
+            orderKey:
+              type: string
+              description: '`<botId>.<contactId>`: la conversación a la que pertenece.'
+            contact:
+              $ref: '#/components/schemas/Contacto'
+    Contacto:
+      type: object
+      required: [uuid]
+      additionalProperties: false
+      description: >-
+        Quién escribe. El motor necesita su identificador de canal para responder. Dato personal, en claro como en la
+        versión 1, hasta que se cifre para el motor (RS08).
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: [string, 'null']
+        waId:
+          type: string
+          description: Número de WhatsApp.
+        fbId:
+          type: string
+          description: Identificador en Messenger (PSID).
+        igsid:
+          type: string
+          description: Identificador en Instagram (IGSID).
+    PedidoDeEnvio:
+      description: >-
+        Un texto, dentro de la ventana de 24 horas, o una plantilla aprobada, dentro o fuera de ella (ADR-0031). Lleva
+        el número del contacto y desde qué número del bot se envía, como un mensaje de MOTOR (decisión de Jeremi del
+        2026-10-29).
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [uuid, contactId, channel, kind, sentBy, requestedAt, to, phoneId]
+          properties:
+            uuid:
+              type: string
+              format: uuid
+              description: El pedido, el mismo para una clave de idempotencia repetida.
+            contactId:
+              type: string
+              format: uuid
+            channel:
+              const: whatsapp
+              description: Solo WhatsApp en la v1.
+            kind:
+              enum: [text, template]
+            sentBy:
+              type: string
+              description: Quién lo pidió, la clave de la credencial de máquina o la persona. Nunca un nombre.
+            requestedAt:
+              type: string
+              format: date-time
+            to:
+              type: string
+              pattern: '^[0-9]{6,20}$'
+              description: 'El número de WhatsApp del contacto. Dato personal, como en MOTOR.'
+            phoneId:
+              type: string
+              pattern: '^[0-9]{1,32}$'
+              description: >-
+                El `phone_number_id` desde el que se envía: el número del bot al que el contacto escribió por última
+                vez, o el primero del bot.
+            text:
+              type: string
+              maxLength: 4096
+              description: 'Con `kind: text`. Dato personal: el notificador lo envía y va al historial, cifrado.'
+            template:
+              type: object
+              description: 'Con `kind: template`.'
+              required: [name, language, category, parameters]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                language:
+                  type: string
+                category:
+                  enum: [MARKETING, UTILITY]
+                parameters:
+                  type: array
+                  maxItems: 20
+                  description: Los valores de la plantilla, en orden. Pueden ser datos personales.
+                  items:
+                    type: string
+                    maxLength: 1024
+    EnvioFallido:
+      description: >-
+        Lo que publica el notificador cuando un pedido de envío del cliente no sale y no saldrá. No lleva el texto ni el
+        número: solo el pedido, por qué y, si fue Meta, su código.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [contactId, channel, requestId, reason, failedAt]
+          properties:
+            contactId:
+              type: string
+              format: uuid
+            channel:
+              enum: [whatsapp, messenger, instagram]
+            requestId:
+              type: string
+              format: uuid
+              description: El `uuid` del PedidoDeEnvio.
+            code:
+              type: [integer, 'null']
+              description: >-
+                El código de error de Meta, cuando fue Meta quien dijo que no. Con `gave_up`, el del último intento,
+                si lo hubo. Un 0 o un 190 (el token) y un 10 o un 131005 (sus permisos) ponen el bot en `ERR`
+                (HIG-74).
+            reason:
+              enum: [rejected, no_token, gave_up]
+            failedAt:
+              type: string
+              format: date-time
+    RespuestaEnviada:
+      description: Lo que publica el notificador del motor cuando Meta acepta un envío.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [contactId, channel, messageId, sentAt, text]
+          properties:
+            contactId:
+              type: string
+              format: uuid
+            channel:
+              enum: [whatsapp, messenger, instagram]
+            inReplyTo:
+              type: [string, 'null']
+              description: >-
+                Identificador de Meta del mensaje al que responde. Un mensaje que el cliente envía por iniciativa
+                propia no responde a nada y no lo lleva.
+            origin:
+              enum: [engine, client]
+              default: engine
+              description: Si es una respuesta del bot o un mensaje del cliente (ADR-0031).
+            sentBy:
+              type: [string, 'null']
+              maxLength: 200
+              description: 'Con `origin: client`, quién lo pidió: la clave de la credencial o la persona.'
+            requestId:
+              type: [string, 'null']
+              format: uuid
+              description: 'Con `origin: client`, el `uuid` del PedidoDeEnvio del que sale.'
+            messageId:
+              type: string
+              description: Identificador que Meta dio al envío.
+            sentAt:
+              type: string
+              format: date-time
+            text:
+              type: string
+              maxLength: 4096
+              description: 'Lo que se envió. Dato personal: va al historial, cifrado.'
+            attachments:
+              type: array
+              description: De cada adjunto, solo su tipo (decisión del 2026-10-18).
+              items:
+                type: object
+                required: [type]
+                additionalProperties: false
+                properties:
+                  type:
+                    type: string
+    Supresion:
+      type: object
+      required: [schemaVersion, uuid, entity, clientId, erasedAt]
+      additionalProperties: false
+      description: Sin datos personales, solo identificadores.
+      properties:
+        schemaVersion:
+          const: 2
+        uuid:
+          type: string
+          format: uuid
+          description: Identificador del aviso.
+        entity:
+          enum: [contact, bot, client]
+        clientId:
+          type: string
+          format: uuid
+        botId:
+          type: string
+          format: uuid
+          description: Si se borró un contacto o un bot.
+        contactId:
+          type: string
+          format: uuid
+          description: Si se borró un contacto.
+        erasedAt:
+          type: string
+          format: date-time

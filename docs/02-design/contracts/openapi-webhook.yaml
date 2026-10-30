@@ -1,0 +1,166 @@
+# Contrato OpenAPI de un servicio del gateway (fase 02-design). Refleja la API tal como está construida.
+# Generado con .ai-dlc/scripts/gen_openapi.py: regenerar, no editar a mano.
+# Sin valores por defecto ni ejemplos: en el código son aleatorios y cambian en cada arranque.
+# Declara la autenticación (OAuth2, client_credentials en /oauth/token, ADR-0025). La firma X-Hub-Signature-256
+# del webhook no aparece: se comprueba en una dependencia que OpenAPI no ve.
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          title: Detail
+          type: array
+      title: HTTPValidationError
+      type: object
+    ValidationError:
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+      type: object
+info:
+  description: "\nWhat Meta calls for each chatbot. It checks that a notification comes from Meta, finds or stores\
+    \ who wrote, and\nqueues each message for the response engine. It runs apart from the management API and serves\
+    \ nothing else.\n\n* /chat/{bot_id}: what Meta calls for a chatbot.\n    * @GET: the verification challenge,\
+    \ checked against the verification token of the chatbot.\n    * @POST: a notification, taken only with a valid\
+    \ `X-Hub-Signature-256`. Each message in it is queued.\n* /health: @GET liveness.\n"
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  summary: What Meta calls for each chatbot
+  title: Meta webhook
+  version: 0.4.0
+openapi: 3.1.0
+paths:
+  /chat/{bot_id}:
+    get:
+      description: The challenge Meta sends when the webhook is subscribed, answered only with the verification
+        token.
+      operationId: verify_chat__bot_id__get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Verify
+      tags:
+      - Chat
+    post:
+      description: 'What Meta is answered. 403 without a good signature, before anything of the body is read. 200
+        for
+
+        everything it signed, also for what the service does not understand or cannot process: asking for it
+
+        again would not change it, and Meta stops delivering to a webhook that keeps failing. 503 only when
+
+        something the service needs is not there: then Meta sends it again later.'
+      operationId: message_processor_chat__bot_id__post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: 'A notification from Meta, as far as the service reads it: the kind of object it is about
+                and its entries.
+
+                Both have to be there, and nothing is filled in for what is missing. Whatever else Meta sends, today
+                or
+
+                tomorrow, is ignored: it adds fields without notice.'
+              properties:
+                entry:
+                  items:
+                    additionalProperties: true
+                    type: object
+                  maxItems: 1000
+                  title: Entry
+                  type: array
+                object:
+                  maxLength: 64
+                  minLength: 1
+                  title: Object
+                  type: string
+              required:
+              - object
+              - entry
+              title: FacebookRequest
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Message Processor
+      tags:
+      - Chat
+  /health:
+    get:
+      description: 'Liveness only: it answers without touching MongoDB or the broker, so a slow dependency does
+        not get a
+
+        healthy container restarted or rolled back.'
+      operationId: health_health_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Health
+      tags:
+      - Health
+servers:
+- url: https://hive-webhook.higerotech.com
+tags:
+- description: The verification and the notifications of a chatbot.
+  name: Chat

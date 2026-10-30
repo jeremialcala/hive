@@ -2,10 +2,9 @@
 import logging
 
 from faker import Faker
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from .tool_settings import Settings
-from .dto_facebook_payload import Payload
 from constants import JWE, JWE_ENC, JWE_ALGO
 
 fk = Faker()

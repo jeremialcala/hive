@@ -49,6 +49,10 @@ loggers:
         level: WARNING
     urllib3:
         level: WARNING
+    # The RabbitMQ client writes every connection it opens and closes, with its parameters: 18 lines for each
+    # message the ingestion worker hands to Hermod (measured on midgard), that say nothing went wrong.
+    pika:
+        level: WARNING
 
 root:
     level: DEBUG

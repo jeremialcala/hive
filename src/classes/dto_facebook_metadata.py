@@ -5,7 +5,6 @@ from faker import Faker
 from pydantic import BaseModel, Field
 
 from .tool_settings import Settings
-from .dto_facebook_message import Message
 
 fk = Faker()
 settings = Settings()

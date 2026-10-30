@@ -15,7 +15,7 @@
 """
 import sys
 
-from classes import Client, Contact
+from classes import Client, Contact, ConversationMessage
 from repository import TenantRepository, erase_client, erasures
 
 
@@ -26,7 +26,10 @@ def came_back(entry: dict) -> int:
         return Client.objects(uuid=entry["clientId"]).count() + repo.stored()
     if entry["kind"] == erasures.CHATBOT:
         return repo.stored_for_bot(entry["botId"])
-    return Contact.objects(clientId=entry["clientId"], botId=entry["botId"], _uuid__in=entry["contacts"]).count()
+    # The contacts and their conversations: one can come back without the other.
+    who = {"clientId": entry["clientId"], "botId": entry["botId"]}
+    return (Contact.objects(**who, _uuid__in=entry["contacts"]).count()
+            + ConversationMessage.objects(**who, contactId__in=entry["contacts"]).count())
 
 
 def erase_again(entry: dict) -> None:

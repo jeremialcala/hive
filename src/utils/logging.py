@@ -2,7 +2,6 @@ import yaml
 import logging.config
 import traceback
 from pathlib import Path
-from classes import Settings
 
 # Next to the code, not in the working directory: the app starts the same from the repo root and from the image.
 SOURCE = Path(__file__).resolve().parent.parent

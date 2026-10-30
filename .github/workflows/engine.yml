@@ -1,0 +1,76 @@
+# Tests, lint and a throwaway image build of the response engine (engine/, ADR-0023) for every pull request. The
+# gateway's is `ci`; the security gates (`Seguridad`) cover both.
+name: engine
+
+on:
+  # Every pull request, whatever it touches: its jobs are required checks of develop and main (H15), and a required
+  # check that does not run leaves the pull request waiting for ever.
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: engine · test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v7
+
+      # The bus, set up like Bifröst with each worker's user (engine/tests/integration/nats-test.conf), as in `ci`.
+      - name: NATS JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 -p 8222:8222 \
+            -v "$PWD/tests/integration/nats-test.conf:/etc/nats/test.conf:ro" \
+            nats:2.14.8-alpine@sha256:f9512b17aae6d41b6a615a7afad7b328633639ddae025744623e69b26fe686be \
+            -c /etc/nats/test.conf
+          for _ in $(seq 1 30); do
+            curl -fs "http://127.0.0.1:8222/healthz?js-enabled-only=true" && exit 0
+            sleep 1
+          done
+          docker logs nats
+          exit 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: engine/requirements-dev.lock
+
+      # From the lock and with hashes: the tests run against exactly what was pinned.
+      - run: pip install --require-hashes -r requirements-dev.lock
+
+      - run: pylint --rcfile=pyproject.toml src
+
+      # The gateway's 80 % (ADR-0023, point 5): the engine started at 60 %, and reached it when the old pipeline left
+      # (E3b).
+      - run: python -m pytest --cov=src --cov-branch --cov-fail-under=80
+        env:
+          NATS_TEST_ADDR: 127.0.0.1:4222
+          # Here the integration tests must run: without this they would be skipped without a word.
+          NATS_TEST_REQUIRED: "1"
+
+  image:
+    name: engine · image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          # From the root, where shared/ is (ADR-0023); engine/Dockerfile.dockerignore says what goes in.
+          context: .
+          file: engine/Dockerfile
+          push: false
+          # A scope of its own, so the engine's cache and the gateway's do not evict each other.
+          cache-from: type=gha,scope=engine
+          cache-to: type=gha,mode=max,scope=engine

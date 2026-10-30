@@ -1,0 +1,68 @@
+# Tests, lint and a throwaway image build of hive-portal (portal/, HIG-93), the BFF of the PWA, for every pull
+# request, as the engine's. The security gates (`Seguridad`) cover it too.
+name: portal
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: portal · test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v7
+
+      # The bus, with the portal's user as Bifröst gives it (portal/tests/integration/nats-test.conf).
+      - name: NATS JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 -p 8222:8222 \
+            -v "$PWD/tests/integration/nats-test.conf:/etc/nats/test.conf:ro" \
+            nats:2.14.8-alpine@sha256:f9512b17aae6d41b6a615a7afad7b328633639ddae025744623e69b26fe686be \
+            -c /etc/nats/test.conf
+          for _ in $(seq 1 30); do
+            curl -fs "http://127.0.0.1:8222/healthz?js-enabled-only=true" && exit 0
+            sleep 1
+          done
+          docker logs nats
+          exit 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: portal/requirements-dev.lock
+
+      - run: pip install --require-hashes -r requirements-dev.lock
+
+      - run: pylint --rcfile=pyproject.toml src
+
+      - run: python -m pytest --cov=src --cov-branch --cov-fail-under=80
+        env:
+          NATS_TEST_ADDR: 127.0.0.1:4222
+          NATS_TEST_REQUIRED: "1"
+
+  image:
+    name: portal · image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: portal/Dockerfile
+          push: false
+          cache-from: type=gha,scope=portal
+          cache-to: type=gha,mode=max,scope=portal

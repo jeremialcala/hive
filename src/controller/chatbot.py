@@ -3,7 +3,6 @@ import logging
 from uuid import uuid4, UUID
 from asyncio import ensure_future
 
-from typing import List
 from fastapi import Response, status
 from mongoengine.errors import OperationError
 from inspect import currentframe
@@ -16,14 +15,15 @@ from repository import TenantRepository, NotFound
 from utils import describe
 from .events import ctr_notify_action
 from enums import Status
+
+__all__ = ["ctr_create_chatbot", "ctr_get_chatbot_from_uuid", "ctr_add_phone_chatbot", "ctr_get_chatbot_phones",
+           "ctr_get_chatbot_rules_from_uuid", "ctr_create_chatbot_rules"]
+
 settings = Settings()
 log = logging.getLogger(settings.environment)
-B_INST, E_INST = "[INST]", "[/INST]"
-B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
-B_SEN, E_SEN = "<s>", "</s>"
 
 
-async def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId: str = None) -> Response:
+def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -86,7 +86,9 @@ async def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, ev
     return response
 
 
-async def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
+def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None,
+                              with_verify_token: bool = True) -> Response:
+    """The card of a chatbot. A cliente-analista gets it without the verifyToken (D6 of the role × action matrix)."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
 
@@ -108,9 +110,10 @@ async def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId:
     try:
         _chatbot = repo.get_bot(_uuid)
         # The verification token is the client's to paste into Meta. The Meta tokens are not returned.
-        body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
-                            data={**_chatbot.chatbot_info(),
-                                  "verifyToken": repo.bot_secrets(_chatbot).verify_token})
+        info = _chatbot.chatbot_info()
+        if with_verify_token:
+            info["verifyToken"] = repo.bot_secrets(_chatbot).verify_token
+        body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully", data=info)
     except KeyServiceUnavailable as e:
         log.error(f"Key service unavailable: {e}")
         body = ResponseData(code=status.HTTP_503_SERVICE_UNAVAILABLE, message="SERVICE UNAVAILABLE",
@@ -142,7 +145,7 @@ async def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId:
     return response
 
 
-async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPhoneRequest, eventId: str = None):
+def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPhoneRequest, eventId: str = None):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
 
@@ -161,7 +164,7 @@ async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPh
         headers={CONTENT_TYPE: APPLICATION_JSON}
     )
     try:
-        _chatbot_phone = await ChatbotPhone().generate_chatbot_phone_from_request(req=req)
+        _chatbot_phone = ChatbotPhone().generate_chatbot_phone_from_request(req=req)
         _chatbot_phone.uuid = uuid4()
         _chatbot_phone.status = Status.ACT.value
         repo.add_phone(bot_uuid, _chatbot_phone)
@@ -197,7 +200,7 @@ async def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPh
     return response
 
 
-async def ctr_get_chatbot_phones(repo: TenantRepository, bot_uuid: str, environment: str | None, eventId: str = None):
+def ctr_get_chatbot_phones(repo: TenantRepository, bot_uuid: str, environment: str | None, eventId: str = None):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     log.info("Listing the phones of a chatbot")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -259,10 +262,14 @@ async def ctr_get_chatbot_phones(repo: TenantRepository, bot_uuid: str, environm
     return response
 
 
-async def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
+def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId: str = None) -> Response:
+    """
+        The persona of a chatbot and its rules, as data: the response engine writes Claude's `system` with them
+        (ADR-0009 of the engine). Until E4 this was a prompt already formatted for Llama 2, for the engine of
+        before.
+    """
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
-    rules_size = 0
     _action = uuid4()
     if eventId is not None:
         ensure_future(ctr_notify_action(
@@ -280,19 +287,10 @@ async def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, ev
 
     try:
         _chatbot = repo.get_bot(_uuid)
-        rules = (f"{B_SEN} "
-                 f"{B_SYS} "
-                 f"Tu nombre es {_chatbot.name} "
-                 f"to rol es {_chatbot.role} "
-                 f"el tono de tu conversación es {_chatbot.tone} ")
-
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
-                            data=None)
-
-        for rule in repo.list_rules(_uuid):
-            rules += f"{rule.rule} "
-        rules += f" {E_SYS}"
-        body.data = rules
+                            data={"name": _chatbot.name, "role": _chatbot.role, "tone": _chatbot.tone,
+                                  "description": _chatbot.description,
+                                  "rules": [rule.rule for rule in repo.list_rules(_uuid)]})
 
     except (ValueError, NotFound) as e:
         log.error(describe(e))
@@ -313,14 +311,14 @@ async def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, ev
 
         response.status_code = body.code
         response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body) + rules_size)
+        response.headers[CONTENT_LENGTH] = str(len(response.body))
         response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
         log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
     return response
 
 
-async def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
 
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)

@@ -1,0 +1,28 @@
+.git
+.venv
+venv
+env
+__pycache__
+*.pyc
+.pytest_cache
+.tox
+htmlcov
+.coverage
+.coverage.*
+coverage.xml
+*.log
+**/*.log
+dep_install.log
+# El directorio de logs lo crea el Dockerfile con permisos de escritura para
+# el usuario no-root; no se copia desde el contexto (evita heredar permisos).
+logs/
+.idea
+images
+prototypes
+
+# Secrets / credenciales: nunca deben entrar en las capas de la imagen.
+config.env
+*.env
+certs
+*.pem
+*.key

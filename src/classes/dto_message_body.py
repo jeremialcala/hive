@@ -2,12 +2,9 @@
 import logging
 
 from faker import Faker
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from .tool_settings import Settings
-from .dto_facebook_message import Message
-from .dto_facebook_metadata import Metadata
-from .dto_facebook_contact import Contact
 
 fk = Faker()
 settings = Settings()

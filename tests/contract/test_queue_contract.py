@@ -9,14 +9,16 @@ import json
 import pathlib
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 import yaml
 from jsonschema import Draft202012Validator
 
+import controller.ingestion as ingestion
 import controller.messages as messages
 from classes import FacebookRequest
+from enums import Status
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ASYNCAPI = yaml.safe_load((ROOT / "docs" / "02-design" / "contracts" / "asyncapi.yaml").read_text(encoding="utf-8"))
@@ -48,13 +50,15 @@ def published(monkeypatch):
         captured.append({"queue": queue, "body": json.loads(message.to_json())})
 
     contact = SimpleNamespace(firstName="Ana", waId="584120000000", fbId="123456789")
-    monkeypatch.setattr(messages, "send_message_to_queue", capture)
-    monkeypatch.setattr(messages, "ctr_identify_contact_by_wa_id", AsyncMock(return_value=contact))
-    monkeypatch.setattr(messages, "ctr_identify_fb_contact", AsyncMock(return_value=contact))
+    monkeypatch.setattr(ingestion, "send_message_to_queue", capture)
+    monkeypatch.setattr(ingestion, "ctr_identify_contact_by_wa_id", Mock(return_value=contact))
+    monkeypatch.setattr(ingestion, "ctr_identify_fb_contact", Mock(return_value=contact))
 
     def run(payload):
         captured.clear()
-        asyncio.run(messages.ctr_process_messages(req=FacebookRequest(**payload), _bot=SimpleNamespace(uuid=BOT_ID, clientId=CLIENT_ID)))
+        # A live chatbot: its notification does not also activate it (HIG-75).
+        live = SimpleNamespace(uuid=BOT_ID, clientId=CLIENT_ID, status=Status.ACT.value)
+        asyncio.run(messages.ctr_process_messages(req=FacebookRequest(**payload), _bot=live))
         (only,) = captured
         return dict(only)
 

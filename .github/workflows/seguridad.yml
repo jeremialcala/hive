@@ -59,11 +59,16 @@ jobs:
       # instala el CI. Nada obliga a que el de desarrollo fije las mismas versiones que el de runtime, así que
       # auditar solo uno dejaba pasar una versión vulnerable en el otro. `--strict` exige que todo se haya podido
       # auditar.
+      # Los del gateway, en la raíz, los del motor de respuestas, en engine/ (ADR-0023), y los del portal, en portal/
+      # (HIG-93).
       - name: Auditar el árbol fijado
         run: |
           pip install --quiet pip-audit
-          pip-audit --progress-spinner off --requirement requirements.lock --no-deps --strict
-          pip-audit --progress-spinner off --requirement requirements-dev.lock --no-deps --strict
+          locks="requirements.lock requirements-dev.lock engine/requirements.lock engine/requirements-dev.lock"
+          locks="$locks portal/requirements.lock portal/requirements-dev.lock"
+          for lock in $locks; do
+            pip-audit --progress-spinner off --requirement "$lock" --no-deps --strict
+          done
 
       # Si el lock no fija los mismos paquetes que se declaran, alguien añadió o quitó una dependencia sin
       # regenerarlo: eso rompe el build. Que haya versiones más nuevas solo avisa, o cada publicación ajena lo
@@ -72,16 +77,20 @@ jobs:
         run: |
           pip install --quiet uv
           fallo=0
-          for base in requirements requirements-dev; do
-            uv pip compile --universal --python-version 3.12 --generate-hashes --quiet "$base.txt" -o "/tmp/$base.lock"
-            fijados() { grep -E '^[A-Za-z0-9_.-]+==' "$1" | sort; }
-            if ! diff <(fijados "$base.lock" | cut -d= -f1) <(fijados "/tmp/$base.lock" | cut -d= -f1) > "/tmp/$base.nombres"; then
+          fijados() { grep -E '^[A-Za-z0-9_.-]+==' "$1" | sort; }
+          # Cada lock se resuelve desde su directorio: el de desarrollo del motor incluye su requirements.txt con -r.
+          bases="requirements requirements-dev engine/requirements engine/requirements-dev"
+          bases="$bases portal/requirements portal/requirements-dev"
+          for base in $bases; do
+            dir=$(dirname "$base"); nombre=$(basename "$base"); tmp="/tmp/$(echo "$base" | tr / _)"
+            (cd "$dir" && uv pip compile --universal --python-version 3.12 --generate-hashes --quiet "$nombre.txt" -o "$tmp.lock")
+            if ! diff <(fijados "$base.lock" | cut -d= -f1) <(fijados "$tmp.lock" | cut -d= -f1) > "$tmp.nombres"; then
               echo "::error::$base.lock no fija los mismos paquetes que declara $base.txt; regenerarlo según CONTRIBUTING.md"
-              cat "/tmp/$base.nombres"
+              cat "$tmp.nombres"
               fallo=1
-            elif ! diff <(fijados "$base.lock") <(fijados "/tmp/$base.lock") > "/tmp/$base.versiones"; then
+            elif ! diff <(fijados "$base.lock") <(fijados "$tmp.lock") > "$tmp.versiones"; then
               echo "::warning::$base.lock tiene versiones más recientes disponibles"
-              cat "/tmp/$base.versiones"
+              cat "$tmp.versiones"
             fi
           done
           exit $fallo

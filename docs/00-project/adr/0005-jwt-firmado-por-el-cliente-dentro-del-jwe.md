@@ -1,6 +1,6 @@
 # ADR-0005: El token de autenticación es un JWT firmado por el cliente, dentro de un JWE
 
-* **Estado:** accepted
+* **Estado:** accepted; superseded en parte por [ADR-0025](0025-oauth2-client-credentials-con-private-key-jwt.md): el token se presenta una vez, a `POST /oauth/token`, para pedir un token de acceso
 * **Fecha:** 2026-10-12
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project

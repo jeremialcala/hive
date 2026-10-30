@@ -1,0 +1,28 @@
+# Configuración de herramientas de calidad.
+# pylint se configura aquí (y no en tox.ini) para evitar la colisión de
+# secciones INI entre las claves de tox/testenv y las de pylint.
+
+[tool.pylint.main]
+ignore = ["tests"]
+# `shared`, lo que el motor comparte con el gateway, está en la raíz del monorepo (ADR-0023 del gateway), como en
+# las pruebas. pylint se lanza desde engine/.
+init-hook = "import sys; sys.path.append('..')"
+
+[tool.pylint."messages control"]
+# Desactiva la categoría "refactor" (R): too-few-public-methods (interfaces/puertos),
+# too-many-arguments, etc., esperables en esta arquitectura por capas.
+disable = ["R"]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.reports]
+reports = false
+
+# pytest: la raíz del repo entra en sys.path para que `from src...` resuelva
+# desde cualquier nivel de la pirámide (tests/unit, tests/integration, ...),
+# también con el ejecutable `pytest`, que no añade el directorio de trabajo.
+# `..` es la raíz del monorepo, de donde se importa `shared` (ADR-0023 del gateway).
+[tool.pytest.ini_options]
+pythonpath = [".", ".."]
+testpaths = ["tests"]

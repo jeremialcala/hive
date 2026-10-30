@@ -1,54 +1,250 @@
-# The gateway as it runs on the server, deployed by the webhook receiver
-# (github.com/higerotech/despliegue-continuo). Copy to /srv/apps/bots-gateway/.
+# Hive's gateway as it runs on the server, deployed by the webhook receiver
+# (github.com/higerotech/despliegue-continuo). Copy to /srv/apps/hive-gateway/.
+#
+# Until 2026-10-22 the project was `bots-gateway` and its containers `bots-webhook`, `bots-gateway` and `bots-ingest`
+# (ADR-0024, version 0.3.0).
+#
+# Three services from the same image: the webhook Meta calls, the management API (ADR-0018) and the ingestion
+# worker (ADR-0021). They are separate processes so that a slow management request never holds a notification up,
+# and the webhook, the only one on the internet, holds neither the gateway's key pair nor the register of erasures.
+# The webhook only publishes what Meta signed; the worker identifies the contact, keeps the history and hands each
+# message to the response engine.
 #
 #   * the image tag is never `latest`: the receiver injects IMAGE_TAG with the commit sha,
 #     so a rollback is just bringing the previous tag back up
 #   * settings come from .env next to this file (same keys as config.env.example)
-#   * the gateway's key pair is a file next to this one, readable only by uid 10001 and mounted read-only:
-#     the service does not start without it (docs/03-implementation/autenticacion.md)
-#   * the register of erasures is a directory next to this file, writable by uid 10001. It has to be in the
-#     backups of the server: it is what says which deletions to make again after the database is restored
-#     (docs/03-implementation/exportar-y-borrar.md)
-#   * loopback only: whoever publishes it is a tunnel, and it must publish /chat/<uuid> and nothing else
+#   * the gateway's key pair is a file next to this one, readable only by uid 10001 and mounted read-only in the
+#     management API: it does not start without it (docs/03-implementation/autenticacion.md)
+#   * the register of erasures is a directory next to this file, writable by uid 10001 and only mounted in the
+#     management API. It has to be in the backups of the server: it is what says which deletions to make again
+#     after the database is restored (docs/03-implementation/exportar-y-borrar.md)
+#   * the ports are loopback only. Hive's own tunnel, `tunel` (ADR-0024), publishes the webhook as
+#     https://hive-webhook.higerotech.com, the management API as https://hive-api.higerotech.com and the page of its
+#     contract as https://hive.higerotech.com/docs (ADR-0026). It reaches them over the network `publico`, which
+#     joins the tunnel with those three services and nothing else. It only comes
+#     up with COMPOSE_PROFILES=tunel in .env, and its token is TUNNEL_TOKEN there
+#   * traces: each service names itself with OTEL_SERVICE_NAME and sends its spans to Saga, Yggdrasil's Grafana
+#     Tempo, over the external `yggdrasil_saga` network (http://saga:4318). That network only reaches Saga, not
+#     the rest of the platform, and Yggdrasil has to be up first (docs/03-implementation/trazas.md)
+#   * the webhook starts once the management API is healthy, so the health URL of the receiver, the webhook's,
+#     answers for both
 #   * RabbitMQ is not here: it is reached over the external `hermod` network, as host `hermod`
 #   * the key service is not here either: it is reached over the external `andvari` network, as host
 #     `andvari`, with its CA and the gateway's AppRole secret id mounted read-only
+#   * nor the event bus: the three services reach Bifröst over the external `bifrost` network, as host `bifrost`,
+#     each with the file Bifröst writes for it (its user, password and prefix of reply subjects) and Bifröst's CA,
+#     both read-only. The management API only publishes the notices of erasure there. Until the response engine
+#     reads the bus, the worker also hands each message to RabbitMQ
 
-name: bots-gateway
+name: hive-gateway
+
+x-common: &common
+  image: ghcr.io/jeremialcala/hive-gateway:${IMAGE_TAG:?IMAGE_TAG is required}
+  restart: unless-stopped
+  env_file:
+    - .env
+  networks: [hermod, andvari]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
 
 services:
-  gateway:
-    image: ghcr.io/jeremialcala/wh-python-fastapi-messenger:${IMAGE_TAG:?IMAGE_TAG is required}
-    container_name: bots-gateway
-    restart: unless-stopped
+  webhook:
+    <<: *common
+    container_name: hive-webhook
+    command: ["uvicorn", "webhook:app", "--host", "0.0.0.0", "--port", "5002", "--no-access-log"]
+    # NATS_URL, NATS_USER, NATS_PASSWORD, NATS_CA and NATS_INBOX_PREFIX, as Bifröst wrote them for the webhook.
     env_file:
       - .env
+      - /srv/infra/bifrost/credenciales/webhook.env
+    networks: [hermod, andvari, bifrost, saga, publico]
     environment:
       # Here and not in .env: a typo there would stop the start, but this is what production is.
       ENVIRONMENT: production
-      # Two cores on the host, and they also route the network.
+      # Two workers: the calls to the database and to the key service still block each process (H14).
       WEB_CONCURRENCY: 2
+      OTEL_SERVICE_NAME: gateway-webhook
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
+      ANDVARI_ADDR: https://andvari:8200
+      ANDVARI_CA_FILE: /run/gateway/andvari-ca.crt
+      ANDVARI_SECRET_ID_FILE: /run/gateway/andvari-secret-id
+    # Neither the gateway's key pair nor the register of erasures: it never authenticates a caller nor deletes.
+    volumes:
+      - ./keys/andvari-secret-id:/run/gateway/andvari-secret-id:ro
+      - /srv/infra/andvari/tls/ca.crt:/run/gateway/andvari-ca.crt:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    ports:
+      - "127.0.0.1:5003:5002"
+    depends_on:
+      management:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 1.0
+
+  management:
+    <<: *common
+    container_name: hive-api
+    # NATS_* as Bifröst wrote them for the management API: it publishes the notices of erasure (ADR-0017).
+    env_file:
+      - .env
+      - /srv/infra/bifrost/credenciales/gestion.env
+    networks: [hermod, andvari, bifrost, saga, publico]
+    environment:
+      ENVIRONMENT: production
+      WEB_CONCURRENCY: 1
+      OTEL_SERVICE_NAME: gateway-management
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
       GATEWAY_KEYS_FILE: /run/gateway/gateway-keys.json
+      # Besides the audience, where a DPoP proof may say it was sent (ADR-0033): the engine and engine-keys, by the
+      # network; ops on midgard itself, by the published port.
+      GATEWAY_URLS: http://hive-api:5002,http://127.0.0.1:5002
       ANDVARI_ADDR: https://andvari:8200
       ANDVARI_CA_FILE: /run/gateway/andvari-ca.crt
       ANDVARI_SECRET_ID_FILE: /run/gateway/andvari-secret-id
       ERASURES_DIR: /var/lib/gateway/erasures
+      # The token of Hive's service account in Zitadel, which invites the people (HIG-94). Without it, and without
+      # IDP_ISSUER and IDP_ORGANIZATION_ID in the .env, nobody is invited.
+      IDP_TOKEN_FILE: /run/idp/zitadel-token
     volumes:
       - ./keys/gateway-keys.json:/run/gateway/gateway-keys.json:ro
       - ./keys/andvari-secret-id:/run/gateway/andvari-secret-id:ro
       - /srv/infra/andvari/tls/ca.crt:/run/gateway/andvari-ca.crt:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
       - ./erasures:/var/lib/gateway/erasures
+      # A directory, not the file: if the token is not there yet, the container starts and nobody is invited.
+      - ./keys/idp:/run/idp:ro
     ports:
       - "127.0.0.1:5002:5002"
-    networks: [hermod, andvari]
-    mem_limit: 512m
-    cpus: 1.0
+    mem_limit: 256m
+    cpus: 0.5
+
+  ingest:
+    <<: *common
+    container_name: hive-ingest
+    command: ["python", "ingest.py"]
+    # NATS_* as Bifröst wrote them for the worker: its consumer of WEBHOOK and the subjects of MENSAJES.
+    env_file:
+      - .env
+      - /srv/infra/bifrost/credenciales/ingesta.env
+    networks: [hermod, andvari, bifrost, saga]
+    environment:
+      ENVIRONMENT: production
+      OTEL_SERVICE_NAME: gateway-ingest
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
+      ANDVARI_ADDR: https://andvari:8200
+      ANDVARI_CA_FILE: /run/gateway/andvari-ca.crt
+      ANDVARI_SECRET_ID_FILE: /run/gateway/andvari-secret-id
+    # Neither the gateway's key pair nor the register of erasures, and no port: it serves nothing.
+    volumes:
+      - ./keys/andvari-secret-id:/run/gateway/andvari-secret-id:ro
+      - /srv/infra/andvari/tls/ca.crt:/run/gateway/andvari-ca.crt:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    # Alive while it keeps asking Bifröst for events: it touches the file at least every 5 seconds.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/ingest-alive') > 60)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    mem_limit: 256m
+    cpus: 0.5
+
+  # The static page of the management API (ADR-0026), built from the contract by deploy/docs/Dockerfile:
+  #
+  #   docker build -f deploy/docs/Dockerfile -t ghcr.io/jeremialcala/hive-docs:<tag> .
+  #
+  # nginx without privileges and a read-only filesystem: it holds nothing but the page, and reaches nothing.
+  docs:
+    image: ghcr.io/jeremialcala/hive-docs:${IMAGE_TAG:?IMAGE_TAG is required}
+    container_name: hive-docs
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [publico]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    mem_limit: 64m
+    cpus: 0.25
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
 
+  # Hive's own tunnel (ADR-0024), separate from the one of deploy.higerotech.com so that revoking one does not take
+  # the other down. In Cloudflare its public hostnames point at the services by name:
+  #
+  #   hive-webhook.higerotech.com  ->  http://hive-webhook:5002
+  #   hive-api.higerotech.com      ->  http://hive-api:5002
+  #   hive.higerotech.com          ->  http://hive-docs:8080   (the page is at /docs, ADR-0026)
+  #
+  # Behind the profile `tunel`: it only comes up with COMPOSE_PROFILES=tunel in .env.
+  tunel:
+    image: cloudflare/cloudflared:2026.10.4@sha256:c6c7ae1d5dfdcb094ad344ed68ccffc26635c9c6be80965664c33baf064b0515
+    container_name: hive-tunel
+    profiles: [tunel]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # Without `:?` on purpose: compose reads every service even with the profile off, and a `:?` here would break
+      # a deployment without the tunnel. Without the token cloudflared exits and keeps restarting: a failure that
+      # shows.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [publico]
+    depends_on:
+      webhook:
+        condition: service_started
+    mem_limit: 128m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # The command that issues the response engine's keys for a client (I6b, docs/03-implementation/autenticacion.md).
+  # It runs on demand and never comes up with the rest:
+  #
+  #   docker compose --profile operations run --rm -v <operator key>:/run/operator/key.json:ro engine-keys <client id>
+  #
+  # It reaches the management API and Andvari over the `andvari` network, with the AppRole `motor-claves`: it can
+  # keep a new key and read it back, never write one over. The operator's private key is only mounted for the run.
+  # OPERATOR_CLIENT_ID, ENGINE_KEYS_ROLE_ID and GATEWAY_AUDIENCE come from .env.
+  engine-keys:
+    <<: *common
+    profiles: [operations]
+    restart: "no"
+    entrypoint: ["python", "-m", "ops.engine_keys"]
+    networks: [andvari]
+    environment:
+      GATEWAY_URL: http://hive-api:5002
+      GATEWAY_PUBLIC_KEYS_FILE: /run/gateway/gateway-public.json
+      OPERATOR_KEY_FILE: /run/operator/key.json
+      ANDVARI_ADDR: https://andvari:8200
+      ANDVARI_CA_FILE: /run/gateway/andvari-ca.crt
+      ENGINE_KEYS_SECRET_ID_FILE: /run/gateway/motor-claves-secret-id
+    volumes:
+      - ./keys/gateway-public.json:/run/gateway/gateway-public.json:ro
+      - ./keys/motor-claves-secret-id:/run/gateway/motor-claves-secret-id:ro
+      - /srv/infra/andvari/tls/ca.crt:/run/gateway/andvari-ca.crt:ro
+
 networks:
+  # Only the tunnel and the services it publishes: the webhook, the management API and the docs page.
+  publico:
   hermod:
     external: true
   andvari:
+    external: true
+  bifrost:
+    external: true
+  # Saga, el almacén de trazas de Yggdrasil (ADR-0008 de Yggdrasil): solo da paso a Saga, no al resto de la
+  # plataforma.
+  saga:
+    name: yggdrasil_saga
     external: true

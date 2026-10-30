@@ -1,7 +1,7 @@
-# Contrato OpenAPI del gateway (fase 02-design, Gate 1). Refleja la API tal como está construida.
+# Contrato OpenAPI de un servicio del gateway (fase 02-design). Refleja la API tal como está construida.
 # Generado con .ai-dlc/scripts/gen_openapi.py: regenerar, no editar a mano.
 # Sin valores por defecto ni ejemplos: en el código son aleatorios y cambian en cada arranque.
-# Declara el token de autenticación (HTTPBearer: un JWT firmado dentro de un JWE). La firma X-Hub-Signature-256
+# Declara la autenticación (OAuth2, client_credentials en /oauth/token, ADR-0025). La firma X-Hub-Signature-256
 # del webhook no aparece: se comprueba en una dependencia que OpenAPI no ve.
 components:
   schemas:
@@ -56,6 +56,11 @@ components:
           title: Authref
           type: string
         authType:
+          enum:
+          - none
+          - bearer
+          - api_key
+          - basic
           title: Authtype
           type: string
         body:
@@ -67,6 +72,12 @@ components:
           title: Headers
           type: object
         method:
+          enum:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
           title: Method
           type: string
         query:
@@ -74,14 +85,54 @@ components:
           title: Query
           type: object
         timeout:
+          maximum: 30.0
+          minimum: 1.0
           title: Timeout
           type: integer
         url:
+          maxLength: 2048
           title: Url
           type: string
       required:
       - url
       title: ApiCallRequest
+      type: object
+    Body:
+      additionalProperties: false
+      properties:
+        example:
+          anyOf:
+          - $ref: '#/components/schemas/BodyExample'
+          - type: 'null'
+        text:
+          maxLength: 1024
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: BODY
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: Body
+      type: object
+    BodyExample:
+      additionalProperties: false
+      properties:
+        body_text:
+          items:
+            items:
+              type: string
+            type: array
+          maxItems: 1
+          minItems: 1
+          title: Body Text
+          type: array
+      required:
+      - body_text
+      title: BodyExample
       type: object
     BotCredentialsRequest:
       additionalProperties: false
@@ -104,6 +155,12 @@ components:
             type: string
           - type: 'null'
           title: Facebooktoken
+        wabaId:
+          anyOf:
+          - pattern: ^[0-9]{5,25}$
+            type: string
+          - type: 'null'
+          title: Wabaid
         whatsappToken:
           anyOf:
           - maxLength: 2048
@@ -135,6 +192,34 @@ components:
           title: Timestamp
           type: string
       title: BotResponse
+      type: object
+    Buttons:
+      additionalProperties: false
+      properties:
+        buttons:
+          items:
+            discriminator:
+              mapping:
+                PHONE_NUMBER: '#/components/schemas/PhoneButton'
+                QUICK_REPLY: '#/components/schemas/QuickReply'
+                URL: '#/components/schemas/UrlButton'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/QuickReply'
+            - $ref: '#/components/schemas/UrlButton'
+            - $ref: '#/components/schemas/PhoneButton'
+          maxItems: 10
+          minItems: 1
+          title: Buttons
+          type: array
+        type:
+          const: BUTTONS
+          title: Type
+          type: string
+      required:
+      - type
+      - buttons
+      title: Buttons
       type: object
     ChatbotPhoneRequest:
       properties:
@@ -185,6 +270,36 @@ components:
       - name
       title: ClientRequest
       type: object
+    ConsentRequest:
+      additionalProperties: false
+      description: That a contact agreed to get the client's messages of these categories, when and where (RF31).
+      properties:
+        categories:
+          items:
+            enum:
+            - MARKETING
+            - UTILITY
+            type: string
+          maxItems: 2
+          minItems: 1
+          title: Categories
+          type: array
+        grantedAt:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Grantedat
+        source:
+          maxLength: 200
+          minLength: 1
+          title: Source
+          type: string
+      required:
+      - categories
+      - source
+      title: ConsentRequest
+      type: object
     ContactSearchRequest:
       additionalProperties: false
       description: 'Who to look for among the contacts of a client: a WhatsApp number or a Messenger id, one of
@@ -209,6 +324,23 @@ components:
           title: Waid
       title: ContactSearchRequest
       type: object
+    Footer:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 60
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: FOOTER
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: Footer
+      type: object
     HTTPValidationError:
       properties:
         detail:
@@ -217,6 +349,28 @@ components:
           title: Detail
           type: array
       title: HTTPValidationError
+      type: object
+    Header:
+      additionalProperties: false
+      properties:
+        format:
+          const: TEXT
+          title: Format
+          type: string
+        text:
+          maxLength: 60
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: HEADER
+          title: Type
+          type: string
+      required:
+      - type
+      - format
+      - text
+      title: Header
       type: object
     IntentRequest:
       properties:
@@ -240,6 +394,31 @@ components:
       - description
       title: IntentRequest
       type: object
+    OutboundMessageRequest:
+      additionalProperties: false
+      description: A text inside the window of 24 hours, or an approved template, inside or outside it.
+      properties:
+        template:
+          anyOf:
+          - $ref: '#/components/schemas/TemplateRequest'
+          - type: 'null'
+        text:
+          anyOf:
+          - maxLength: 4096
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Text
+        type:
+          enum:
+          - text
+          - template
+          title: Type
+          type: string
+      required:
+      - type
+      title: OutboundMessageRequest
+      type: object
     OwnedKeyRequest:
       additionalProperties: false
       properties:
@@ -256,6 +435,102 @@ components:
       - signingKey
       - proof
       title: OwnedKeyRequest
+      type: object
+    PersonChangeRequest:
+      additionalProperties: false
+      description: 'Another role, or another state: at least one of the two.'
+      properties:
+        role:
+          anyOf:
+          - enum:
+            - cliente-admin
+            - cliente-analista
+            type: string
+          - type: 'null'
+          title: Role
+        status:
+          anyOf:
+          - enum:
+            - active
+            - blocked
+            type: string
+          - type: 'null'
+          title: Status
+      title: PersonChangeRequest
+      type: object
+    PersonInviteRequest:
+      additionalProperties: false
+      description: 'The email and the role of the person. The names only go to Zitadel, for its invitation: Hive
+        keeps none.'
+      properties:
+        email:
+          maxLength: 254
+          pattern: ^[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,63}$
+          title: Email
+          type: string
+        familyName:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Familyname
+        givenName:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Givenname
+        role:
+          enum:
+          - cliente-admin
+          - cliente-analista
+          title: Role
+          type: string
+      required:
+      - email
+      - role
+      title: PersonInviteRequest
+      type: object
+    PhoneButton:
+      additionalProperties: false
+      properties:
+        phone_number:
+          pattern: ^\+?[0-9]{6,20}$
+          title: Phone Number
+          type: string
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: PHONE_NUMBER
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      - phone_number
+      title: PhoneButton
+      type: object
+    QuickReply:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: QUICK_REPLY
+          title: Type
+          type: string
+      required:
+      - type
+      - text
+      title: QuickReply
       type: object
     ResponseData:
       properties:
@@ -288,6 +563,20 @@ components:
           type: array
       title: RulesRequest
       type: object
+    ServiceKeyRequest:
+      additionalProperties: false
+      properties:
+        signingKey:
+          additionalProperties: true
+          title: Signingkey
+          type: object
+        worker:
+          $ref: '#/components/schemas/Worker'
+      required:
+      - signingKey
+      - worker
+      title: ServiceKeyRequest
+      type: object
     SigningKeyRequest:
       additionalProperties: false
       properties:
@@ -298,6 +587,128 @@ components:
       required:
       - signingKey
       title: SigningKeyRequest
+      type: object
+    TemplateCreateRequest:
+      additionalProperties: false
+      properties:
+        category:
+          enum:
+          - MARKETING
+          - UTILITY
+          title: Category
+          type: string
+        components:
+          items:
+            discriminator:
+              mapping:
+                BODY: '#/components/schemas/Body'
+                BUTTONS: '#/components/schemas/Buttons'
+                FOOTER: '#/components/schemas/Footer'
+                HEADER: '#/components/schemas/Header'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/Body'
+            - $ref: '#/components/schemas/Header'
+            - $ref: '#/components/schemas/Footer'
+            - $ref: '#/components/schemas/Buttons'
+          maxItems: 4
+          minItems: 1
+          title: Components
+          type: array
+        language:
+          maxLength: 15
+          minLength: 2
+          pattern: ^[a-z]{2,3}(_[A-Za-z0-9]{2,8})?$
+          title: Language
+          type: string
+        name:
+          maxLength: 512
+          minLength: 1
+          pattern: ^[a-z0-9_]+$
+          title: Name
+          type: string
+      required:
+      - components
+      - name
+      - language
+      - category
+      title: TemplateCreateRequest
+      type: object
+    TemplateEditRequest:
+      additionalProperties: false
+      description: Meta replaces every component of the template, and an approved one does not change its category.
+      properties:
+        components:
+          items:
+            discriminator:
+              mapping:
+                BODY: '#/components/schemas/Body'
+                BUTTONS: '#/components/schemas/Buttons'
+                FOOTER: '#/components/schemas/Footer'
+                HEADER: '#/components/schemas/Header'
+              propertyName: type
+            oneOf:
+            - $ref: '#/components/schemas/Body'
+            - $ref: '#/components/schemas/Header'
+            - $ref: '#/components/schemas/Footer'
+            - $ref: '#/components/schemas/Buttons'
+          maxItems: 4
+          minItems: 1
+          title: Components
+          type: array
+      required:
+      - components
+      title: TemplateEditRequest
+      type: object
+    TemplateRequest:
+      additionalProperties: false
+      properties:
+        language:
+          maxLength: 15
+          minLength: 2
+          pattern: ^[a-z]{2,3}(_[A-Za-z0-9]{2,8})?$
+          title: Language
+          type: string
+        name:
+          maxLength: 512
+          minLength: 1
+          pattern: ^[a-z0-9_]+$
+          title: Name
+          type: string
+        parameters:
+          items:
+            type: string
+          maxItems: 20
+          title: Parameters
+          type: array
+      required:
+      - name
+      - language
+      title: TemplateRequest
+      type: object
+    UrlButton:
+      additionalProperties: false
+      properties:
+        text:
+          maxLength: 25
+          minLength: 1
+          title: Text
+          type: string
+        type:
+          const: URL
+          title: Type
+          type: string
+        url:
+          maxLength: 2000
+          minLength: 9
+          pattern: ^https://[^\s]+$
+          title: Url
+          type: string
+      required:
+      - type
+      - text
+      - url
+      title: UrlButton
       type: object
     ValidationError:
       properties:
@@ -325,49 +736,73 @@ components:
       - type
       title: ValidationError
       type: object
+    Worker:
+      description: The workers of the response engine that call this service, each with keys of its own (ADR-0022).
+      enum:
+      - classifier
+      - coordinator
+      - link
+      - responder
+      - evaluator
+      - notifier
+      title: Worker
+      type: string
   securitySchemes:
-    HTTPBearer:
-      bearerFormat: JWE
-      description: A JWT signed by the client (ES256), inside a JWE encrypted to the gateway (RSA-OAEP-256, A256CBC-HS512).
-        It lasts 60 seconds at most and is valid once.
-      scheme: bearer
-      type: http
+    OAuth2:
+      description: 'An access token from POST /oauth/token (ADR-0025): a JWT the gateway signs (ES256, typ at+jwt),
+        sent as `Authorization: DPoP <token>`. It lasts 10 minutes and is good for every request in them. The client
+        authenticates at /oauth/token with a signed assertion (RFC 7523), not with a secret. The token is bound
+        to the client''s key (RFC 9449, ADR-0033): every request, POST /oauth/token too, carries a `DPoP` header,
+        a proof that key signs for that method and URL, good once and for 60 seconds, with the hash of the token
+        it goes with.'
+      flows:
+        clientCredentials:
+          scopes: {}
+          tokenUrl: /oauth/token
+      type: oauth2
 info:
-  contact:
-    email: jeremialcala@gmail.com
-    name: Jeremi Alcala
-    url: https://jeremi.web-ones.com/
-  description: "\nThe gateway between Meta (Messenger and WhatsApp) and the response engine of each chatbot. It\
-    \ checks that a\nnotification comes from Meta, finds or stores who wrote, and queues each message for the engine.\
-    \ Each client\nmanages its own chatbots through it and reaches nothing of anybody else's.\n\nEvery route but\
-    \ the webhook and the health check asks for a token in `Authorization: Bearer`: a JWT signed by the\ncaller\
-    \ inside a JWE encrypted to the gateway, valid once and for 60 seconds at most.\n\n### The webhook\n\n* /chat/{bot_id}:\
-    \ what Meta calls for a chatbot.\n    * @GET: the verification challenge, checked against the verification token\
-    \ of the chatbot.\n    * @POST: a notification, taken only with a valid `X-Hub-Signature-256`. Each message\
-    \ in it is queued.\n\n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE\
-    \ deletes it with everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and\
-    \ which Meta credentials are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials.\
-    \ They are never returned.\n* /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=`\
-    \ gives the last one of it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET builds the system prompt from them.\n\
-    * /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.\n\
-    * /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions for the model.\n* /chat/{bot_id}/contacts:\
-    \ @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id} exports\n  one with @GET and\
-    \ deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot of the client, by number\
-    \ or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate; /keys/{kid} removes one\
-    \ with @DELETE.\n\n### The response engine\n\n* /chat/{bot_id}/tokens: @GET the Meta tokens of a chatbot. Only\
-    \ for the engine, with the key it holds for the\n  client that owns the chatbot. It also reads the rules and\
-    \ the tools of that chatbot, and nothing else.\n\n### The operator\n\n* /clients: @POST registers a client,\
-    \ @GET lists them; /clients/{client_id} takes one off with @DELETE.\n* /clients/{client_id}/keys: the keys a\
-    \ client signs with; /clients/{client_id}/service-keys, the keys the\n  response engine signs with for that\
-    \ client.\n\n### Any caller\n\n* /gateway/keys: @GET the audience and the public keys tokens are encrypted to.\n\
+  description: "\nThe management API of Hive, the gateway between Meta (Messenger and WhatsApp) and the response\
+    \ engine of each\nchatbot. Each client manages its own chatbots through it and reaches nothing of anybody else's.\
+    \ What Meta calls is\nanother service, the webhook, which runs apart from this one.\n\n### Getting a token\n\
+    \nEvery route but the health check and /oauth/token asks for an access token in `Authorization: DPoP`, and beside\n\
+    it a DPoP proof (RFC 9449) in the `DPoP` header: the token is bound to the key of the client.\n\n* /oauth/token:\
+    \ @POST, as a form (OAuth 2.0 client credentials, RFC 6749 section 4.4). The client proves who it is\n  with\
+    \ an assertion (RFC 7523): a JWT it signs with a key it has registered (`ES256`, with the key's `kid`), with\n\
+    \  its own identifier as `iss` and `sub` and the audience of /gateway/keys as `aud`, encrypted to a public key\
+    \ of\n  /gateway/keys (`RSA-OAEP-256` with `A256CBC-HS512`). An assertion is good once and for 60 seconds at\
+    \ most.\n* Every request, the one to /oauth/token too, carries a new DPoP proof: a JWT signed with the same\
+    \ key as the\n  assertion (`typ` `dpop+jwt`, `ES256`, the public key as `jwk` in its header), with a new `jti`,\
+    \ the method as\n  `htm`, the URL without query as `htu`, `iat` and, beside an access token, its SHA-256 as\
+    \ `ath`. A proof is good\n  once and for 60 seconds.\n* The access token lasts 10 minutes and is good for every\
+    \ request in them. Ask for a new one shortly before it\n  expires, not for every request: each key gets a bounded\
+    \ number of tokens an hour, and an address that asks too\n  often, or keeps sending assertions that are not\
+    \ good, gets a 429 with `Retry-After`.\n\n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n\
+    * /bot/{bot_id}: @DELETE deletes it with everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored\
+    \ of the chatbot, and which Meta credentials are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates\
+    \ its Meta credentials. They are never returned.\n* /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET\
+    \ lists them. `?environment=` gives the last one of it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the\
+    \ persona of the chatbot and its rules, as data.\n* /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id}\
+    \ takes @GET, @PUT and @DELETE.\n* /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions\
+    \ for the model.\n* /chat/{bot_id}/contacts: @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id}\
+    \ exports\n  one with @GET and deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot\
+    \ of the client, by number or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate;\
+    \ /keys/{kid} removes one with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own\
+    \ key for each client, and the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator,\
+    \ the rules, the tools and the last turns of a conversation; the\nclassifier, the responder and the evaluator,\
+    \ the rules; the link, the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta\
+    \ tokens of a chatbot. Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n\
+    * /chat/{bot_id}/contacts/{contact_id}/turns: @GET the last 10 turns of a conversation, for the coordinator.\n\
+    \n### The operator\n\n* /clients: @POST registers a client, @GET lists them; /clients/{client_id} takes one\
+    \ off with @DELETE.\n* /clients/{client_id}/keys: the keys a client signs with; /clients/{client_id}/service-keys,\
+    \ the keys each\n  worker of the response engine signs with for that client, with the worker that signs with\
+    \ each.\n\n### Any caller\n\n* /gateway/keys: @GET the audience and the public keys tokens are encrypted to.\n\
     * /health: @GET liveness, without a token.\n"
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-  summary: Controls the Facebook Messenger Lifecycle
-  termsOfService: https://web-ones.com/terms
-  title: Facebook Messenger Webhook Manager
-  version: 0.0.0
+  summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
+  title: Hive management API
+  version: 0.4.0
 openapi: 3.1.0
 paths:
   /bot:
@@ -393,7 +828,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Create Chatbot
       tags:
       - Bot
@@ -425,97 +860,26 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Chatbot
       tags:
       - Bot
-  /chat/{bot_id}:
+  /bots:
     get:
-      operationId: verify_chat__bot_id__get
-      parameters:
-      - in: path
-        name: bot_id
-        required: true
-        schema:
-          title: Bot Id
-          type: string
+      description: The chatbots of the client, with which Meta credentials each has loaded, never their values.
+      operationId: list_bots_bots_get
       responses:
         '200':
           content:
             application/json:
-              schema: {}
-          description: Successful Response
-        '422':
-          content:
-            application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-          description: Validation Error
-      summary: Verify
-      tags:
-      - Chat
-    post:
-      description: 'What Meta is answered. 403 without a good signature, before anything of the body is read. 200
-        for
-
-        everything it signed, also for what the service does not understand or cannot process: asking for it
-
-        again would not change it, and Meta stops delivering to a webhook that keeps failing. 503 only when
-
-        something the service needs is not there: then Meta sends it again later.'
-      operationId: message_processor_chat__bot_id__post
-      parameters:
-      - in: path
-        name: bot_id
-        required: true
-        schema:
-          title: Bot Id
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              description: 'A notification from Meta, as far as the service reads it: the kind of object it is about
-                and its entries.
-
-                Both have to be there, and nothing is filled in for what is missing. Whatever else Meta sends, today
-                or
-
-                tomorrow, is ignored: it adds fields without notice.'
-              properties:
-                entry:
-                  items:
-                    additionalProperties: true
-                    type: object
-                  maxItems: 1000
-                  title: Entry
-                  type: array
-                object:
-                  maxLength: 64
-                  minLength: 1
-                  title: Object
-                  type: string
-              required:
-              - object
-              - entry
-              title: FacebookRequest
-              type: object
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema: {}
+                $ref: '#/components/schemas/ResponseData'
           description: Successful Response
-        '422':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-          description: Validation Error
-      summary: Message Processor
+      security:
+      - OAuth2: []
+      summary: List Bots
       tags:
-      - Chat
+      - Bot
   /chat/{bot_id}/contacts:
     get:
       description: The contacts of a chatbot, oldest first, a page at a time, with everything stored about each.
@@ -556,7 +920,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Contacts
       tags:
       - Contacts
@@ -594,13 +958,12 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Contact
       tags:
       - Contacts
     get:
-      description: 'Everything the service stores about a contact. It does not keep the messages: those go to the
-        queue.'
+      description: Everything the service stores about a contact, the history of its messages included.
       operationId: export_contact_chat__bot_id__contacts__contact_id__get
       parameters:
       - in: path
@@ -629,8 +992,281 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Export Contact
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/consent:
+    delete:
+      description: 'The contact withdrew its consent: it is kept with when, and nothing is sent to it outside the
+        window any more.'
+      operationId: withdraw_consent_chat__bot_id__contacts__contact_id__consent_delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Withdraw Consent
+      tags:
+      - Contacts
+    put:
+      description: 'Records that a contact agreed to get the client''s messages of these categories (RF31), and
+        where the client
+
+        got that consent. Outside the window of 24 hours, a template is only sent with it. It replaces any before.'
+      operationId: set_consent_chat__bot_id__contacts__contact_id__consent_put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Set Consent
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/conversation:
+    get:
+      description: 'A contact''s last 50 messages, each with its origin (the engine or the client, and who), and
+        Meta''s window of 24
+
+        hours: open or not, and until when. Without the contact''s number. When a person reads it, the log says
+        who.'
+      operationId: get_conversation_chat__bot_id__contacts__contact_id__conversation_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Conversation
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/messages:
+    post:
+      description: 'Sends a WhatsApp message to a contact who already wrote to the chatbot (ADR-0031): a text, within
+        the 24
+
+        hours since the contact last wrote, or an approved template of the chatbot, within or outside them; outside
+
+        them, only to a contact who agreed to messages of the template''s category. The engine''s notifier sends
+        it:
+
+        202 says the request was taken, and the message shows in the history once Meta accepted it.
+
+
+        The Idempotency-Key header is required: the same key within 24 hours gives back the same request and sends
+
+        nothing more. 60 sends a minute for each chatbot and 1 000 a day for each client: more get 429 with
+
+        Retry-After.
+
+
+        A cliente-analista only sends approved templates (D10): a text from them gets 403.'
+      operationId: send_message_chat__bot_id__contacts__contact_id__messages_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboundMessageRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Send Message
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}:
+    get:
+      description: 'What came of a request to send, for 24 hours: accepted (the bus holds it), sent (Meta took it)
+        or failed, with
+
+        Meta''s code and why (window_closed, template_paused, template_disabled, template_parameters, marketing_limit,
+
+        no_token, gave_up...).'
+      operationId: get_send_status_chat__bot_id__contacts__contact_id__messages__request_id__get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      - in: path
+        name: request_id
+        required: true
+        schema:
+          title: Request Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Send Status
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/turns:
+    get:
+      description: 'The last 10 turns of a conversation, both ways and oldest first: from the tenth last message
+        the contact
+
+        sent, everything after it. For the engine''s coordinator, when its context of 24 hours is gone; only the
+
+        engine gets them, with the key it holds for the client that owns the chatbot, and every time it does is
+
+        logged.'
+      operationId: get_last_turns_chat__bot_id__contacts__contact_id__turns_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Last Turns
       tags:
       - Contacts
   /chat/{bot_id}/credentials:
@@ -667,12 +1303,13 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Set Chatbot Credentials
       tags:
       - Chat
   /chat/{bot_id}/info:
     get:
+      description: The card of a chatbot, with its verifyToken; a cliente-analista gets it without it (D6).
       operationId: get_chatbot_info_chat__bot_id__info_get
       parameters:
       - in: path
@@ -693,7 +1330,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Info
       tags:
       - Chat
@@ -719,7 +1356,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Chatbot Intents
       tags:
       - Intents
@@ -750,7 +1387,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Chatbot Intent
       tags:
       - Intents
@@ -781,7 +1418,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Chatbot Intent
       tags:
       - Intents
@@ -811,7 +1448,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Intent
       tags:
       - Intents
@@ -847,7 +1484,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Update Chatbot Intent
       tags:
       - Intents
@@ -873,7 +1510,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Phones
       tags:
       - Chat
@@ -905,7 +1542,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Whatsapp Phone
       tags:
       - Chat
@@ -931,7 +1568,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Rules
       tags:
       - Chat
@@ -962,10 +1599,170 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Chatbot Rule
       tags:
       - Chat
+  /chat/{bot_id}/templates:
+    get:
+      description: 'The templates of the chatbot, as Hive last saw them in Meta. With ?sync=true, Meta''s list is
+        brought over
+
+        the copy first: states, categories, and the templates made or deleted in Meta''s own tools.'
+      operationId: list_templates_chat__bot_id__templates_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: sync
+        required: false
+        schema:
+          title: Sync
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: List Templates
+      tags:
+      - Templates
+    post:
+      description: 'Creates a WhatsApp template of the chatbot in Meta, with the chatbot''s WhatsApp token and WhatsApp
+        Business
+
+        Account (wabaId, loaded with PUT /chat/{bot_id}/credentials). Meta reviews it: it is sent once it says
+
+        APPROVED, which a list with ?sync=true brings. Only MARKETING and UTILITY; the body''s values, {{1}}, {{2}}...,
+
+        with an example each, and none in the header or the footer.'
+      operationId: create_template_chat__bot_id__templates_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreateRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Create Template
+      tags:
+      - Templates
+  /chat/{bot_id}/templates/{template_id}:
+    delete:
+      description: 'Deletes a template in Meta, in its language only, and Hive''s copy: not one DISABLED (409).
+        Meta keeps its
+
+        name taken for 30 days.'
+      operationId: delete_template_chat__bot_id__templates__template_id__delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          title: Template Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Delete Template
+      tags:
+      - Templates
+    put:
+      description: 'Replaces every component of a template, by Meta''s id: one APPROVED, REJECTED or PAUSED, else
+        409. Meta
+
+        reviews it again, and it is not sent until it is approved again.'
+      operationId: edit_template_chat__bot_id__templates__template_id__put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: template_id
+        required: true
+        schema:
+          title: Template Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateEditRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Edit Template
+      tags:
+      - Templates
   /chat/{bot_id}/tokens:
     get:
       description: 'The Meta tokens of a chatbot, for the response engine to send its answers with. Only the engine
@@ -994,7 +1791,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Tokens
       tags:
       - Chat
@@ -1020,7 +1817,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Get Chatbot Tools
       tags:
       - Intents
@@ -1035,7 +1832,7 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List Clients
       tags:
       - Clients
@@ -1065,7 +1862,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Register Client
       tags:
       - Clients
@@ -1097,7 +1894,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Delete Client
       tags:
       - Clients
@@ -1131,7 +1928,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Client Key
       tags:
       - Clients
@@ -1166,16 +1963,22 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove Client Key
       tags:
       - Clients
   /clients/{client_id}/service-keys:
     post:
-      description: 'The operator lets the response engine act for a client: it registers the public key the engine
-        signs
+      description: 'The operator lets a worker of the response engine act for a client: it registers the public
+        key that
 
-        with for that client. With it the engine reaches the chatbots of that client and of nobody else.'
+        worker signs with for that client. With it the worker reaches the chatbots of that client and of nobody
+
+        else, and only the routes of that worker: the notifier, the Meta tokens; the coordinator, the rules,
+
+        the tools and the last turns; the classifier, the responder and the evaluator, the rules; the link,
+
+        the tools. Two keys at most per worker and client, to rotate without a gap.'
       operationId: add_service_key_clients__client_id__service_keys_post
       parameters:
       - in: path
@@ -1188,7 +1991,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SigningKeyRequest'
+              $ref: '#/components/schemas/ServiceKeyRequest'
         required: true
       responses:
         '200':
@@ -1204,7 +2007,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add Service Key
       tags:
       - Clients
@@ -1240,7 +2043,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove Service Key
       tags:
       - Clients
@@ -1270,7 +2073,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Search Contacts
       tags:
       - Contacts
@@ -1289,14 +2092,14 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Gateway Keys
       tags:
       - Clients
   /health:
     get:
-      description: 'Liveness only: it answers without touching MongoDB or RabbitMQ, so a slow dependency does not
-        get a
+      description: 'Liveness only: it answers without touching MongoDB or the broker, so a slow dependency does
+        not get a
 
         healthy container restarted or rolled back.'
       operationId: health_health_get
@@ -1320,7 +2123,7 @@ paths:
                 $ref: '#/components/schemas/ResponseData'
           description: Successful Response
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: List My Keys
       tags:
       - Clients
@@ -1350,7 +2153,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Add My Key
       tags:
       - Clients
@@ -1380,20 +2183,291 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       security:
-      - HTTPBearer: []
+      - OAuth2: []
       summary: Remove My Key
       tags:
       - Clients
+  /oauth/token:
+    post:
+      description: A machine credential authenticates with an assertion its key signed (client_credentials, RFC
+        7523, section 2.2, ADR-0025). The BFF of the PWA exchanges the ID token of a person (token-exchange, RFC
+        8693, ADR-0029), and the token says the person and their role in their client. Either way, an access token
+        the gateway signs, for every other route.
+      operationId: oauth_token_oauth_token_post
+      parameters:
+      - description: 'A DPoP proof (RFC 9449) for POST and this URL, without ath: signed with the same key as the
+          assertion, or, in an exchange, with the BFF''s own key.'
+        in: header
+        name: DPoP
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              description: client_credentials takes client_assertion_type and client_assertion; token-exchange (RFC
+                8693, ADR-0029), subject_token and subject_token_type.
+              properties:
+                client_assertion:
+                  description: A JWT the client signs (ES256, with the kid of its registered key; iss and sub, the
+                    client; aud, the gateway; 60 seconds at most; good once), inside a JWE for a key of GET /gateway/keys
+                    (RSA-OAEP-256, A256CBC-HS512, cty JWT).
+                  type: string
+                client_assertion_type:
+                  enum:
+                  - urn:ietf:params:oauth:client-assertion-type:jwt-bearer
+                  type: string
+                grant_type:
+                  enum:
+                  - client_credentials
+                  - urn:ietf:params:oauth:grant-type:token-exchange
+                  type: string
+                hive_client:
+                  description: 'token-exchange: the client the person enters, only needed for a person of more than
+                    one.'
+                  format: uuid
+                  type: string
+                requested_token_type:
+                  enum:
+                  - urn:ietf:params:oauth:token-type:access_token
+                  type: string
+                subject_token:
+                  description: 'token-exchange: the ID token Zitadel gave the person, for the BFF, with mfa in its
+                    amr.'
+                  type: string
+                subject_token_type:
+                  enum:
+                  - urn:ietf:params:oauth:token-type:id_token
+                  type: string
+              required:
+              - grant_type
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                  issued_token_type:
+                    enum:
+                    - urn:ietf:params:oauth:token-type:access_token
+                    type: string
+                  token_type:
+                    enum:
+                    - DPoP
+                    type: string
+                required:
+                - access_token
+                - token_type
+                - expires_in
+                type: object
+          description: An access token, good for 10 minutes. An exchange also says issued_token_type.
+        '400':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'invalid_request, unsupported_grant_type, or invalid_dpop_proof: the DPoP header is missing,
+            is not good, or is not signed by the key that signed the assertion. In an exchange, invalid_grant: the
+            ID token is not good, has no second factor, or its person is not in Hive, is blocked or removed, or
+            their client is not active, whatever the reason; and invalid_target: the person is of more than one
+            client, and hive_client does not say which.'
+        '401':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'invalid_client: the assertion is not good, whatever the reason.'
+        '429':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'temporarily_unavailable: too many requests from this origin, too many rejected assertions
+            from it, or too many tokens for this key in the last hour (ADR-0028). Retry-After says in how many seconds
+            to ask again.'
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema:
+                type: integer
+        '503':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'temporarily_unavailable: in an exchange, the keys of the IdP could not be read.'
+      summary: An access token, for a client that proves who it is or for a person of a client
+      tags:
+      - OAuth
+  /people:
+    get:
+      description: 'The people of the client, with their role and state. Of one removed, only who they were: their
+        email is gone.'
+      operationId: list_people_people_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+      security:
+      - OAuth2: []
+      summary: List People
+      tags:
+      - People
+    post:
+      description: 'Invites a person to the client by their email, with a role: cliente-admin or cliente-analista
+        (RF16). Hive
+
+        creates their user in Zitadel, which sends them the invitation to set up their account and the MFA; a person
+
+        who already is a user there is linked. They are invited until their first sign-in. 409 if they already are
+        of
+
+        the client.'
+      operationId: invite_person_people_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonInviteRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Invite Person
+      tags:
+      - People
+  /people/{person_id}:
+    delete:
+      description: 'Removes a person from the client: no more tokens, and their email is erased. Their user in Zitadel
+        stays: they
+
+        may be of another client. Not the last active cliente-admin: 409. Inviting them again brings them back.'
+      operationId: remove_person_people__person_id__delete
+      parameters:
+      - in: path
+        name: person_id
+        required: true
+        schema:
+          title: Person Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Remove Person
+      tags:
+      - People
+    put:
+      description: 'Another role for a person, or blocks them or lets them in again. It is felt at their next exchange
+        of a token,
+
+        within 10 minutes. The last active cliente-admin cannot be demoted nor blocked: 409.'
+      operationId: change_person_people__person_id__put
+      parameters:
+      - in: path
+        name: person_id
+        required: true
+        schema:
+          title: Person Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonChangeRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Change Person
+      tags:
+      - People
+servers:
+- url: https://hive-api.higerotech.com
 tags:
 - description: The registry of clients and of the public keys they sign their tokens with.
   name: Clients
-- description: 'This entry will manage the chatbot lifecycle, '
+- description: The access token every other route asks for (ADR-0025).
+  name: OAuth
+- description: Creating a chatbot and deleting it with everything stored for it.
   name: Bot
-- description: This is conversation management and communication control
+- description: 'What a chatbot is made of: its Meta credentials, numbers and rules, and what the response engine
+    reads of it.'
   name: Chat
 - description: 'The people who wrote to a chatbot: listing them, finding one, exporting what is stored about it
     and deleting it.'
   name: Contacts
+- description: 'The people of a client (ADR-0029): invited by their email through Zitadel, with a role in Hive,
+    blocked or removed. Only a cliente-admin, or the machine credential, manages them.'
+  name: People
+- description: 'The WhatsApp templates of a chatbot, created, edited and deleted in Meta, with the copy of each
+    that Hive keeps with its state: only an approved one is sent.'
+  name: Templates
 - description: Configure intents and their actions (API calls) as LLM tool definitions, stored per chatbot and consumed
     by the downstream worker.
   name: Intents

@@ -1,0 +1,80 @@
+/* The PWA's own layout, on the tokens of the design system (ADR-0027): the components bring their own styles. */
+
+/* The fonts, from the portal itself (ADR-0027, the CSP of ADR-0026): Geist and JetBrains Mono, under the OFL. */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--slate-black);
+  color: var(--ink);
+}
+
+.pwa-shell { min-height: 100vh; }
+.pwa-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; border-bottom: 1px solid var(--border);
+}
+.pwa-brand { font-weight: 700; font-size: 18px; color: inherit; text-decoration: none; }
+.pwa-topbar-end { display: flex; gap: 12px; align-items: center; }
+.pwa-main { max-width: var(--content-max, 72rem); margin: 0 auto; padding: 24px 16px 64px; }
+.pwa-loading { padding: 48px; text-align: center; }
+.pwa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 16px; }
+.pwa-toolbar { display: flex; gap: 8px; justify-content: flex-end; margin: 16px 0; flex-wrap: wrap; }
+.pwa-row-actions { display: inline-flex; gap: 4px; }
+.pwa-subtitle { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+.pwa-muted { opacity: 0.7; font-size: 13px; }
+.pwa-notice, .pwa-error, .pwa-success { padding: 10px 12px; border-radius: var(--radius-md); margin: 12px 0; line-height: 1.5; }
+.pwa-notice { border: 1px solid var(--border); }
+.pwa-error { border: 1px solid var(--error-red); }
+.pwa-success { border: 1px solid var(--success-green); }
+/* The label of a select, as the design system's Field writes its own. */
+.pwa-label {
+  display: block; margin: 12px 0 4px; font: 600 11px/16px var(--font-sans); letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-muted);
+}
+/* The tabs scroll sideways when they do not fit, never up and down. */
+.pwa-main .hv-tabs { overflow-y: hidden; margin-bottom: 12px; }
+.pwa-select {
+  width: 100%; padding: 8px; border-radius: var(--radius-sm); font: inherit;
+  background: transparent; color: inherit; border: 1px solid var(--border);
+}
+.pwa-buttons { border: 1px solid var(--border); border-radius: var(--radius-md); margin: 16px 0; padding: 12px; }
+.pwa-button-row { display: grid; grid-template-columns: 10rem 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 8px; }
+.pwa-preview {
+  max-width: 22rem; padding: 10px 12px; border-radius: var(--radius-md); white-space: pre-wrap;
+  background: var(--dark-ash-raised); border: 1px solid var(--border);
+}
+.pwa-preview-header { font-weight: 700; margin: 0 0 6px; }
+.pwa-preview-body { margin: 0; }
+.pwa-preview-footer { opacity: 0.7; font-size: 13px; margin: 6px 0 0; }
+.pwa-preview-button { display: block; text-align: center; margin-top: 8px; padding: 6px; border-top: 1px solid var(--border); }
+.pwa-contact-header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.pwa-sender { margin-top: 24px; }
+
+@media (max-width: 40rem) {
+  .pwa-button-row { grid-template-columns: 1fr; }
+}

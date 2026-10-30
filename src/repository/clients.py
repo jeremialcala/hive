@@ -3,13 +3,13 @@
     The registry of clients: who they are and which public keys they sign their tokens with. It is the operator's
     side of the data layer, and what authentication looks a signer up in.
 """
-from datetime import datetime
 from uuid import UUID, uuid4
 
 from mongoengine.errors import NotUniqueError
 
 from classes import Client
-from enums import Role, Status
+from classes.tool_clock import utc_now
+from enums import Role, Status, Worker
 
 from . import data_keys, erasures
 from .errors import Conflict, NotFound
@@ -29,7 +29,7 @@ def operator_client() -> Client:
     """
     client = Client.objects(name=OPERATOR_NAME).first()
     if client is None:
-        now = datetime.now()
+        now = utc_now()
         client = Client.objects(name=OPERATOR_NAME).upsert_one(
             set_on_insert__uuid=uuid4(),
             set_on_insert__role=Role.OPERATOR.value,
@@ -61,19 +61,25 @@ def list_clients() -> list:
     return list(Client.objects.order_by("createdAt"))
 
 
-def _add_key(client_id, keys: str, key: dict) -> Client:
+def _add_key(client_id, keys: str, key: dict, worker: Worker | None = None) -> Client:
     """
         Adds a public key to one of the two lists of a client. A key is in one list at most: which list it is in
-        is what says whether whoever signs with it is the client or the response engine.
+        is what says whether whoever signs with it is the client or the response engine. A key of the engine
+        also says which of its workers signs with it, and the limit is per worker.
 
         The checks go in the update itself, so that two changes at once cannot undo each other: saving the list
         as it was read would bring back a key that was revoked in between.
     """
-    added = Client.objects(uuid=as_uuid(client_id), __raw__={
-        "signingKeys.kid": {"$ne": key["kid"]},
-        "serviceKeys.kid": {"$ne": key["kid"]},
-        f"{keys}.{MAX_SIGNING_KEYS - 1}": {"$exists": False},
-    }).update_one(__raw__={"$push": {keys: key}})
+    condition = {"signingKeys.kid": {"$ne": key["kid"]}, "serviceKeys.kid": {"$ne": key["kid"]}}
+    if worker is None:
+        condition[f"{keys}.{MAX_SIGNING_KEYS - 1}"] = {"$exists": False}
+    else:
+        key = {**key, "worker": worker.value}
+        # A key from before keys had a worker has no such field: $ifNull turns it into a null that matches none.
+        same_worker = {"$filter": {"input": {"$ifNull": [f"${keys}", []]},
+                                   "cond": {"$eq": [{"$ifNull": ["$$this.worker", None]}, worker.value]}}}
+        condition["$expr"] = {"$lt": [{"$size": same_worker}, MAX_SIGNING_KEYS]}
+    added = Client.objects(uuid=as_uuid(client_id), __raw__=condition).update_one(__raw__={"$push": {keys: key}})
     client = get_client(client_id)
     if not added:
         if any(known.get("kid") == key["kid"] for known in [*client.signingKeys, *client.serviceKeys]):
@@ -109,12 +115,12 @@ def remove_signing_key(client_id, kid: str, keep_one: bool = False) -> Client:
     return _remove_key(client_id, "signingKeys", kid, keep_one)
 
 
-def add_service_key(client_id, service_key: dict) -> Client:
+def add_service_key(client_id, service_key: dict, worker: Worker) -> Client:
     """
-        Lets the response engine act for a client: it registers the public key the engine signs with for it. Two
-        at most, as with the client's own, so that the engine rotates without a gap.
+        Lets a worker of the response engine act for a client: it registers the public key that worker signs
+        with for it. Two at most per worker, as with the client's own, so that each worker rotates without a gap.
     """
-    return _add_key(client_id, "serviceKeys", service_key)
+    return _add_key(client_id, "serviceKeys", service_key, worker)
 
 
 def remove_service_key(client_id, kid: str) -> Client:
@@ -142,7 +148,7 @@ def erase_client(client_id: UUID) -> dict:
         it down first, and for making again the deletions the register holds.
     """
     Client.objects(uuid=client_id).update_one(set__signingKeys=[], set__serviceKeys=[],
-                                              set__status=Status.DIS.value, set__statusDate=datetime.now())
+                                              set__status=Status.DIS.value, set__statusDate=utc_now())
     deleted = TenantRepository(client_id).erase_all()
     forget_tokens(client_id)
     Client.objects(uuid=client_id).delete()
@@ -153,15 +159,19 @@ def erase_client(client_id: UUID) -> dict:
 
 def find_signer(client_id: UUID, kid: str) -> tuple | None:
     """
-        The active client, the public key registered for it under that kid, and what whoever signs with it is:
-        the client itself, with the role of its entry, or the response engine acting for it. None if there is
-        no such key.
+        The active client, the public key registered for it under that kid, what whoever signs with it is (the
+        client itself, with the role of its entry, or the response engine acting for it) and, for the engine,
+        which of its workers. None if there is no such key.
+
+        The worker is None for the keys of the engine registered before keys had one (ADR-0016).
     """
     client = Client.objects(uuid=client_id, status=Status.ACT.value).first()
     if client is None:
         return None
     for keys, role in ((client.signingKeys, Role(client.role)), (client.serviceKeys, Role.SERVICE)):
-        for key in keys:
-            if key.get("kid") == kid:
-                return client, dict(key), role
+        for entry in keys:
+            if entry.get("kid") == kid:
+                key = dict(entry)
+                worker = key.pop("worker", None)
+                return client, key, role, Worker(worker) if worker else None
     return None

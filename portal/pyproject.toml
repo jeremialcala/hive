@@ -1,0 +1,21 @@
+# Quality tools of hive-portal (HIG-93), as the engine's: pylint is configured here, and pytest too.
+
+[tool.pylint.main]
+ignore = ["tests"]
+# `shared`, what the portal shares with the gateway, is at the root of the monorepo. pylint runs from portal/.
+init-hook = "import sys; sys.path.append('..')"
+
+[tool.pylint."messages control"]
+# The refactor category (R): too-few-public-methods, too-many-arguments..., as in the engine.
+disable = ["R"]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.reports]
+reports = false
+
+# `.` for `from src...`, and `..`, the root of the monorepo, for `shared`.
+[tool.pytest.ini_options]
+pythonpath = [".", ".."]
+testpaths = ["tests"]

@@ -1,0 +1,12 @@
+# /etc/systemd/system/hive-vigia.timer
+[Unit]
+Description=Hive: vigía de los contenedores cada minuto
+
+[Timer]
+# En el segundo 30: el vigía de Yggdrasil corre en el 20, el de Criterio en el 40 y el de morocota en el 50, y
+# todos consultan docker.
+OnCalendar=*-*-* *:*:30
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -3,7 +3,6 @@ import logging
 from random import choice
 from faker import Faker
 from pydantic import BaseModel, Field
-from fastapi import Request
 from .tool_settings import Settings
 
 fk = Faker()

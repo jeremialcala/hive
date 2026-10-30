@@ -1,23 +1,19 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime
 from uuid import uuid4
 from mongoengine import *
 from inspect import currentframe
 
 from enums import Status
 from .tool_settings import Settings
+from .tool_database import connect_database
 from .entity_credentials import Credentials
+from .tool_clock import as_utc, utc_now
 
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
-connect(
-    db=settings.db_name,
-    username=settings.db_username,
-    password=settings.db_password,
-    host=settings.db_host
-)
+connect_database(settings)
 
 
 class ChatBot(Document):
@@ -31,9 +27,11 @@ class ChatBot(Document):
     facebookToken = StringField()
     whatsappToken = StringField()
     appSecret = StringField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    # The WhatsApp Business Account whose templates the chatbot sends (HIG-85). An id of Meta, not a secret.
+    wabaId = StringField(regex=r"^[0-9]{5,25}$")
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)
 
     def chatbot_info(self) -> dict:
         log.info(f"Executing: {currentframe().f_code.co_name}")
@@ -42,11 +40,15 @@ class ChatBot(Document):
             "name": self.name,
             "rol": self.role,
             "tone": self.tone,
+            # Its state by name, as the surfaces show it (HIG-74): REG till Meta reaches it, ACT, ERR... (bot_state).
+            "status": Status(self.status).name,
+            "statusDate": as_utc(self.statusDate),
             # Which Meta credentials are loaded, never their values: those go in and do not come out.
             "credentials": {
                 "facebookToken": bool(self.facebookToken),
                 "whatsappToken": bool(self.whatsappToken),
-                "appSecret": bool(self.appSecret)
+                "appSecret": bool(self.appSecret),
+                "wabaId": bool(self.wabaId)
             }
         }
 

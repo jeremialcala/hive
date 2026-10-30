@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 # Only the application code. config.env and certs/ live outside src/, and .dockerignore keeps them out of the
 # build context as a second barrier.
 COPY src/ ./
+# And what it shares with the response engine (ADR-0023), importable as `shared`.
+COPY shared/ ./shared/
 
 # The app runs unprivileged and can only write the per-event keys under certs/.
 RUN useradd --system --uid 10001 --no-create-home app \

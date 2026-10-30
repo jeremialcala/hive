@@ -1,0 +1,27 @@
+# ============================================================
+#  Runtime dependencies
+# ============================================================
+
+# Configuración y validación: el sobre, los contratos y la configuración de cada worker.
+pydantic==2.7.4
+pydantic_core==2.18.4
+annotated-types==0.7.0
+typing_extensions==4.16.0
+pydantic-settings==2.3.3
+python-dotenv==1.2.2      # lo pide pydantic-settings; fijado en la versión sin vulnerabilidades conocidas
+
+# Las firmas de los tokens de la API del gateway (shared.auth).
+jwcrypto==1.6.1
+cryptography==50.0.2
+cffi==2.0.0
+pycparser==2.22
+
+# What `shared/` needs (ADR-0023): the bus, the traces and the tokens of the gateway's API. The same versions as
+# the gateway's requirements.lock, so both sides run the shared code on the same libraries.
+nats-py==2.16.0
+opentelemetry-api==1.45.1
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1
+requests==2.34.2
+
+# El LLM de Hive es llama.cpp en la LAN (ADR-0010): se le habla por HTTP con `requests`, que ya está arriba.

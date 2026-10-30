@@ -5,17 +5,34 @@
     One notification may carry several messages, in several entries, next to things that are not a message from
     a person: delivery receipts, read marks, button presses, or the echo of what the page itself sent. Each
     message that can be answered becomes one envelope in the queue; the rest is left out.
+
+    And the notices of WhatsApp about the templates of the account (HIG-86), in the field
+    `message_template_status_update`: one for each template whose state Meta changed, with the account in the
+    entry's `id` and when in its `time`:
+
+        {"event": "APPROVED", "message_template_id": 594425479261596, "message_template_name": "order_update",
+         "message_template_language": "es", "reason": "NONE"}
 """
+import re
 from dataclasses import dataclass
 
 from pydantic import ValidationError
 
 from classes import FacebookRequest
 
-__all__ = ["WHATSAPP", "MESSENGER", "IncomingMessage", "NotUnderstood", "read_notification", "incoming_messages"]
+__all__ = ["WHATSAPP", "MESSENGER", "TEMPLATE_STATUS", "IncomingMessage", "TemplateChange", "NotUnderstood",
+           "read_notification", "incoming_messages", "template_changes"]
 
 WHATSAPP = "whatsapp_business_account"
 MESSENGER = "page"
+
+# The field of a change of WhatsApp that says a template changed its state.
+TEMPLATE_STATUS = "message_template_status_update"
+# What each part of a notice of a template looks like: anything else is not carried.
+META_ID = re.compile(r"^[0-9]{1,30}$")
+WORD = re.compile(r"^[A-Z_]{1,40}$")
+NAME = re.compile(r"^[a-z0-9_]{1,512}$")
+LANGUAGE = re.compile(r"^[a-z]{2,3}(_[A-Za-z0-9]{2,8})?$")
 
 # Why a message of a notification is left out. Said to the log as it is: none of it comes from the notification.
 NO_NUMBER = "sent to no number"
@@ -119,3 +136,55 @@ def incoming_messages(channel: str, entries, left_out: list | None = None) -> li
     """
     reader = READERS.get(channel)
     return list(reader(entries, [] if left_out is None else left_out)) if reader else []
+
+
+@dataclass(frozen=True)
+class TemplateChange:
+    """A notice of Meta that a template of a WhatsApp Business Account changed its state."""
+    account: str  # The WhatsApp Business Account: the `id` of the entry.
+    template_id: str  # Meta's id of the template.
+    event: str  # What it is now: APPROVED, REJECTED, PAUSED, DISABLED...
+    reason: str | None  # Why, when Meta says it: INVALID_FORMAT, SCAM... `NONE` is no reason.
+    name: str | None
+    language: str | None
+    at: int | None  # When, in seconds since 1970: the `time` of the entry.
+
+    def as_event(self) -> dict:
+        return {"account": self.account, "templateId": self.template_id, "event": self.event,
+                **{key: value for key, value in (("reason", self.reason), ("name", self.name),
+                                                 ("language", self.language), ("at", self.at))
+                   if value is not None}}
+
+
+def _matching(pattern: re.Pattern, value) -> str | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    return value if isinstance(value, str) and pattern.fullmatch(value) else None
+
+
+def template_changes(channel: str, entries) -> list[TemplateChange]:
+    """
+        Every notice of a template's state in the notification, in order. One that does not say which account,
+        which template or what it is now is left out: there would be nothing to apply it to.
+    """
+    if channel != WHATSAPP:
+        return []
+    found = []
+    for entry in _dicts(entries):
+        account = _matching(META_ID, entry.get("id"))
+        at = entry.get("time")
+        at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) and at > 0 else None
+        for change in _dicts(entry.get("changes")):
+            value = change.get("value")
+            if change.get("field") != TEMPLATE_STATUS or not isinstance(value, dict):
+                continue
+            template_id = _matching(META_ID, value.get("message_template_id"))
+            event = _matching(WORD, value.get("event"))
+            if not (account and template_id and event):
+                continue
+            reason = _matching(WORD, value.get("reason"))
+            found.append(TemplateChange(account=account, template_id=template_id, event=event,
+                                        reason=None if reason == "NONE" else reason,
+                                        name=_matching(NAME, value.get("message_template_name")),
+                                        language=_matching(LANGUAGE, value.get("message_template_language")), at=at))
+    return found

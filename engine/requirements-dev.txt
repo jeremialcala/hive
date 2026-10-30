@@ -1,0 +1,10 @@
+# Lo que el CI y las pruebas instalan además de lo de ejecución. Se fija en requirements-dev.lock.
+-r requirements.txt
+
+pytest==9.0.3
+pytest-cov==5.0.0
+coverage==7.5.3
+pylint==4.0.9
+# Las pruebas de contrato validan el sobre contra asyncapi-motor.yaml, como las del gateway.
+jsonschema==4.26.0
+PyYAML==6.0.1

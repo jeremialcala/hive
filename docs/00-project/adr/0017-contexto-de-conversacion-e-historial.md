@@ -1,6 +1,6 @@
 # ADR-0017: El historial de cada conversación se guarda en el gateway y su contexto vive 24 horas en NATS
 
-* **Estado:** proposed
+* **Estado:** accepted
 * **Fecha:** 2026-10-18
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
@@ -11,7 +11,9 @@
 * **Controles OWASP afectados:** A01 (acceso solo del cliente dueño y del worker que lo necesita), A02 (cifrado del
   contenido con una clave por cliente), A04 (retención y supresión), A09 (constancia de lo suprimido)
 
-Propuesta para el Gate 1 del refactor ([plan](../plan-topologia-de-workers.md), paso 2).
+Aceptada el 2026-10-18 al aprobar el Gate 1 del refactor, con una condición que se cumplió el 2026-10-19: en Bifröst (NATS 2.14.8), un bucket con caducidad de 20 s reescrito a los 12 s seguía a los 24 s y había desaparecido a los 38 s. La caducidad se cuenta desde la última escritura de cada clave.
+
+Propuesta como entregable del Gate 1 del refactor ([plan](../plan-topologia-de-workers.md), paso 2).
 
 ## Contexto
 
@@ -56,9 +58,9 @@ Lo medido el 2026-10-18 (memoria del proyecto y `revision-dual-gate-2.md`):
 - **Un índice único por bot, sentido e identificador de Meta.** Guardar dos veces el mismo mensaje no duplica nada,
   y deja deduplicado en el mismo sitio lo que Meta reintenta durante 7 días (el plan dejaba esa deduplicación al
   consumidor).
-- **Retención, como propuesta: 12 meses por mensaje como máximo**, que cada cliente puede acortar, con un índice de
-  caducidad (`expiresAt`). **A confirmar:** es la misma cifra que la inactividad de un contacto (RNF05), pero
-  aplicada a cada mensaje.
+- **Retención: 12 meses por mensaje como máximo**, que cada cliente puede acortar, con un índice de caducidad
+  (`expiresAt`). Decidido el 2026-10-18 al aprobar el Gate 0 del refactor (RNF05).
+- **De un adjunto, solo su tipo.** La URL de Meta caduca y puede llevar datos del contacto. Decidido el mismo día.
 - **Se exporta con el contacto** (`GET /chat/{bot_id}/contacts/{contact_id}` lo incluye) y **se borra con él**,
   con su bot y con su cliente. El registro de supresiones lo cubre igual que al resto. En los respaldos, el
   contenido desaparece cuando caducan, a los 365 días como mucho
@@ -141,7 +143,7 @@ erDiagram
         datetime at "con zona"
         string intent
         string text "cifrado con la clave del cliente"
-        datetime expiresAt "12 meses, a confirmar"
+        datetime expiresAt "12 meses"
     }
 ```
 
@@ -180,10 +182,10 @@ erDiagram
 - **Incrementos nuevos en el plan,** detrás del worker de ingesta (I4): el historial (colección, escritura,
   exportación y supresión) y la ruta para el coordinador.
 
-## Preguntas abiertas antes de aceptarla
+## Comprobado en I0
 
-1. **La retención del historial:** 12 meses por mensaje, como propongo, u otra cifra.
-2. **La prueba de la caducidad del bucket:** que cada escritura renueve las 24 horas de su clave en el NATS que se
-   despliegue.
-3. **Los adjuntos:** si el historial guarda solo su tipo o también la URL de Meta, que caduca y puede llevar datos
-   del contacto. Propuesta: solo el tipo.
+- **La caducidad del bucket se renueva con cada escritura** (2026-10-19, `medir.sh` de Bifröst). El bucket
+  `contexto` ya existe en Bifröst: 24 horas, una revisión y 256 KB por valor.
+
+La retención del historial (12 meses por mensaje) y los adjuntos (solo el tipo) se decidieron el 2026-10-18, al
+aprobar el Gate 0 del refactor.

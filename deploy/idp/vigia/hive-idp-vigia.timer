@@ -1,0 +1,10 @@
+# /etc/systemd/system/hive-idp-vigia.timer
+[Unit]
+Description=Hive: vigía de los contenedores de Zitadel cada minuto
+
+[Timer]
+OnCalendar=*-*-* *:*:30
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

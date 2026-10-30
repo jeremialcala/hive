@@ -11,6 +11,8 @@
 
 Aceptada el 2026-10-13.
 
+> **Su tabla la sustituye la de [ADR-0021](0021-el-webhook-solo-publica.md)**, aceptada el 2026-10-18; lo construido la sigue hasta I4: los fallos de la base al identificar el contacto los reintenta la ingesta, no Meta. Lo demás sigue.
+
 ## Contexto
 
 [ADR-0006](0006-publicacion-confirmada-y-503.md) fijó que una notificación recibe `200` solo cuando el broker

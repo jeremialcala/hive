@@ -1,70 +1,37 @@
 # -*- coding: utf8 -*-
+"""
+    What the webhook does with a signed notification it understood (ADR-0021). With the bus, it only publishes the
+    notification as one event and Meta is answered once Bifröst keeps it: who wrote, the history and the queue of
+    the response engine are the ingestion worker's (ingestion.py). Without a bus, which only development and the
+    tests have, it ingests the same event itself before answering.
+"""
 import logging
 from asyncio import ensure_future
 from collections import Counter
+from datetime import datetime, timezone
 from inspect import currentframe
 from uuid import uuid4, UUID
 
+from shared import bus
 from classes import ChatBot
-from classes import Settings, FacebookRequest, MessageBody, QueueMessage
+from classes import Settings, FacebookRequest
 from enums import Status
-from repository import database_failed
-from utils import describe
 from .events import ctr_notify_action
-from crypto.key_service import KeyServiceUnavailable
-from .amqp_broker import send_message_to_queue, BrokerUnavailable
-from .facebook import ctr_identify_fb_contact, ctr_identify_contact_by_wa_id
-from .incoming import READERS, WHATSAPP, IncomingMessage, incoming_messages
+from .incoming import READERS, incoming_messages, template_changes
+from .ingestion import DatabaseUnavailable, RETRY_LATER, ingest_notification
+from .webhook_event import CHANNELS, publish_notification, publish_template_changes, template_event, webhook_event
 
 __all__ = ["ctr_process_messages", "DatabaseUnavailable", "RETRY_LATER"]
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
 
-# The queue the response engine reads from.
-QUEUE = "llm"
-
-
-class DatabaseUnavailable(Exception):
-    """The database did not do its part while a notification was being processed."""
-
-
-# What Meta is asked to deliver again, with a 503: something the service needs is not there, and it will be.
-# Nothing else gets anything but a 200: a notification that fails by itself would fail the same way next time,
-# and Meta stops delivering to a webhook that keeps failing.
-RETRY_LATER = (BrokerUnavailable, KeyServiceUnavailable, DatabaseUnavailable)
-
-
-async def _contact(message: IncomingMessage, channel: str, _bot: ChatBot, eventId: str = None) -> dict:
-    """Finds or stores who wrote the message and returns what the envelope says about them."""
-    if channel == WHATSAPP:
-        contact = await ctr_identify_contact_by_wa_id(wa_id=message.sender, name=message.name, _bot=_bot,
-                                                      eventId=eventId)
-        # The number as Meta sent it: the stored contact only holds it encrypted.
-        return {"name": contact.firstName, "waId": message.sender}
-
-    contact = await ctr_identify_fb_contact(fbId=message.sender, _bot=_bot)
-    return {"name": contact.firstName, "fbId": message.sender}
-
-
-async def _queue(message: IncomingMessage, channel: str, _bot: ChatBot, eventId: str = None) -> None:
-    body = MessageBody(
-        botId=str(_bot.uuid),
-        clientId=str(_bot.clientId),
-        type=channel,
-        contact=await _contact(message, channel, _bot, eventId),
-        message=message.content
-    )
-    q_message = QueueMessage(
-        eventId=eventId,
-        messageId=message.message_id,
-        jwe_body=body.__dict__
-    )
-    # Awaited on purpose: Meta must not get a 200 for a message the broker never took.
-    await send_message_to_queue(queue=QUEUE, message=q_message)
-
 
 async def ctr_process_messages(req: FacebookRequest, _bot: ChatBot, eventId: str = None):
+    """
+        Raises one of RETRY_LATER when Meta has to send the notification again: Bifröst did not keep the event or,
+        without a bus, the ingestion has to wait.
+    """
     log.info(f"Starting: {currentframe().f_code.co_name}")
     _action = uuid4()
     if eventId is not None:
@@ -82,23 +49,24 @@ async def ctr_process_messages(req: FacebookRequest, _bot: ChatBot, eventId: str
 
     left_out = []
     incoming = incoming_messages(req.object, req.entry, left_out)
-    log.info(f"Messages to queue from this notification: {len(incoming)}")
+    log.info(f"Messages from a person in this notification: {len(incoming)}")
     if left_out:
         log.warning(f"Messages of a notification for chatbot {_bot.uuid} were left out: {dict(Counter(left_out))}")
 
-    # One envelope per message: the identifier Meta gave it is what the response engine deduplicates by.
-    for message in incoming:
-        try:
-            await _queue(message, req.object, _bot, eventId)
-        except (BrokerUnavailable, KeyServiceUnavailable):
-            raise
-        except Exception as e:
-            if database_failed(e):
-                log.error(f"The database is unavailable: {describe(e)}")
-                raise DatabaseUnavailable(type(e).__name__) from None
-            # A message that fails by itself would fail again if Meta sent it again, and must not take the rest
-            # of the notification with it.
-            log.error(f"A message for chatbot {_bot.uuid} could not be processed: {describe(e)}")
+    if incoming and bus.configured():
+        await publish_notification(req.object, _bot, incoming)
+    elif incoming:
+        event = webhook_event(CHANNELS[req.object], _bot, incoming, datetime.now(timezone.utc))
+        await ingest_notification(event, bot=_bot)
+
+    # The notices of the templates' states (HIG-86): an event of their own, which the ingestion applies to the copies.
+    changes = template_changes(req.object, req.entry)
+    if changes:
+        log.info(f"Notices of templates for chatbot {_bot.uuid} in this notification: {len(changes)}")
+    if changes and bus.configured():
+        await publish_template_changes(_bot, changes)
+    elif changes:
+        await ingest_notification(template_event(_bot, changes, datetime.now(timezone.utc)), bot=_bot)
 
     if eventId is not None:
         ensure_future(ctr_notify_action(

@@ -15,6 +15,9 @@ from repository import TenantRepository, NotFound
 from utils import describe
 from .events import ctr_notify_action
 
+__all__ = ["ctr_create_intent", "ctr_get_intents", "ctr_get_intent", "ctr_update_intent", "ctr_delete_intent",
+           "ctr_get_bot_tools"]
+
 settings = Settings()
 log = logging.getLogger(settings.environment)
 
@@ -50,7 +53,7 @@ def _build_actions(request: IntentRequest) -> list:
     return actions
 
 
-async def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -96,26 +99,24 @@ async def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response
 
 
-async def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
+def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -149,26 +150,24 @@ async def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = No
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response
 
 
-async def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
+def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -202,26 +201,24 @@ async def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, ev
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response
 
 
-async def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str,
+def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: str, intent_id: str,
                             eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -262,26 +259,24 @@ async def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response
 
 
-async def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
+def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -317,26 +312,24 @@ async def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str,
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response
 
 
-async def ctr_get_bot_tools(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
+def ctr_get_bot_tools(repo: TenantRepository, bot_id: str, eventId: str = None) -> Response:
     """
     Aggregate every active action of every active intent of the bot into a flat
     list of LLM tool definitions. This is the bridge consumed by the worker.
@@ -376,20 +369,18 @@ async def ctr_get_bot_tools(repo: TenantRepository, bot_id: str, eventId: str = 
         body = ResponseData(code=status.HTTP_500_INTERNAL_SERVER_ERROR, message=f"INTERNAL SERVER ERROR",
                             data=None)
 
-    finally:
+    if eventId is not None:
+        ensure_future(ctr_notify_action(
+            _uuid=_action,
+            event_id=UUID(eventId),
+            description=body.json(),
+            status=Status.COM.value
+        ))
 
-        if eventId is not None:
-            ensure_future(ctr_notify_action(
-                _uuid=_action,
-                event_id=UUID(eventId),
-                description=body.json(),
-                status=Status.COM.value
-            ))
+    response.status_code = body.code
+    response.body = body.json(exclude_none=True).encode()
+    response.headers[CONTENT_LENGTH] = str(len(response.body))
+    response.headers[CONTENT_TYPE] = APPLICATION_JSON
 
-        response.status_code = body.code
-        response.body = body.json(exclude_none=True).encode()
-        response.headers[CONTENT_LENGTH] = str(len(response.body))
-        response.headers[CONTENT_TYPE] = APPLICATION_JSON
-
-        log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
-        return response
+    log.info(f"Ending: {currentframe().f_code.co_name} code:{response.status_code}")
+    return response

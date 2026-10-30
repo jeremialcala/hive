@@ -8,4 +8,7 @@ El pipeline vive en `.github/workflows/` y el compose del servidor en `deploy/`.
 
 Cierra con `.ai-dlc/gates/gate-4-deployment.md`.
 
-Todavía vacía. El flujo de despliegue actual está resumido en la sección Despliegue del README.
+- [Releases](releases.md): cómo se corta una versión, cómo se despliega su etiqueta en midgard, cómo se vuelve atrás
+  y los hotfix. Desde la 0.4.0, producción es la última release.
+
+Lo demás está todavía vacío. El despliegue continuo desde `main` está resumido en la sección Despliegue del README.

@@ -32,6 +32,11 @@ def normalize_number(number: str) -> str:
     return "".join(character for character in str(number) if character.isdigit())
 
 
+def normalize_email(email: str) -> str:
+    """The same address written two ways must give the same index: without the spaces around it, and in lower case."""
+    return str(email).strip().casefold()
+
+
 class ClientCipher:
 
     def __init__(self, client_id: UUID, data_key: bytes):
@@ -65,9 +70,12 @@ class ClientCipher:
         except (InvalidTag, ValueError):
             raise NotEncrypted(field) from None
 
-    def blind_index(self, field: str, number: str) -> str:
-        """Equal numbers of one client give equal indexes; the same number under another client gives another."""
-        message = self._bound_to(field) + b":" + normalize_number(number).encode()
+    def blind_index(self, field: str, number: str, normalize=normalize_number) -> str:
+        """
+            Equal numbers of one client give equal indexes; the same number under another client gives another.
+            `normalize` says when two values are the same one: a number by its digits, an email by normalize_email.
+        """
+        message = self._bound_to(field) + b":" + normalize(number).encode()
         return base64.urlsafe_b64encode(hmac.new(self._index_key, message, hashlib.sha256).digest()).decode()
 
 

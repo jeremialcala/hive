@@ -7,6 +7,7 @@
     The tests go through the application with real tokens and signed notifications, and then look at the
     database the way somebody with a copy of it would.
 """
+from datetime import datetime, timedelta
 import hashlib
 import hmac
 import json
@@ -19,12 +20,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as app_module
+import webhook as webhook_module
 import controller.facebook as facebook
-import controller.messages as messages
+import controller.ingestion as ingestion
 import repository.clients as clients
 from classes import ChatBot, ChatbotPhone, Client, Contact, Intent, Rule, SeenToken
+from conftest import request_token
 from enums import Status
 from repository import NotFound, TenantRepository, data_keys, delete_client, operator_client
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 APP_SECRET = "app-secret-of-this-test"
@@ -66,7 +72,7 @@ def queue(monkeypatch):
     async def capture(queue, message):
         sent.append(json.loads(message.to_json()))
 
-    monkeypatch.setattr(messages, "send_message_to_queue", capture)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", capture)
     return sent
 
 
@@ -103,7 +109,7 @@ def bot_id(http, caller):
 def notify(http, bot_id, payload):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return http.post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                      headers={"content-type": "application/json", "X-Hub-Signature-256": signature})
 
 
@@ -230,10 +236,10 @@ def test_the_number_never_travels_in_an_address():
     """An address is written down by every proxy on the way: whoever is looked for goes in the body."""
     routes = [route for route in app_module.app.routes if "contacts" in getattr(route, "path", "")]
 
-    assert len(routes) == 4
+    assert len(routes) == 10
     for route in routes:
         assert {parameter.name for parameter in route.dependant.query_params} <= {"offset", "limit"}
-        assert {parameter.name for parameter in route.dependant.path_params} <= {"bot_id", "contact_id"}
+        assert {parameter.name for parameter in route.dependant.path_params} <= {"bot_id", "contact_id", "request_id"}
 
 
 # --- Exporting a contact -----------------------------------------------------------------------------------------
@@ -246,10 +252,22 @@ def test_the_export_is_everything_stored_about_the_contact(http, caller, people)
     exported = http.get(f"/chat/{people}/contacts/{contact['uuid']}", headers=caller.auth)
 
     assert exported.status_code == 200
-    assert exported.json()["data"] == contact
+    # The export adds the conversation: the one message Ana sent. What it holds is in test_history.py.
+    assert exported.json()["data"] == {**contact, "messages": exported.json()["data"]["messages"]}
+    assert [m["direction"] for m in exported.json()["data"]["messages"]] == ["in"]
     assert set(contact) == {name.lstrip("_") for name in Contact._fields if name not in internal} | {"botId"}
     assert (contact["firstName"], contact["waId"], contact["isAdmin"], contact["status"]) == (
         ANA, ANA_NUMBER, False, Status.REG.name)
+
+
+def test_the_dates_of_an_exported_contact_say_they_are_utc(http, caller, people):
+    """H10: read back from MongoDB without a time zone, they are UTC, and the answer says so."""
+    contact = contacts_of(http, caller, people)["contacts"][0]
+
+    exported = http.get(f"/chat/{people}/contacts/{contact['uuid']}", headers=caller.auth).json()["data"]
+
+    for name in ("createdAt", "statusDate"):
+        assert datetime.fromisoformat(exported[name]).utcoffset() == timedelta(0), name
 
 
 def test_a_contact_from_messenger_is_exported_with_its_profile(http, caller, people):
@@ -277,7 +295,7 @@ def test_a_deleted_contact_is_gone_and_the_others_stay(http, caller, people):
     deleted = erase(http, caller, f"/chat/{people}/contacts/{ana['uuid']}")
 
     assert deleted.status_code == 200
-    assert deleted.json()["data"] == {"uuid": ana["uuid"], "deleted": {"contacts": 1}}
+    assert deleted.json()["data"] == {"uuid": ana["uuid"], "deleted": {"contacts": 1, "messages": 1, "outbound": 0}}
     assert ana["uuid"] not in dump()
     assert search(http, caller, waId=ANA_NUMBER).json()["data"] == []
     assert http.get(f"/chat/{people}/contacts/{ana['uuid']}", headers=caller.auth).status_code == 404
@@ -299,7 +317,7 @@ def test_deleting_a_contact_takes_every_copy_of_that_person_in_the_chatbot(http,
 
     deleted = erase(http, caller, f"/chat/{people}/contacts/{copies[0]['uuid']}")
 
-    assert deleted.json()["data"]["deleted"] == {"contacts": 2}
+    assert deleted.json()["data"]["deleted"] == {"contacts": 2, "messages": 1, "outbound": 0}
     # What is left: the other two people of this chatbot, and the same person in the other one.
     assert [c["botId"] for c in search(http, caller, **who).json()["data"]] == [other]
     assert contacts_of(http, caller, people)["total"] == 2
@@ -382,7 +400,8 @@ def test_deleting_a_chatbot_deletes_everything_stored_for_it(http, caller, stran
 
     assert deleted.status_code == 200
     assert deleted.json()["data"] == {"uuid": people, "deleted": {"chatbots": 1, "contacts": 3, "phones": 1,
-                                                                 "rules": 1, "intents": 1}}
+                                                                 "rules": 1, "intents": 1, "messages": 3,
+                                                                 "templates": 0, "outbound": 0}}
     assert people not in dump()
     assert {bot: dump().count(bot) for bot in kept} == kept
     assert counts() == {"ChatBot": 2, "ChatbotPhone": 2, "Rule": 2, "Intent": 2, "Contact": 2}
@@ -396,7 +415,7 @@ def test_a_deleted_chatbot_is_not_found_by_anybody(http, caller, people, queue):
     assert http.get(f"/chat/{people}/contacts", headers=caller.auth).status_code == 404
     assert erase(http, caller, f"/bot/{people}").status_code == 404
     assert notify(http, people, whatsapp(ANA_NUMBER, ANA)).status_code == 404
-    assert http.get(f"/chat/{people}", params={"hub.mode": "subscribe", "hub.challenge": "1",
+    assert META.get(f"/chat/{people}", params={"hub.mode": "subscribe", "hub.challenge": "1",
                                                "hub.verify_token": "x"}).status_code == 404
     assert queue == [] and Contact.objects.count() == 0
     assert search(http, caller, waId=ANA_NUMBER).json()["data"] == []
@@ -417,7 +436,8 @@ def test_what_a_deletion_cut_short_left_behind_is_deleted_by_asking_again(http, 
     again = erase(http, caller, f"/bot/{people}")
 
     assert again.status_code == 200
-    assert again.json()["data"]["deleted"] == {"chatbots": 0, "contacts": 3, "phones": 1, "rules": 1, "intents": 1}
+    assert again.json()["data"]["deleted"] == {"chatbots": 0, "contacts": 3, "phones": 1, "rules": 1, "intents": 1,
+                                               "messages": 3, "templates": 0, "outbound": 0}
     assert people not in dump()
     assert erase(http, caller, f"/bot/{people}").status_code == 404
 
@@ -513,7 +533,8 @@ def test_the_operator_deletes_a_client_with_everything_stored_for_it(http, opera
 
     assert deleted.status_code == 200
     assert deleted.json()["data"] == {"uuid": str(leaving.client_id), "deleted": {
-        "chatbots": 2, "contacts": 4, "phones": 2, "rules": 2, "intents": 2}}
+        "chatbots": 2, "contacts": 4, "phones": 2, "rules": 2, "intents": 2, "messages": 4, "templates": 0,
+        "outbound": 0, "people": 0}}
     # Not a document of any kind names the client any more: its registry entry, its tokens, its data.
     assert str(leaving.client_id) not in dump()
     assert counts(clientId=stranger.client_id) == kept == counts()
@@ -523,12 +544,15 @@ def test_the_operator_deletes_a_client_with_everything_stored_for_it(http, opera
 
 
 def test_a_deleted_client_no_longer_gets_in(http, operator, leaving):
-    made_before = leaving.token()
+    made_before = leaving.assertion()
+    token_before = leaving.access_token()
 
     erase(http, operator, f"/clients/{leaving.client_id}")
 
-    for token in (made_before, leaving.token()):
-        assert http.get("/keys", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    for assertion in (made_before, leaving.assertion()):
+        assert request_token(assertion).status_code == 401
+    # The access token it already had lasts until it expires (ADR-0025), and there is nothing left to reach.
+    assert http.get("/keys", headers={"Authorization": f"DPoP {token_before}"}).status_code != 200
 
 
 def test_the_webhooks_of_a_deleted_client_are_not_found(http, operator, leaving, people, queue):
@@ -596,14 +620,14 @@ def test_a_deletion_cut_short_has_already_shut_the_client_out_and_is_finished_by
 
     forget_tokens = clients.forget_tokens
     monkeypatch.setattr(clients, "forget_tokens", fails)
-    made_before = leaving.token()
+    made_before = leaving.assertion()
 
     cut_short = erase(http, operator, f"/clients/{leaving.client_id}")
 
     assert cut_short.status_code == 500
     client = Client.objects(uuid=leaving.client_id).first()
     assert (client.signingKeys, client.status) == ([], Status.DIS.value)
-    assert http.get("/keys", headers={"Authorization": f"Bearer {made_before}"}).status_code == 401
+    assert request_token(made_before).status_code == 401
 
     monkeypatch.setattr(clients, "forget_tokens", forget_tokens)
     again = erase(http, operator, f"/clients/{leaving.client_id}")
@@ -652,7 +676,8 @@ def test_the_repository_of_another_client_deletes_nothing_of_this_one(caller, st
     before = counts()
 
     assert TenantRepository(stranger.client_id).erase_all() == {
-        "chatbots": 0, "contacts": 0, "phones": 0, "rules": 0, "intents": 0}
+        "chatbots": 0, "contacts": 0, "phones": 0, "rules": 0, "intents": 0, "messages": 0, "templates": 0,
+        "outbound": 0, "people": 0}
     assert counts() == before == counts(clientId=caller.client_id)
 
 

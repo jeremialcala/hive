@@ -5,6 +5,8 @@
 name: ci
 
 on:
+  # Every pull request, whatever it touches: its jobs are required checks of develop and main (H15), and a required
+  # check that does not run leaves the pull request waiting for ever. The engine has its own workflow, `engine`.
   pull_request:
 
 permissions:
@@ -16,6 +18,7 @@ concurrency:
 
 jobs:
   test:
+    name: gateway · test
     runs-on: ubuntu-latest
     # The client of the key service is tested against a real one, in development mode: it starts unsealed and
     # with a known root token, which the tests use to set it up like the one in production.
@@ -44,6 +47,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The event bus, the same version as Bifröst and set up like it. Not a service container: those take no
+      # arguments, and NATS needs its configuration file, which only exists once the repository is checked out.
+      - name: NATS JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 -p 8222:8222 \
+            -v "$PWD/tests/integration/nats-test.conf:/etc/nats/test.conf:ro" \
+            nats:2.14.8-alpine@sha256:f9512b17aae6d41b6a615a7afad7b328633639ddae025744623e69b26fe686be \
+            -c /etc/nats/test.conf
+          for _ in $(seq 1 30); do
+            curl -fs "http://127.0.0.1:8222/healthz?js-enabled-only=true" && exit 0
+            sleep 1
+          done
+          docker logs nats
+          exit 1
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -54,7 +72,7 @@ jobs:
       - run: pip install --require-hashes -r requirements-dev.lock
 
       # Branch coverage below what Gate 2 asks for breaks the build.
-      - run: pytest --cov=src --cov-branch --cov-fail-under=80
+      - run: pytest --cov=src --cov=shared --cov-branch --cov-fail-under=80
         env:
           OPENBAO_TEST_ADDR: http://127.0.0.1:8200
           OPENBAO_TEST_TOKEN: dev-root
@@ -62,8 +80,12 @@ jobs:
           OPENBAO_TEST_REQUIRED: "1"
           RABBITMQ_TEST_ADDR: 127.0.0.1:5672
           RABBITMQ_TEST_REQUIRED: "1"
+          NATS_TEST_ADDR: 127.0.0.1:4222
+          NATS_TEST_MONITOR: 127.0.0.1:8222
+          NATS_TEST_REQUIRED: "1"
 
   image:
+    name: gateway · image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -76,3 +98,25 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # The page of the management API's contract (ADR-0026): it builds, it serves the page and nothing else, and its
+  # Content-Security-Policy lets in nothing from outside.
+  docs:
+    name: gateway · docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build -f deploy/docs/Dockerfile -t hive-docs:ci .
+
+      - name: Serve the page as the server does
+        run: |
+          docker run -d --name hive-docs --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges:true -p 127.0.0.1:8080:8080 hive-docs:ci
+          for i in $(seq 20); do curl -fsS -o /dev/null http://127.0.0.1:8080/health && break; sleep 1; done
+          curl -fsS -D headers.txt -o page.html http://127.0.0.1:8080/docs/
+          grep -q "<title>Hive management API</title>" page.html
+          grep -qi "^content-security-policy: default-src 'none'; script-src 'self' 'sha256-" headers.txt
+          curl -fsS -o /dev/null http://127.0.0.1:8080/docs/redoc.standalone.js
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/openapi.json)" = 404

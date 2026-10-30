@@ -1,0 +1,177 @@
+# Zitadel, the IdP of the people of a client (ADR-0029, amended on 2026-10-28): on Nidavellir (hgtech002), deployed by
+# hand from develop, the same way the gateway is on midgard.
+#
+#   cd /srv/apps/hive-idp && docker compose up -d
+#
+# Nothing secret is in this file or in the repository: .env, next to it, is written on the machine by
+# generar-secretos.sh (root, 0600) and never printed. The runbook is README.md.
+#
+# Five containers. The database only lives on an internal network; the proxy is the only thing the tunnel reaches.
+#   hive-idp-db      PostgreSQL. Zitadel connects with its own non-superuser role (initdb/10-zitadel.sh).
+#   hive-idp         The Zitadel API: OIDC, the console and the admin APIs. It speaks h2c on 8080.
+#   hive-idp-login   The login UI of Zitadel v4 (Next.js) on 3000, served under /ui/v2/login.
+#   hive-idp-proxy   Caddy with a fixed Caddyfile: /ui/v2/login to the login, everything else to the API over h2c.
+#                    Upstream uses Traefik with the Docker socket; a fixed file needs no socket.
+#   hive-idp-tunel   cloudflared, publishing https://hive-auth.higerotech.com to the proxy.
+#
+# Versions are pinned by digest and are older than two weeks. Two image tags were rebuilt for their base layer after
+# their release (postgres 17.11 on 2026-10-26, caddy 2.11.7 on 2026-10-22): the software in them is older.
+name: hive-idp
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "3"}
+
+services:
+  db:
+    <<: *hardening
+    image: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    container_name: hive-idp-db
+    # The entrypoint changes the owner of the data directory and drops to the postgres user: it needs these, and
+    # nothing else.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?run generar-secretos.sh}
+      POSTGRES_DB: postgres
+      POSTGRES_ZITADEL_PASSWORD: ${POSTGRES_ZITADEL_PASSWORD:?run generar-secretos.sh}
+    volumes:
+      - hive-idp-postgres:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zitadel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [datos]
+    mem_limit: 512m
+    cpus: 1.0
+
+  api:
+    <<: *hardening
+    image: ghcr.io/zitadel/zitadel:v4.19.4@sha256:90a3045b80a2b5b395e1e770302076906af3a5911225af7c464b4f3bd00d0a1b
+    container_name: hive-idp
+    # As upstream: it writes the login client's token to the bootstrap volume, which the login reads.
+    user: "0"
+    command: start-from-init --masterkeyFromEnv --tlsMode external
+    environment:
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY:?run generar-secretos.sh}
+      ZITADEL_PORT: 8080
+      ZITADEL_EXTERNALDOMAIN: hive-auth.higerotech.com
+      ZITADEL_EXTERNALPORT: 443
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_DATABASE_POSTGRES_DSN: postgresql://zitadel:${POSTGRES_ZITADEL_PASSWORD}@hive-idp-db:5432/zitadel?sslmode=disable
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: Higerotech
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME:?run generar-secretos.sh}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:?run generar-secretos.sh}
+      # The first administrator changes the generated password on first sign-in.
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "true"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM_LOGIN_CLIENT
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://hive-auth.higerotech.com/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://hive-auth.higerotech.com/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://hive-auth.higerotech.com/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_SAML_DEFAULTLOGINURLV2: https://hive-auth.higerotech.com/ui/v2/login/login?samlRequest=
+      # The access log carries addresses and paths: personal data, so it stays off (RS07).
+      ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "false"
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - hive-idp-bootstrap:/zitadel/bootstrap:rw
+    # datos to reach PostgreSQL; publico to reach Resend by SMTP and to be reached by the login and the proxy.
+    networks: [datos, publico]
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 1g
+    cpus: 1.5
+
+  login:
+    <<: *hardening
+    image: ghcr.io/zitadel/zitadel-login:v4.19.4@sha256:93ffd1395b827f685ba29c02fa70aee881fc21102519c4e2bbb0b89c0e00f42c
+    container_name: hive-idp-login
+    user: "0"
+    environment:
+      ZITADEL_API_URL: http://hive-idp:8080
+      NEXT_PUBLIC_BASE_PATH: /ui/v2/login
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
+      ZITADEL_SESSION_COOKIE_SECRET: ${LOGIN_SESSION_COOKIE_SECRET:?run generar-secretos.sh}
+      CUSTOM_REQUEST_HEADERS: Host:hive-auth.higerotech.com,X-Forwarded-Proto:https
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "node /app/healthcheck.mjs http://localhost:3000/ui/v2/login/healthy"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - hive-idp-bootstrap:/zitadel/bootstrap:ro
+    networks: [publico]
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 1.0
+
+  proxy:
+    <<: *hardening
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    container_name: hive-idp-proxy
+    # The image ships /usr/bin/caddy with the file capability cap_net_bind_service=ep. Without it in the bounding set
+    # the kernel refuses the exec ("operation not permitted"), even though Caddy only listens on 8080.
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: [/tmp, /data, /config]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      # Through the proxy to the API: healthy means the whole path the tunnel uses answers.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/debug/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [publico]
+    depends_on:
+      api:
+        condition: service_healthy
+      login:
+        condition: service_healthy
+    mem_limit: 64m
+    cpus: 0.5
+
+  tunel:
+    <<: *hardening
+    image: cloudflare/cloudflared:2026.10.4@sha256:c6c7ae1d5dfdcb094ad344ed68ccffc26635c9c6be80965664c33baf064b0515
+    container_name: hive-idp-tunel
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?run generar-secretos.sh}
+    networks: [publico]
+    depends_on:
+      proxy:
+        condition: service_healthy
+    mem_limit: 128m
+    cpus: 0.5
+
+networks:
+  # No way out: only the API reaches the database.
+  datos:
+    internal: true
+  publico:
+
+volumes:
+  hive-idp-postgres:
+  hive-idp-bootstrap:

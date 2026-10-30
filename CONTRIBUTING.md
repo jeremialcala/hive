@@ -5,6 +5,11 @@
 - El trabajo sale de `develop` en ramas `feature/*` y vuelve a `develop` por pull request.
 - `main` solo recibe pull requests desde `develop`, `release/*` o `hotfix/*`. Lo comprueba el workflow
   `GitFlow guard` y lo exige el ruleset que protege `main`.
+- Para fusionar en `develop` o en `main` tienen que pasar los ocho controles que exigen los rulesets
+  `Protect-DEVELOP` y `Protect-MAIN`: `gateway · test`, `gateway · image`, `gateway · docs`, `engine · test`, `engine · image`, `Fuga de secretos`, `SCA · dependencias vulnerables` y `SAST · CodeQL`. En `main` se exige además
+  `GitFlow: origen permitido hacia main`. Los dos workflows de PR, `ci` y `engine`, corren en todo pull request: un
+  control obligatorio que no corre deja el PR esperando para siempre. Un job nuevo que deba bloquear necesita un
+  nombre que no repita ningún otro y una entrada en los dos rulesets.
 - Un merge a `main` construye la imagen y la despliega: ver la sección Despliegue del [README](README.md).
 
 ## Flujo: Red-Green-Refactor-Secure
@@ -31,6 +36,20 @@ python .ai-dlc/scripts/gen_openapi.py
 
 Los `.lock` no se editan a mano. El último paso regenera el contrato OpenAPI, que puede cambiar con la versión del
 framework. El CI falla si un lock no fija los mismos paquetes que se declaran.
+
+**Bórralo antes de regenerarlo.** Si el `.lock` ya existe, `uv pip compile` reutiliza sus versiones como preferencia.
+El CI compila desde cero, así que un lock regenerado encima del anterior puede fijar paquetes distintos y romper esa
+comprobación.
+
+El motor de respuestas, en `engine/` (ADR-0023), tiene sus propios `requirements` y locks. Se regeneran igual, desde
+`engine/`. La imagen del motor instala solo ruedas: una dependencia que pida compilarse rompe su construcción.
+
+```bash
+cd engine
+rm -f requirements.lock requirements-dev.lock
+uv pip compile --universal --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock
+uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock
+```
 
 ## Cobertura
 

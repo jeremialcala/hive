@@ -1,10 +1,13 @@
 from .tool_settings import Settings
 
 from .entity_client import Client
+from .entity_client_user import ClientUser
 from .entity_seen_token import SeenToken
 from .entity_chatbot import ChatBot
 from .entity_chatbot_phones import ChatbotPhone
 from .entity_contact import Contact
+from .entity_conversation_message import ConversationMessage
+from .entity_outbound import MessageTemplate, OutboundRequest
 from .entity_amqp_message import QueueMessage
 from .entity_event import Event
 from .entity_event_action import EventAction
@@ -12,9 +15,12 @@ from .entity_jwk import Jwk
 from .entity_chatbot_rules import Rule
 from .entity_intent import Intent, Action, ApiCall, ActionParameter
 
-from .dto_client_request import ClientRequest, OwnedKeyRequest, SigningKeyRequest
+from .dto_client_request import ClientRequest, OwnedKeyRequest, ServiceKeyRequest, SigningKeyRequest
 from .dto_bot_credentials import BotCredentialsRequest
 from .dto_contact_search import ContactSearchRequest
+from .dto_outbound import ConsentRequest, OutboundMessageRequest, TemplateRequest
+from .dto_templates import TemplateCreateRequest, TemplateEditRequest
+from .dto_people import PersonChangeRequest, PersonInviteRequest
 from .dto_chatbot import ChatbotRequest
 from .dto_response import ResponseData, BotResponse
 from .dto_chatbot_phone import ChatbotPhoneRequest

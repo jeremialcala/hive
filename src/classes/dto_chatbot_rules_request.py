@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from uuid import UUID, uuid4
 from faker import Faker
 from pydantic import BaseModel, Field
 

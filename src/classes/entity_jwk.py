@@ -1,23 +1,20 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 from inspect import currentframe
 from jwcrypto import jwk
-from datetime import datetime
 from uuid import uuid4, UUID
 from mongoengine import *
 from enums import Status, KeyTypes
 
 from .tool_settings import Settings
+from .tool_database import connect_database
 from .entity_event_jwk import EventJwk
+from .tool_clock import utc_now
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
-connect(
-    db=settings.db_name,
-    username=settings.db_username,
-    password=settings.db_password,
-    host=settings.db_host
-)
+connect_database(settings)
 
 
 class Jwk(Document):
@@ -28,9 +25,9 @@ class Jwk(Document):
     use = StringField()
     x5t = StringField()
     x5c = StringField()
-    createdAt = DateTimeField(required=True, default=datetime.now)
+    createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
-    statusDate = DateTimeField(required=True, default=datetime.now)
+    statusDate = DateTimeField(required=True, default=utc_now)
 
     def get_jwk(self) -> jwk.JWK:
         _key = jwk.JWK.from_json(
@@ -67,9 +64,11 @@ class Jwk(Document):
         _pem = _key.export_to_pem(private_key=True, password=None)
         _dict = _key.export_public(as_dict=True)
 
-        _private = open(settings.private_key_filename.format(UUID=str(_uuid)), "w")
-        _private.write(_pem.decode())
-        _private.close()
+        # A private key: closed whatever happens while it is written, and readable only by its owner.
+        descriptor = os.open(settings.private_key_filename.format(UUID=str(_uuid)),
+                             os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w") as _private:
+            _private.write(_pem.decode())
 
         _dict["kid"] = _uuid
         _dict["use"] = "enc"

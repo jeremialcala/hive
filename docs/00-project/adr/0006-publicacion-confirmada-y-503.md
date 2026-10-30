@@ -1,6 +1,6 @@
 # ADR-0006: Una notificación recibe `200` solo cuando el broker confirma el mensaje
 
-* **Estado:** accepted
+* **Estado:** superseded (por ADR-0021, 2026-10-18)
 * **Fecha:** 2026-10-12
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
@@ -10,6 +10,8 @@
 * **Controles OWASP afectados:** A10 (condiciones excepcionales), A08 (integridad de los datos)
 
 Decisión ya construida (PR #3, versión 0.1.0). Se registra aquí para que conste con sus alternativas.
+
+> **Sustituida por [ADR-0021](0021-el-webhook-solo-publica.md)**, aceptada el 2026-10-18. Lo construido la sigue hasta I4: el webhook responderá `200` con el acuse de Bifröst, y la identificación del contacto pasa a un worker de ingesta.
 
 > **Ampliada el 2026-10-13 por [ADR-0015](0015-que-se-responde-a-meta.md)**, que fija qué se responde en los demás
 > casos: `503` también cuando no responden la base de datos o el servicio de claves, y `200` para lo firmado que

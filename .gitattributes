@@ -1,0 +1,5 @@
+# Lo que corre en Linux va siempre con LF, también en una copia de Windows con core.autocrlf=true y en lo que sale
+# de `git archive` hacia midgard: con CRLF, `#!/usr/bin/env bash` busca `bash\r` y el script no arranca.
+*.sh        text eol=lf
+*.service   text eol=lf
+*.timer     text eol=lf

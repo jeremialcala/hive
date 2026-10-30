@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from pydantic import BaseModel, ConfigDict, Field
 
+from enums import Worker
+
 PUBLIC_KEY_EXAMPLE = {
     "kty": "EC",
     "crv": "P-256",
@@ -20,6 +22,11 @@ class OwnedKeyRequest(SigningKeyRequest):
     # A JWT signed by the new key for the token of this same request (auth.client.key_proof): whoever adds a key
     # proves they hold its private part.
     proof: str = Field(min_length=1, max_length=8192)
+
+
+class ServiceKeyRequest(SigningKeyRequest):
+    # Which worker of the response engine signs with it: that is what decides the routes it reaches (ADR-0022).
+    worker: Worker = Field(examples=[Worker.NOTIFIER])
 
 
 class ClientRequest(SigningKeyRequest):

@@ -17,11 +17,16 @@ import pymongo.collection
 import pytest
 from fastapi.testclient import TestClient
 
-import app as app_module
+from shared import bus
+import webhook as webhook_module
 import controller.facebook as facebook
-import controller.messages as messages
+import controller.ingestion as ingestion
 from classes import ChatBot
+from enums import Status
 from repository import TenantRepository, delete_client, kept_bots
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 APP_SECRET = os.environ["FACEBOOK_APP_SECRET"]
 # What mongoengine sends the database for: each call is one round trip.
@@ -62,7 +67,7 @@ def round_trips(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def queue(monkeypatch):
-    monkeypatch.setattr(messages, "send_message_to_queue", AsyncMock())
+    monkeypatch.setattr(ingestion, "send_message_to_queue", AsyncMock())
 
 
 @pytest.fixture(autouse=True)
@@ -80,38 +85,92 @@ def owner(register):
 @pytest.fixture
 def bot(owner):
     return owner.add_bot(ChatBot(name="Bot", role="Sales Assistant", description="A test chatbot", tone="helpful",
-                                 facebookToken="page-token"))
+                                 facebookToken="page-token", status=Status.ACT.value))
 
 
 def notify(bot_id, payload, secret=APP_SECRET):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return TestClient(app_module.app).post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                                            headers={"content-type": "application/json",
                                                     "X-Hub-Signature-256": signature})
 
 
+class KeptEvents:
+    """Stands for Bifröst."""
+
+    def __init__(self):
+        self.events = []
+
+    async def publish(self, subject, payload, message_id, headers=None):
+        self.events.append(subject)
+        return bus.Published(stream="WEBHOOK", sequence=len(self.events), duplicate=False)
+
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+def bifrost():
+    kept = KeptEvents()
+    bus.configure(kept)
+    yield kept
+    bus.configure(None)
+
+
+def another(payload, number=None):
+    """The next message: a new identifier of Meta, and the same person unless another number is given."""
+    text = json.dumps(payload).replace("wamid.TEST", f"wamid.{uuid.uuid4()}").replace("m_TEST", f"m_{uuid.uuid4()}")
+    return json.loads(text.replace("12025550143", number) if number else text)
+
+
+# --- With the bus: what the webhook costs in production (ADR-0021) -------------------------------------------------
+
 @pytest.mark.parametrize("payload", [WHATSAPP, MESSENGER], ids=["whatsapp", "messenger"])
-def test_a_known_contact_costs_two_round_trips(bot, round_trips, payload):
+def test_with_the_bus_the_webhook_asks_the_database_for_nothing(bot, bifrost, round_trips, payload):
+    """
+        The chatbot comes from memory and the contact is the ingestion worker's: nothing stands between Meta and
+        its answer but the signature and Bifröst. It is what puts the webhook within the 250 ms of RNF01.
+    """
     assert notify(bot.uuid, payload).status_code == 200
     round_trips.clear()
 
+    assert notify(bot.uuid, another(payload)).status_code == 200
+    assert notify(bot.uuid, another(WHATSAPP, number="12025550144")).status_code == 200
+    assert round_trips == []
+    assert len(bifrost.events) == 3
+
+
+def test_with_the_bus_a_chatbot_not_in_memory_costs_one_round_trip(bot, bifrost, round_trips):
+    kept_bots.forget()
+
+    assert notify(bot.uuid, WHATSAPP).status_code == 200
+    assert round_trips == [("chat_bot", "find")]
+
+
+# --- Without a bus: the webhook ingests itself, as development and the tests do ------------------------------------
+
+@pytest.mark.parametrize("payload", [WHATSAPP, MESSENGER], ids=["whatsapp", "messenger"])
+def test_without_a_bus_the_webhook_does_the_ingestion_before_answering(bot, round_trips, payload):
+    """What the ingestion worker costs, paid here inside the answer: why production has the bus (ADR-0021)."""
     assert notify(bot.uuid, payload).status_code == 200
-    # Whether the chatbot is still the client's, and the contact. The chatbot itself comes from memory.
-    assert round_trips == [("chat_bot", "find"), ("contact", "find")]
+    round_trips.clear()
+
+    assert notify(bot.uuid, another(payload)).status_code == 200
+    # The history is asked whether the message is new, the contact is found, and the message is stored once.
+    assert round_trips[:2] == [("messages", "find"), ("messages", "count_documents")]
+    assert ("contact", "find") in round_trips and round_trips.count(("messages", "insert_one")) == 1
+    assert ("contact", "insert_one") not in round_trips
 
 
-def test_a_new_contact_costs_five(bot, round_trips):
+def test_without_a_bus_a_message_meta_sends_again_only_asks_the_history(bot, round_trips):
     assert notify(bot.uuid, WHATSAPP).status_code == 200
     round_trips.clear()
-    other = json.loads(json.dumps(WHATSAPP).replace("12025550143", "12025550144"))
 
-    assert notify(bot.uuid, other).status_code == 200
-    # Five: the chatbot and the contact, as for a known one; then the chatbot again, saving the contact and making
-    # sure the chatbot was not deleted in the meantime. The find before the count is not a round trip: mongoengine
-    # opens a cursor for it and never reads it, and pymongo only goes to the database when one is read.
-    assert round_trips == [("chat_bot", "find"), ("contact", "find"), ("chat_bot", "find"),
-                           ("contact", "insert_one"), ("chat_bot", "find"), ("chat_bot", "count_documents")]
+    assert notify(bot.uuid, WHATSAPP).status_code == 200
+    # It is in the history: nothing else is asked, nothing is stored or handed to the queue again. The find before
+    # the count is not a round trip: mongoengine opens a cursor for it and never reads it.
+    assert round_trips == [("messages", "find"), ("messages", "count_documents")]
 
 
 def test_a_deleted_chatbot_is_not_answered_from_memory(owner, bot):

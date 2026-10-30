@@ -1,0 +1,144 @@
+# Hive's response engine as it runs on midgard (E7 of engine/docs/00-project/plan-de-los-workers.md). Copy to
+# /srv/apps/hive-engine/, next to its .env and its keys/ directory.
+#
+# The four workers of the skeleton, one container each, all from the same image (ADR-0008): each one says which it
+# is with its command. They pass each message along through Bifröst, and none serves a port.
+#
+#   * the image tag is never `latest`: ENGINE_IMAGE_TAG says which build runs, so a rollback is bringing the previous
+#     tag back up
+#   * Bifröst: each worker reads its own file of credentials, as Bifröst wrote it (its user, password and prefix of
+#     reply subjects), and Bifröst's CA, both read-only, over the external `bifrost` network
+#   * Andvari: the coordinator and the notifier log in with their own AppRole, `motor-<worker>`, to read their key for
+#     each client. The role ids are not secret and come from .env; each secret id is a file in keys/, readable only
+#     by uid 10001, the image's user
+#   * the LLM: the classifier and the responder call Hive's llama.cpp on the LAN (ADR-0010), at LLM_URL of .env, with
+#     the key of keys/llm-api-key. Neither of them needs Andvari
+#   * the gateway's management API is reached over the external `andvari` network, as host `hive-api` (until 2026-10-22, `bots-gateway`). The
+#     coordinator and the notifier sign their calls with the gateway's public key, keys/gateway-public.json, and the
+#     audience of .env, GATEWAY_AUDIENCE (ADR-0024)
+#   * traces go to Saga, Yggdrasil's Grafana Tempo, over the external `yggdrasil_saga` network
+#   * each worker is alive while it keeps asking Bifröst for messages: it touches /tmp/<worker>-alive at least every
+#     5 seconds, and the health check looks at how old that file is
+#
+#   ENGINE_IMAGE_TAG=<tag> docker compose --project-directory /srv/apps/hive-engine up -d
+
+name: hive-engine
+
+x-worker: &worker
+  image: ghcr.io/jeremialcala/hive-engine:${ENGINE_IMAGE_TAG:?ENGINE_IMAGE_TAG is required}
+  restart: unless-stopped
+  networks: [bifrost, andvari, saga]
+  read_only: true
+  # The worker writes nothing but its mark of life and what Python needs in /tmp.
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  mem_limit: 192m
+  cpus: 0.5
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+x-andvari: &andvari
+  ANDVARI_ADDR: https://andvari:8200
+  ANDVARI_CA_FILE: /run/andvari/ca.crt
+  ENGINE_SECRET_ID_FILE: /run/andvari/secret-id
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
+  LOG_LEVEL: INFO
+
+x-llm: &llm
+  LLM_URL: ${LLM_URL:?LLM_URL is required}
+  LLM_API_KEY_FILE: /run/llm/api-key
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://saga:4318
+  LOG_LEVEL: INFO
+
+x-gateway: &gateway
+  GATEWAY_URL: http://hive-api:5002
+  GATEWAY_AUDIENCE: ${GATEWAY_AUDIENCE:?GATEWAY_AUDIENCE is required}
+  GATEWAY_PUBLIC_KEYS_FILE: /run/gateway/gateway-public.json
+
+services:
+  classifier:
+    <<: *worker
+    container_name: hive-classifier
+    command: ["python", "-m", "src.workers.classifier"]
+    env_file: [/srv/infra/bifrost/credenciales/classifier.env]
+    # Bifröst, Saga y la LAN: no necesita Andvari.
+    networks: [bifrost, saga]
+    environment:
+      <<: *llm
+      OTEL_SERVICE_NAME: engine-classifier
+    volumes:
+      - ./keys/llm-api-key:/run/llm/api-key:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    healthcheck: &alive
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/classifier-alive') > 60)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  coordinator:
+    <<: *worker
+    container_name: hive-coordinator
+    command: ["python", "-m", "src.workers.coordinator"]
+    env_file: [/srv/infra/bifrost/credenciales/coordinator.env]
+    environment:
+      <<: [*andvari, *gateway]
+      OTEL_SERVICE_NAME: engine-coordinator
+      ENGINE_ROLE_ID: ${COORDINATOR_ROLE_ID:?COORDINATOR_ROLE_ID is required}
+    volumes:
+      - ./keys/coordinator-secret-id:/run/andvari/secret-id:ro
+      - ./keys/gateway-public.json:/run/gateway/gateway-public.json:ro
+      - /srv/infra/andvari/tls/ca.crt:/run/andvari/ca.crt:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    healthcheck:
+      <<: *alive
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/coordinator-alive') > 60)"]
+
+  responder:
+    <<: *worker
+    container_name: hive-responder
+    command: ["python", "-m", "src.workers.responder"]
+    env_file: [/srv/infra/bifrost/credenciales/responder.env]
+    networks: [bifrost, saga]
+    environment:
+      <<: *llm
+      OTEL_SERVICE_NAME: engine-responder
+    volumes:
+      - ./keys/llm-api-key:/run/llm/api-key:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    healthcheck:
+      <<: *alive
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/responder-alive') > 60)"]
+
+  notifier:
+    <<: *worker
+    container_name: hive-notifier
+    command: ["python", "-m", "src.workers.notifier"]
+    env_file: [/srv/infra/bifrost/credenciales/notifier.env]
+    environment:
+      <<: [*andvari, *gateway]
+      OTEL_SERVICE_NAME: engine-notifier
+      ENGINE_ROLE_ID: ${NOTIFIER_ROLE_ID:?NOTIFIER_ROLE_ID is required}
+    volumes:
+      - ./keys/notifier-secret-id:/run/andvari/secret-id:ro
+      - ./keys/gateway-public.json:/run/gateway/gateway-public.json:ro
+      - /srv/infra/andvari/tls/ca.crt:/run/andvari/ca.crt:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    healthcheck:
+      <<: *alive
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/notifier-alive') > 60)"]
+
+networks:
+  bifrost:
+    external: true
+  andvari:
+    external: true
+  saga:
+    name: yggdrasil_saga
+    external: true

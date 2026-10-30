@@ -51,9 +51,28 @@ Todo lo que el gateway guarda de un contacto, con el número descifrado:
 | `waId` | Su número de WhatsApp |
 | `fbId` | Su identificador de Messenger |
 | `isAdmin`, `status`, `createdAt`, `statusDate` | Estado del contacto y cuándo se creó |
+| `messages` | Su conversación con el bot, en los dos sentidos y en orden. Solo va en la exportación, no en el listado ni en la búsqueda |
 
-**El gateway no guarda los mensajes.** Los publica en la cola para el motor de respuestas y no conserva copia. Lo
-que el motor guarde de una conversación no sale por aquí.
+Cada mensaje de `messages` lleva estos campos:
+
+- `direction`: `in`, lo que escribió la persona, u `out`, lo que se le respondió;
+- `messageId`: el identificador de Meta;
+- `channel`;
+- `sentAt`: la hora, con zona;
+- `intent`;
+- `inReplyTo`: en una respuesta, el identificador de Meta del mensaje al que responde;
+- `text`: descifrado;
+- `attachments`: solo el tipo de cada adjunto.
+
+**El historial lo escribe el worker de ingesta** ([ADR-0017](../00-project/adr/0017-contexto-de-conversacion-e-historial.md)).
+Los mensajes entrantes llegan desde I4b y las respuestas del motor, desde D6a. Cada respuesta lleva en `inReplyTo` el
+mensaje al que responde. Todo se guarda en la colección `messages`:
+
+- **El texto va cifrado** con la clave de datos del cliente, ligado al campo `Message.text`.
+- **Quien escribe se guarda como el `uuid` del contacto,** nunca como su número.
+- **Cada mensaje caduca a los 12 meses** de guardarse (índice `expiresAt`).
+- **El mismo mensaje no se guarda dos veces**, aunque Meta lo reenvíe. La clave primaria es el bot, el sentido y el
+  identificador de Meta. Lo que el motor guarde por su lado no sale por aquí.
 
 ## Qué borra cada cosa
 
@@ -61,8 +80,8 @@ Los tres borrados son definitivos: quitan los documentos de la base, no los marc
 
 | Se borra | Con él se va | No toca |
 |---|---|---|
-| Un contacto | Todos los documentos de esa persona en ese bot | A la misma persona en otros bots del cliente |
-| Un bot | Sus contactos, números, reglas e intents, y sus credenciales de Meta | Los demás bots del cliente |
+| Un contacto | Todos los documentos de esa persona en ese bot y su conversación | A la misma persona en otros bots del cliente |
+| Un bot | Sus contactos, números, reglas, intents y conversaciones, y sus credenciales de Meta | Los demás bots del cliente |
 | Un cliente | Sus claves de firma, todos sus bots con todo lo anterior, sus tokens ya usados y su clave de datos envuelta | A los demás clientes |
 
 - **La respuesta dice cuánto se borró**, por tipo. Sirve de constancia.
@@ -94,6 +113,28 @@ configuración de cada bot con los endpoints de siempre.
 
 Un mensaje puede estar en camino mientras se borra su bot. Lo que se intenta guardar para un bot que ya no existe
 se descarta en el momento, y un cambio sobre un documento ya borrado no lo devuelve a la base.
+
+## El aviso al motor
+
+El contexto de cada conversación lo guarda el coordinador del motor en Bifröst, no el gateway. Por eso, después de
+cada borrado, la API de gestión lo anuncia en el stream `SUPRESIONES` (ADR-0017, RF15). Lo publica con su usuario de
+Bifröst, `gestion`, que no puede publicar nada más.
+
+| Se borra | Sujeto | Avisos |
+|---|---|---|
+| Un contacto | `gateway.contact.erased` | Uno por cada copia de esa persona en el bot, porque cada una tiene su contexto |
+| Un bot | `gateway.bot.erased` | Uno |
+| Un cliente | `gateway.client.erased` | Uno |
+
+- **Cada aviso es un `Supresion` del contrato v2**, y solo lleva identificadores: su `uuid` (que es también el
+  `Nats-Msg-Id`), qué se borró, el cliente, el bot, el contacto y cuándo.
+- **Un aviso que el bus no acepta no deshace ni hace fallar el borrado.** Deja una línea en el log, y el contexto
+  del que hablaba caduca solo a las 24 horas de su último mensaje.
+- **Lo que no se borra no se anuncia.** Ni lo que no existía, ni lo que no se pudo apuntar en el registro de
+  supresiones.
+- **Sin bus, en desarrollo, no se anuncia nada.**
+
+Probado en midgard contra el Bifröst real (2026-10-19): borrar un contacto por la API dejó un aviso en `SUPRESIONES`.
 
 ## Lo que el borrado no alcanza
 
@@ -171,6 +212,5 @@ Messenger. No es todavía la auditoría por cliente que pide RS14.
 - **Caducidad de los contactos.** El máximo de 12 meses sin actividad de la
   [clasificación de datos](../00-project/data-classification.md) no se aplica: el contacto no guarda cuándo
   escribió por última vez.
-- **Avisar al motor de respuestas** de que un contacto, un bot o un cliente se han borrado.
 - **Repetir los borrados por sí solo.** Tras una restauración hay que ejecutar el comando: nada lo detecta.
 - **Destruir la clave de un cliente de forma que alcance a los respaldos.** Descartado en ADR-0014.

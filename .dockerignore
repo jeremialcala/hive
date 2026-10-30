@@ -41,3 +41,8 @@ requirements-dev.lock
 Dockerfile
 .dockerignore
 *.md
+
+# The response engine (ADR-0023): it has its own image, built with engine/ as the context.
+engine/
+# The portal, the BFF of the PWA (HIG-93): it has its own image, like the engine's.
+portal/

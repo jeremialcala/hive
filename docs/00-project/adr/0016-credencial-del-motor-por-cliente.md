@@ -11,6 +11,8 @@
 
 Aceptada el 2026-10-13.
 
+> **Ampliada por [ADR-0022](0022-una-credencial-por-worker.md)**, aceptada el 2026-10-18: una clave por cliente y por worker, cada una con sus rutas.
+
 ## Contexto
 
 El motor de respuestas necesita del gateway la configuración de cada bot y sus tokens de Meta, y los pide por

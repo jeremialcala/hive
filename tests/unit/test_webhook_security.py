@@ -5,17 +5,19 @@ import hmac
 import json
 import os
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pika
 import pytest
 from fastapi.testclient import TestClient
 
-import app as app_module
+import webhook as webhook_module
 import controller.amqp_broker as broker
+import controller.ingestion as ingestion
 import controller.messages as messages
 from classes import FacebookRequest
+from enums import Status
 from controller import BrokerUnavailable
 from utils import is_valid_signature
 
@@ -50,15 +52,16 @@ def sign(body: bytes, secret: str = APP_SECRET) -> str:
 
 @pytest.fixture
 def client():
-    return TestClient(app_module.app)
+    return TestClient(webhook_module.app)
 
 
 @pytest.fixture
 def bot(monkeypatch):
-    _bot = SimpleNamespace(uuid=BOT_ID, verifyToken=VERIFY_TOKEN, appSecret=None)
-    monkeypatch.setattr(app_module, "find_webhook_bot", lambda bot_id: _bot)
+    _bot = SimpleNamespace(uuid=BOT_ID, clientId=uuid4(), verifyToken=VERIFY_TOKEN, appSecret=None,
+                           status=Status.ACT.value)
+    monkeypatch.setattr(webhook_module, "find_webhook_bot", lambda bot_id: _bot)
     # Read when asked for, not now: the tests change the secrets of the bot after this.
-    monkeypatch.setattr(app_module, "webhook_secrets",
+    monkeypatch.setattr(webhook_module, "webhook_secrets",
                         lambda bot: SimpleNamespace(verify_token=bot.verifyToken, app_secret=bot.appSecret))
     return _bot
 
@@ -66,7 +69,7 @@ def bot(monkeypatch):
 @pytest.fixture
 def process(monkeypatch):
     mock = AsyncMock()
-    monkeypatch.setattr(app_module, "ctr_process_messages", mock)
+    monkeypatch.setattr(webhook_module, "ctr_process_messages", mock)
     return mock
 
 
@@ -122,7 +125,7 @@ def test_bot_app_secret_overrides_the_global_one(client, bot, process):
 
 
 def test_notification_is_rejected_when_no_secret_is_configured(client, bot, process, monkeypatch):
-    monkeypatch.setattr(app_module.settings, "facebook_app_secret", None)
+    monkeypatch.setattr(webhook_module.settings, "facebook_app_secret", None)
 
     response = client.post(WEBHOOK, content=BODY, headers={**JSON, "X-Hub-Signature-256": sign(BODY, secret="")})
 
@@ -197,26 +200,30 @@ def test_health_answers_without_token_nor_database(client):
 
 @pytest.fixture
 def whatsapp_message(monkeypatch):
-    monkeypatch.setattr(messages, "ctr_identify_contact_by_wa_id",
-                        AsyncMock(return_value=SimpleNamespace(firstName="Ana", waId="584120000000")))
+    monkeypatch.setattr(ingestion, "ctr_identify_contact_by_wa_id",
+                        Mock(return_value=SimpleNamespace(firstName="Ana", waId="584120000000")))
     return FacebookRequest(**WHATSAPP_PAYLOAD)
+
+
+# A live chatbot: its notification does not also activate it (HIG-75).
+LIVE = SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID, status=Status.ACT.value)
 
 
 def test_processing_waits_for_the_broker(whatsapp_message, monkeypatch):
     send = AsyncMock()
-    monkeypatch.setattr(messages, "send_message_to_queue", send)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", send)
 
-    asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID)))
+    asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=LIVE))
 
     send.assert_awaited_once()
     assert send.await_args.kwargs["queue"] == "llm"
 
 
 def test_processing_does_not_swallow_a_broker_failure(whatsapp_message, monkeypatch):
-    monkeypatch.setattr(messages, "send_message_to_queue", AsyncMock(side_effect=BrokerUnavailable("llm")))
+    monkeypatch.setattr(ingestion, "send_message_to_queue", AsyncMock(side_effect=BrokerUnavailable("llm")))
 
     with pytest.raises(BrokerUnavailable):
-        asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID)))
+        asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=LIVE))
 
 
 def publish(monkeypatch, connection):

@@ -16,7 +16,7 @@ import sys
 HIGH = 7.0
 # Lo que no bloquea aunque sea alto: el código de pruebas. Una prueba maneja secretos de mentira y servicios
 # desechables por necesidad, y GitHub clasifica esas alertas aparte ("test"). Se informan, no rompen el build.
-TEST_PATHS = ("tests/",)
+TEST_PATHS = ("tests/", "engine/tests/")
 
 
 def rules_by_id(run: dict) -> dict:

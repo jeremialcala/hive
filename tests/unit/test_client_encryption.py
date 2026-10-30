@@ -15,11 +15,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as app_module
-import controller.messages as messages
+import webhook as webhook_module
+import controller.ingestion as ingestion
 from classes import ChatBot, ChatbotPhone, Client, Contact
 from crypto.fields import ClientCipher, NotEncrypted, is_encrypted, normalize_number
 from migrations import assign_operator_client, encrypt_client_data
 from repository import NotFound, TenantRepository, data_keys, operator_client
+
+# What Meta calls is its own service, apart from the management API.
+META = TestClient(webhook_module.app)
 
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 SECRETS = {"facebookToken": "EAAG-page-token-0123456789", "whatsappToken": "EAAG-whatsapp-token-9876543210",
@@ -46,7 +50,7 @@ def queue(monkeypatch):
     async def capture(queue, message):
         sent.append(json.loads(message.to_json()))
 
-    monkeypatch.setattr(messages, "send_message_to_queue", capture)
+    monkeypatch.setattr(ingestion, "send_message_to_queue", capture)
     return sent
 
 
@@ -67,7 +71,7 @@ def bot_id(http, caller):
 def notify(http, bot_id, payload, secret=SECRETS["appSecret"]):
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return http.post(f"/chat/{bot_id}", content=body,
+    return META.post(f"/chat/{bot_id}", content=body,
                      headers={"content-type": "application/json", "X-Hub-Signature-256": signature})
 
 
@@ -282,9 +286,9 @@ def test_the_message_for_the_engine_still_carries_the_number(http, bot_id, queue
     assert queue[0]["jwe_body"]["contact"] == {"name": "Ana", "waId": WA_ID}
 
 
-def test_a_contact_is_found_again_by_its_number(http, bot_id, queue):
+def test_a_contact_is_found_again_by_its_number(http, bot_id, queue, another):
     notify(http, bot_id, WHATSAPP)
-    notify(http, bot_id, WHATSAPP)
+    notify(http, bot_id, another(WHATSAPP))
 
     assert Contact.objects.count() == 1 and len(queue) == 2
 
@@ -327,7 +331,8 @@ def test_the_meta_credentials_go_in_and_do_not_come_out(http, caller, bot_id):
     info = http.get(f"/chat/{bot_id}/info", headers=caller.auth)
 
     assert info.status_code == 200
-    assert info.json()["data"]["credentials"] == {"facebookToken": True, "whatsappToken": True, "appSecret": True}
+    assert info.json()["data"]["credentials"] == {"facebookToken": True, "whatsappToken": True, "appSecret": True,
+                                                "wabaId": False}
     assert all(secret not in info.text for secret in SECRETS.values())
 
 
@@ -338,7 +343,7 @@ def test_the_answer_to_loading_credentials_does_not_repeat_them(http, caller):
 
     assert response.status_code == 200
     assert response.json()["data"] == {"uuid": bot, "credentials": {"facebookToken": True, "whatsappToken": True,
-                                                                     "appSecret": True}}
+                                                                     "appSecret": True, "wabaId": False}}
     assert all(secret not in response.text for secret in SECRETS.values())
 
 
@@ -347,9 +352,9 @@ def test_the_verification_token_is_given_to_its_client_and_is_the_one_that_works
     read = http.get(f"/chat/{created['uuid']}/info", headers=caller.auth).json()["data"]
 
     assert created["verifyToken"] == read["verifyToken"] and not is_encrypted(read["verifyToken"])
-    accepted = http.get(f"/chat/{created['uuid']}", params={"hub.mode": "subscribe", "hub.challenge": "42",
+    accepted = META.get(f"/chat/{created['uuid']}", params={"hub.mode": "subscribe", "hub.challenge": "42",
                                                             "hub.verify_token": read["verifyToken"]})
-    rejected = http.get(f"/chat/{created['uuid']}", params={"hub.mode": "subscribe", "hub.challenge": "42",
+    rejected = META.get(f"/chat/{created['uuid']}", params={"hub.mode": "subscribe", "hub.challenge": "42",
                                                             "hub.verify_token": ChatBot.objects(
                                                                 uuid=created["uuid"]).first().verifyToken})
     assert (accepted.status_code, accepted.text, rejected.status_code) == (200, "42", 403)
@@ -358,7 +363,8 @@ def test_the_verification_token_is_given_to_its_client_and_is_the_one_that_works
 def test_a_new_chatbot_has_no_credentials(http, caller):
     created = http.post("/bot", headers=caller.auth, json=BOT).json()["data"]
 
-    assert created["credentials"] == {"facebookToken": False, "whatsappToken": False, "appSecret": False}
+    assert created["credentials"] == {"facebookToken": False, "whatsappToken": False, "appSecret": False,
+                                      "wabaId": False}
     assert "facebookToken" not in created and "whatsappToken" not in created
 
 
@@ -439,7 +445,7 @@ def test_without_the_key_service_the_webhook_is_not_verified(http, caller, bot_i
     token = http.get(f"/chat/{bot_id}/info", headers=caller.auth).json()["data"]["verifyToken"]
     key_service_down()
 
-    response = http.get(f"/chat/{bot_id}", params={"hub.mode": "subscribe", "hub.challenge": "42",
+    response = META.get(f"/chat/{bot_id}", params={"hub.mode": "subscribe", "hub.challenge": "42",
                                                    "hub.verify_token": token})
 
     assert response.status_code == 503
@@ -472,11 +478,12 @@ def test_what_is_not_encrypted_does_not_need_the_key_service(http, caller, bot_i
     assert http.get("/health").status_code == 200
 
 
-def test_a_key_already_open_keeps_the_webhook_working_while_the_service_is_down(http, bot_id, queue, key_service):
+def test_a_key_already_open_keeps_the_webhook_working_while_the_service_is_down(http, bot_id, queue, key_service,
+                                                                               another):
     notify(http, bot_id, WHATSAPP)
     key_service.down = True
 
-    assert (notify(http, bot_id, WHATSAPP).status_code, len(queue)) == (200, 2)
+    assert (notify(http, bot_id, another(WHATSAPP)).status_code, len(queue)) == (200, 2)
 
 
 def test_a_message_is_not_lost_when_the_key_goes_between_the_signature_and_the_contact(http, bot_id, queue,

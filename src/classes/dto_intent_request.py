@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import logging
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from shared.destinations import MAX_LENGTH, check_destination
 from .tool_settings import Settings
 
 settings = Settings()
@@ -18,14 +20,31 @@ class ActionParameterRequest(BaseModel):
 
 
 class ApiCallRequest(BaseModel):
-    method: str = Field(default="GET", examples=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    url: str = Field(examples=["https://api.example.com/orders/{order_id}"])
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = Field(default="GET")
+    # Where the worker of the engine calls: https, a public host written out, never the platform's own network
+    # (shared.destinations, T11). Placeholders like {order_id} only go in the path or the query.
+    url: str = Field(max_length=MAX_LENGTH, examples=["https://api.example.com/orders/{order_id}"])
     headers: dict = Field(default={})
     query: dict = Field(default={})
     body: dict = Field(default={})
-    authType: str = Field(default="none", examples=["none", "bearer", "api_key", "basic"])
+    authType: Literal["none", "bearer", "api_key", "basic"] = Field(default="none")
     authRef: str = Field(default="", examples=["example_api_token"])
-    timeout: int = Field(default=30)
+    # Seconds the worker waits for the answer: the engine answers a person who is waiting.
+    timeout: int = Field(default=30, ge=1, le=30)
+
+    @field_validator("url")
+    @classmethod
+    def _destination(cls, url: str) -> str:
+        check_destination(url)
+        return url
+
+    @field_validator("headers")
+    @classmethod
+    def _no_host(cls, headers: dict) -> dict:
+        # With its own Host, a call to a public address could be served as a name of the platform's network.
+        if any(str(name).strip().lower() == "host" for name in headers):
+            raise ValueError("The headers of a call cannot set Host")
+        return headers
 
 
 class ActionRequest(BaseModel):

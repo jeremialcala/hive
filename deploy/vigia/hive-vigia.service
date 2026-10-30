@@ -1,0 +1,18 @@
+# /etc/systemd/system/hive-vigia.service
+[Unit]
+Description=Hive: reinicia los contenedores unhealthy y avisa por ntfy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hive-vigia.sh
+# Cada docker restart espera 10 s como mucho antes de matar. Esto corta la pasada si aun así se cuelga; si una se
+# alarga, el temporizador se salta la siguiente en vez de lanzar dos a la vez.
+TimeoutStartSec=120
+# Necesita root: reinicia contenedores y lee el tema de ntfy. ProtectSystem=full y no strict, como los otros vigías
+# de midgard: deja /var escribible para el estado y para el CLI de docker.
+StateDirectory=hive-vigia
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes

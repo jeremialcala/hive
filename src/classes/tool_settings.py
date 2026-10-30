@@ -5,11 +5,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Required: the app refuses to start without the key pair clients encrypt their tokens to. It is the path of
-    # a JWK Set file kept outside the repository and the image.
-    gateway_keys_file: str = Field(min_length=1)
+    # The key pair clients encrypt their tokens to: the path of a JWK Set file kept outside the repository and the
+    # image. The management API does not start without it (app.py); the webhook does not read it, and its
+    # container does not mount it.
+    gateway_keys_file: str | None = None
     # What clients put in the aud of their tokens, so a token issued for another service is not valid here.
-    gateway_audience: str = Field(min_length=8)
+    # Required by the management API, like the key pair.
+    gateway_audience: str | None = None
+    # The addresses a DPoP proof may say it was made for (ADR-0033), comma-separated and without a trailing slash:
+    # the public one, which is the audience, and the one the engine uses inside midgard. Without it, only the
+    # audience.
+    gateway_urls: str | None = None
+    # The IdP of the people of a client (ADR-0029): Zitadel. Its issuer, the client id the BFF has there, which its ID
+    # tokens are for, and where its public keys are, by its public name and with TLS. Without the issuer and the
+    # audience, the exchange of an ID token for an access token is turned away as a grant this service does not take.
+    idp_issuer: str | None = None
+    idp_audience: str | None = None
+    idp_jwks_url: str | None = None
+    # Hive's service account in Zitadel, which invites the people (HIG-94): its API, by default the issuer; the
+    # organization of Hive's people there; and the file its token is read from, which goes nowhere else.
+    idp_api_url: str | None = None
+    idp_organization_id: str | None = None
+    idp_token_file: str | None = None
     # The key service that holds the master key: an OpenBao. The app starts without reaching it, but nothing
     # encrypted can be read or written until it answers.
     andvari_addr: str = Field(min_length=8)
@@ -32,6 +49,12 @@ class Settings(BaseSettings):
     db_host: str
     db_username: str
     db_password: str
+    # How long a query, a connection or the choice of a server may take before it fails (classes/tool_database.py).
+    # Under the 10 seconds the engine's coordinator waits for each call, so it gets an answer, a 503, and not a
+    # timeout of its own.
+    db_timeout_ms: int = Field(default=5000, ge=500, le=30000)
+    # A connection idle longer than this is closed rather than reused.
+    db_max_idle_ms: int = Field(default=60000, ge=1000, le=600000)
 
     sender_email: str
     sender_password: str
@@ -47,6 +70,17 @@ class Settings(BaseSettings):
     qms_user: str
     qms_password: str
 
+    # The event bus, Bifröst (ADR-0019): the same names as the file Bifröst writes for each service in
+    # /srv/infra/bifrost/credenciales/<service>.env, so that file can be handed to the container as it is. Without
+    # NATS_URL there is no publisher. Outside development the address must be tls://.
+    nats_url: str | None = None
+    nats_user: str | None = None
+    nats_password: str | None = None
+    # The CA that signed Bifröst's certificate.
+    nats_ca: str | None = None
+    # Each service has its own prefix of reply subjects, and may only read those. Without one, NATS's own.
+    nats_inbox_prefix: str | None = None
+
     key_size: int
     private_key_filename: str
     public_key_filename: str
@@ -61,6 +95,10 @@ class Settings(BaseSettings):
     facebook_graph_url: str
     facebook_whatsapp_message: str
     facebook_graph_version: str
+
+    # The Graph API that manages the WhatsApp templates of a chatbot (HIG-85), at the version the engine sends with.
+    meta_graph_url: str = "https://graph.facebook.com"
+    meta_graph_version: str = "v26.0"
 
     # hide_input_in_errors: a rejected setting must not be echoed into the startup traceback.
     # extra="ignore": a key left over in config.env from a setting that no longer exists must not stop the start.

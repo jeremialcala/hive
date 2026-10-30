@@ -1,16 +1,17 @@
 # Project Charter — Gateway BaaS (Bot as a Service) de mensajería
 
-* **Estado:** approved (Gate 0, 2026-10-12)
+* **Estado:** approved (Gate 0 del refactor, 2026-10-18)
 * **Fecha:** 2026-10-12
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **Sponsor:** Jeremi Alcala
 * **Owner del proyecto:** Jeremi Alcala
+* **Producto:** Hive: API en `https://hive-api.higerotech.com`, webhook en `https://hive-webhook.higerotech.com` ([ADR-0024](adr/0024-el-producto-se-llama-hive.md), 2026-10-20)
 
 ## Visión
 
-Ofrecer a empresas (los **clientes**) chatbots de Facebook Messenger y WhatsApp Business como servicio: cada cliente
+Ofrecer a empresas (los **clientes**) chatbots de Facebook Messenger, WhatsApp Business e Instagram como servicio: cada cliente
 crea sus bots, los conecta a sus cuentas de Meta y administra los datos de sus propios bots, sin operar
 infraestructura. El gateway recibe los mensajes de Meta, identifica al contacto y entrega el mensaje a un motor de
 respuestas, protegiendo los datos personales de los usuarios finales conforme al GDPR.
@@ -19,8 +20,11 @@ respuestas, protegiendo los datos personales de los usuarios finales conforme al
 
 - Incluye:
   - Alta y administración de bots por cliente: persona del bot, reglas, intents y números de WhatsApp.
-  - Verificación del webhook ante Meta y recepción de notificaciones de Messenger y WhatsApp.
-  - Identificación de contactos y publicación de cada mensaje en la cola `llm` de RabbitMQ.
+  - Verificación del webhook ante Meta y recepción de notificaciones de Messenger, WhatsApp e Instagram.
+  - Identificación de contactos y publicación de cada mensaje en el bus de eventos: hoy la cola `llm` de
+    RabbitMQ; tras el refactor, NATS JetStream.
+  - Historial exportable de cada conversación, cifrado con la clave del cliente, y lo que el motor necesita para
+    rehacer su contexto.
   - Exposición de los intents de cada bot como herramientas para el motor de respuestas.
   - Registro de clientes y aislamiento entre ellos: cada cliente se autentica con su propio material de clave y
     solo ve y administra lo suyo.
@@ -33,7 +37,7 @@ respuestas, protegiendo los datos personales de los usuarios finales conforme al
     ([ADR-0002](adr/0002-el-motor-entrega-las-respuestas.md)).
   - Interfaz web para los clientes. La administración es por API.
   - Facturación, planes y medición de consumo.
-  - Canales que no sean Messenger y WhatsApp Business.
+  - Canales que no sean Messenger, WhatsApp Business e Instagram.
   - Gestión de las plantillas de mensaje y de las cuentas de Meta de los clientes: se hace en Meta.
 
 El alcance mezcla lo que ya existe con lo que falta. El gateway de hoy recibe y encola mensajes, y cada
@@ -48,9 +52,10 @@ mindmap
   root((Gateway BaaS))
     Capacidades
       Bots por cliente
-      Webhook de Messenger y WhatsApp
+      Webhook de Messenger, WhatsApp e Instagram
       Contactos identificados
-      Mensajes a la cola llm
+      Mensajes al bus de eventos
+      Historial de conversaciones
       Intents como herramientas
     Actores
       Cliente dueno de sus bots

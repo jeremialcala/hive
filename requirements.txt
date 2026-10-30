@@ -13,6 +13,10 @@ mongoengine>=0.28.2
 
 # Rest clients
 requests>=2.32
+# The CA bundle requests trusts. From 2026.10.19: the ones before trust the emSign roots whose intermediates had their
+# keys compromised (GHSA-6q48-6c7w-9gw2, critical, published 2026-10-20). Taken a day old, against the two-week rule:
+# no older release has the fix.
+certifi>=2026.10.19
 
 # PyDantic data validators
 pydantic>=2.6.4
@@ -31,3 +35,14 @@ PyYAML>=6.0.1
 
 # AMQP for RABBITMQ
 pika>=1.3.2
+
+# NATS JetStream for Bifröst, the event bus (ADR-0019)
+nats-py>=2.16
+
+# Traces (OpenTelemetry, R4): the SDK and its OTLP exporter over HTTP. No instrumentation package: they record the
+# address with its query string and the client's address, which the rule of the logs forbids (RS19). 1.45.1, published
+# on 2026-10-06, fixes CVE-2026-114603 of opentelemetry-api; a release is only taken once it is two weeks old, and
+# this one was on 2026-10-22. Below 1.46 until that one is too.
+opentelemetry-api>=1.45.1,<1.46
+opentelemetry-sdk>=1.45.1,<1.46
+opentelemetry-exporter-otlp-proto-http>=1.45.1,<1.46

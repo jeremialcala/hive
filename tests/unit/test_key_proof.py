@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
     RD-04 of the dual review of Gate 2: a client that adds a signing key proves it holds the private part, with a
-    proof signed by the new key for the token of the same request. Everything goes through the application.
+    proof signed by the new key for the access token of the same request (ADR-0025). Everything goes through the application.
 """
 import json
 import logging
@@ -13,8 +13,8 @@ from fastapi.testclient import TestClient
 from jwcrypto import jws
 
 import app as app_module
-from auth.client import key_proof, new_signing_key, public_part
-from auth.key_proof import PROOF_TYPE
+from shared.auth.client import access_token_jti, key_proof, new_signing_key, public_part
+from shared.auth.key_proof import PROOF_TYPE
 from conftest import GATEWAY_AUDIENCE
 from repository import get_client
 
@@ -75,9 +75,9 @@ def test_without_a_good_proof_the_key_is_not_added(http, register, caplog, kind)
     caller = register("acme")
     new = new_signing_key()
     request = caller.adding(new)
-    jti = str(uuid4())
-    request = {"headers": {"Authorization": f"Bearer {caller.token(jti=jti)}"},
-               "json": {**request["json"], "proof": BAD_PROOFS[kind](caller, new, jti)}}
+    token = caller.access_token()
+    request = {"headers": {"Authorization": f"DPoP {token}"},
+               "json": {**request["json"], "proof": BAD_PROOFS[kind](caller, new, access_token_jti(token))}}
 
     with caplog.at_level(logging.WARNING):
         response = http.post("/keys", **request)
@@ -105,12 +105,13 @@ def test_a_proof_does_not_serve_twice(http, register):
     assert http.post("/keys", **request).status_code == 200
     http.delete(f"/keys/{new['kid']}", headers=caller.auth)
 
-    # With a fresh token the proof is for another request; with the same one, the token is already used.
+    # With a new access token the proof is for another one; with the same one, which still serves for ten minutes
+    # (ADR-0025), the proof is already used.
     again_with_a_new_token = http.post("/keys", headers=caller.auth, json=request["json"])
     again_as_it_was = http.post("/keys", **request)
 
     assert again_with_a_new_token.status_code == 422
-    assert again_as_it_was.status_code == 401
+    assert (again_as_it_was.status_code, again_as_it_was.json()) == (422, {"detail": "INVALID_KEY_PROOF"})
     assert [key["kid"] for key in get_client(caller.client_id).signingKeys] == [caller.kid]
 
 

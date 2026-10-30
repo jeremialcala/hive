@@ -10,6 +10,15 @@ name: build
 on:
   push:
     branches: [main]
+    # A push to main that only changes the response engine does not redeploy the gateway: its image is the same.
+    # The engine is published by `build-engine` (ADR-0023).
+    paths-ignore:
+      - "engine/**"
+      - ".github/workflows/engine.yml"
+      - ".github/workflows/build-engine.yml"
+      # Nor one that only changes the portal (HIG-93), which has its own image.
+      - "portal/**"
+      - ".github/workflows/portal.yml"
   workflow_dispatch:
 
 permissions:
@@ -60,7 +69,7 @@ jobs:
       - run: pip install --require-hashes -r requirements-dev.lock
 
       # Branch coverage below what Gate 2 asks for breaks the build.
-      - run: pytest --cov=src --cov-branch --cov-fail-under=80
+      - run: pytest --cov=src --cov=shared --cov-branch --cov-fail-under=80
         env:
           OPENBAO_TEST_ADDR: http://127.0.0.1:8200
           OPENBAO_TEST_TOKEN: dev-root
@@ -87,7 +96,8 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          # By name, not by the repository's: the gateway and the engine are two images of one repository (ADR-0024).
+          images: ghcr.io/${{ github.repository_owner }}/hive-gateway
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}

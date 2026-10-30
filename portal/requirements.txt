@@ -1,0 +1,23 @@
+# ============================================================
+#  Runtime dependencies of hive-portal (HIG-93). Pinned with hashes in requirements.lock, constrained to the
+#  versions of the gateway's requirements.lock, so both run `shared/` on the same libraries:
+#    uv pip compile --universal --python-version 3.12 --generate-hashes requirements.txt \
+#      -c ../requirements.lock -o requirements.lock
+# ============================================================
+
+# The web of the portal, as the gateway's.
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+
+# Zitadel, hive-api and the JWKS: plain HTTP, with requests, which `shared/` uses too.
+requests
+certifi
+
+# The ID tokens and the DPoP proofs (shared.auth), and the sealing of the sessions (AES-GCM).
+jwcrypto
+cryptography
+
+# Bifröst: the bucket `sesiones`.
+nats-py

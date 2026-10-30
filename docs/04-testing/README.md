@@ -9,4 +9,6 @@ la estrategia y la evidencia agregada:
 
 Cierra con `.ai-dlc/gates/gate-3-testing.md`.
 
-Todavía vacía.
+Mediciones:
+
+- [I1: cuánto tarda hoy el webhook en responder a Meta](medicion-webhook-i1.md), la línea base de RNF01.

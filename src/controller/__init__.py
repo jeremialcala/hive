@@ -8,3 +8,7 @@ from .intents import *
 from .clients import *
 from .credentials import *
 from .contacts import *
+from .outbound import *
+from .templates import *
+from .people import *
+from .conversations import *

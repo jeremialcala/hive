@@ -5,18 +5,23 @@
     to check who owns what.
 """
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from mongoengine import Q
-from mongoengine.errors import SaveConditionError
+from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import ChatBot, ChatbotPhone, Client, Contact, Intent, Rule
-from crypto.fields import ClientCipher
-from enums import Status
+from classes import (ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
+                     MessageTemplate, OutboundRequest, Rule)
+from classes.entity_contact import Consent
+from classes.entity_conversation_message import INCOMING
+from classes.entity_outbound import FAILED, SENT
+from crypto.fields import ClientCipher, normalize_email
+from enums import PersonRole, PersonStatus, Status
 
 from . import erasures, kept_bots
 from .data_keys import cipher_for
-from .errors import NotFound
+from .errors import Conflict, NotFound
 
 # What is stored encrypted with the client's data key. The documents always hold the ciphertext: whoever
 # needs the value asks the repository for it, so a document saved again never writes it in clear.
@@ -24,9 +29,17 @@ BOT_SECRETS = ("verifyToken", "facebookToken", "whatsappToken", "appSecret")
 BOT_CREDENTIALS = ("facebookToken", "whatsappToken", "appSecret")
 PHONE_FIELDS = ("phoneNumber", "phoneId")
 
+# How much older than what Hive did in Meta a notice of Meta may be and still count: Meta says when in whole
+# seconds, and may approve a template before its creation is answered (HIG-86).
+NOTICE_MARGIN = timedelta(seconds=60)
+
+# How long a message of the history is kept at most, from when it is stored: 12 months (RNF05, ADR-0017).
+HISTORY_RETENTION = timedelta(days=365)
+
 # What is stored for a chatbot, and the field that says which one: all of it goes when the chatbot does.
 OF_A_BOT = (("contacts", Contact, "botId"), ("phones", ChatbotPhone, "bot_id"), ("rules", Rule, "botId"),
-            ("intents", Intent, "botId"))
+            ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"),
+            ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"))
 
 
 @dataclass(frozen=True)
@@ -94,9 +107,12 @@ class TenantRepository:
         return BotSecrets(verify_token=opened["verifyToken"], facebook_token=opened["facebookToken"],
                           whatsapp_token=opened["whatsappToken"], app_secret=opened["appSecret"])
 
-    def set_bot_credentials(self, bot_id, **credentials) -> ChatBot:
+    def set_bot_credentials(self, bot_id, wabaId: str | None = None, **credentials) -> ChatBot:
         """Loads or rotates the Meta credentials of a chatbot. Only the ones given change."""
         bot = self.get_bot(bot_id)
+        if wabaId is not None:
+            # An id of Meta, not a secret: it is stored as it is.
+            bot.wabaId = wabaId
         for field, value in credentials.items():
             if field not in BOT_CREDENTIALS:
                 raise ValueError(field)
@@ -106,6 +122,23 @@ class TenantRepository:
         # The webhook checks signatures against the secrets it was kept with.
         kept_bots.forget(saved.uuid)
         return saved
+
+    def move_bot(self, bot_uuid: UUID, start: tuple[Status, ...], to: Status) -> bool:
+        """
+            Moves a chatbot to `to`, but only from one of `start`, in one update that says whether it matched: two
+            processes that see the same bot do not undo each other, and nothing takes it out of LOK or DIS. Says
+            whether it moved.
+        """
+        moved = self._own(ChatBot, uuid=bot_uuid, status__in=[each.value for each in start]).update(
+            set__status=to.value, set__statusDate=datetime.now(timezone.utc))
+        if moved:
+            # The webhook keeps the chatbot it found: this process sees the new state at once, the others in KEEP_FOR.
+            kept_bots.forget(bot_uuid)
+        return bool(moved)
+
+    def list_bots(self) -> list:
+        """The chatbots of the client, oldest first."""
+        return list(self._own(ChatBot).order_by("createdAt"))
 
     def get_bot(self, bot_id) -> ChatBot:
         bot = self._own(ChatBot, uuid=as_uuid(bot_id)).first()
@@ -134,8 +167,9 @@ class TenantRepository:
             self._own(document, **{field: bot_uuid}).count() for _, document, field in OF_A_BOT)
 
     def stored(self) -> int:
-        """How many documents there are of the client, its chatbots included."""
-        return self._own(ChatBot).count() + sum(self._own(document).count() for _, document, _ in OF_A_BOT)
+        """How many documents there are of the client, its chatbots and its people included."""
+        return (self._own(ChatBot).count() + self._own(ClientUser).count()
+                + sum(self._own(document).count() for _, document, _ in OF_A_BOT))
 
     # The erase_ methods delete without writing it down in the register of erasures. They are for the delete_
     # methods, which write it down first, and for making again the deletions the register holds.
@@ -157,10 +191,15 @@ class TenantRepository:
         kept_bots.forget()
         for name, document, _ in OF_A_BOT:
             deleted[name] = self._own(document).delete()
+        # The people of the client: nobody gets in as one of them any more.
+        deleted["people"] = self._own(ClientUser).delete()
         return deleted
 
-    def erase_contacts(self, bot_uuid: UUID, contacts: list) -> int:
-        return self._own(Contact, botId=bot_uuid, _uuid__in=list(contacts)).delete()
+    def erase_contacts(self, bot_uuid: UUID, contacts: list) -> dict:
+        """The contacts first, then their history: from then on no new message is stored for them."""
+        return {"contacts": self._own(Contact, botId=bot_uuid, _uuid__in=list(contacts)).delete(),
+                "messages": self._own(ConversationMessage, botId=bot_uuid, contactId__in=list(contacts)).delete(),
+                "outbound": self._own(OutboundRequest, botId=bot_uuid, contactId__in=list(contacts)).delete()}
 
     def _add_to_bot(self, bot_id, document, field: str, seal=None):
         bot_uuid = self.get_bot(bot_id).uuid
@@ -175,6 +214,80 @@ class TenantRepository:
             document.delete()
             raise NotFound(bot_id)
         return document
+
+    # --- People (ADR-0029) -------------------------------------------------------------------------------------------
+
+    def add_person(self, email: str, issuer: str, subject: str, role: PersonRole, invited_by: str,
+                   status: PersonStatus = PersonStatus.PENDING) -> ClientUser:
+        """
+            A person of the client, with their identity in the IdP. Their email is stored encrypted and searched by
+            its blind index. Raises Conflict if the same person of the IdP is already a person of the client.
+        """
+        person = ClientUser(key=ClientUser.key_for(self.client_id, issuer, subject), clientId=self.client_id,
+                            issuer=issuer, subject=subject, role=role.value, status=status.value, invitedBy=invited_by,
+                            email=self._cipher.encrypt("ClientUser.email", normalize_email(email)),
+                            emailIndex=self._cipher.blind_index("ClientUser.email", email, normalize_email))
+        try:
+            person.save(force_insert=True)
+        except NotUniqueError:
+            person = self._invite_again(person)
+        if not Client.objects(uuid=self.client_id, status=Status.ACT.value).count():
+            # The client was deleted while this was on its way: nobody is left behind in its name.
+            person.delete()
+            raise NotFound(self.client_id)
+        return person
+
+    def _invite_again(self, person: ClientUser) -> ClientUser:
+        """The same person of the IdP is already in the client: only one that was removed is invited again."""
+        again = self._own(ClientUser, key=person.key, status=PersonStatus.REMOVED.value).modify(
+            new=True, set__email=person.email, set__emailIndex=person.emailIndex, set__role=person.role,
+            set__status=person.status, set__invitedBy=person.invitedBy, set__invitedAt=datetime.now(timezone.utc),
+            set__statusDate=datetime.now(timezone.utc))
+        if again is None:
+            raise Conflict("person")
+        return again
+
+    def list_people(self) -> list:
+        """The people of the client, the removed ones too: what is left of them says who did what."""
+        return list(self._own(ClientUser).order_by("invitedAt"))
+
+    def active_admins(self) -> int:
+        return self._own(ClientUser, role=PersonRole.ADMIN.value, status=PersonStatus.ACTIVE.value).count()
+
+    def set_person_role(self, person: ClientUser, role: PersonRole) -> ClientUser:
+        """Another role, from their next exchange of a token on."""
+        person.role = role.value
+        return self._save_own(person)
+
+    def remove_person(self, person: ClientUser) -> ClientUser:
+        """
+            The person gets no token any more, ever, and their email is erased: what is left, the uuid and who they
+            are in the IdP, is what the client's audit says who did what by. Inviting them again brings them back.
+        """
+        person.status, person.statusDate = PersonStatus.REMOVED.value, datetime.now(timezone.utc)
+        person.email, person.emailIndex = None, None
+        return self._save_own(person)
+
+    def get_person(self, person_id) -> ClientUser:
+        person = self._own(ClientUser, uuid=as_uuid(person_id)).first()
+        if person is None:
+            raise NotFound(person_id)
+        return person
+
+    def find_person_by_email(self, email: str) -> ClientUser | None:
+        return self._own(ClientUser, emailIndex=self._cipher.blind_index("ClientUser.email", email,
+                                                                         normalize_email)).first()
+
+    def person_email(self, person: ClientUser) -> str | None:
+        """The email, opened; None for a person who was removed."""
+        if person.clientId != self.client_id:
+            raise NotFound(person.uuid)
+        return self._cipher.decrypt("ClientUser.email", person.email) if person.email else None
+
+    def set_person_status(self, person: ClientUser, status: PersonStatus) -> ClientUser:
+        """Lets a person in, blocks them or removes them: from their next exchange of a token on (ADR-0029, point 8)."""
+        person.status, person.statusDate = status.value, datetime.now(timezone.utc)
+        return self._save_own(person)
 
     # --- Phones -----------------------------------------------------------------------------------------------------
 
@@ -276,10 +389,10 @@ class TenantRepository:
             raise NotFound(contact_id)
         return contact
 
-    def delete_contact(self, bot_id, contact_id) -> int:
+    def contact_copies(self, bot_id, contact_id) -> tuple[UUID, list[UUID]]:
         """
-            Deletes a contact of a chatbot. Two first messages arriving at once can store the same person twice,
-            and deleting one would leave the other: every document of that person for that chatbot goes.
+            The chatbot of a contact and every contact of that same person in it. Two first messages arriving at once
+            can store the same person twice: deleting one would leave the other.
         """
         contact = self.get_contact(bot_id, contact_id)
         same = Q(_uuid=contact._uuid)
@@ -287,6 +400,206 @@ class TenantRepository:
             same |= Q(waIdIndex=contact.waIdIndex)
         if contact.fbId:
             same |= Q(fbId=contact.fbId)
-        copies = [copy._uuid for copy in self._own(Contact, botId=contact.botId).filter(same)]
-        erasures.record(erasures.CONTACT, self.client_id, bot_id=contact.botId, contacts=copies)
-        return self.erase_contacts(contact.botId, copies)
+        return contact.botId, [copy._uuid for copy in self._own(Contact, botId=contact.botId).filter(same)]
+
+    def delete_contact(self, bot_id, contact_id) -> dict:
+        """Deletes a contact of a chatbot: every document of that person for that chatbot goes."""
+        bot_uuid, copies = self.contact_copies(bot_id, contact_id)
+        erasures.record(erasures.CONTACT, self.client_id, bot_id=bot_uuid, contacts=copies)
+        return self.erase_contacts(bot_uuid, copies)
+
+    def set_consent(self, contact: Contact, categories: list[str], source: str, granted_at: datetime) -> Contact:
+        """Records that the contact agreed to the client's messages of those categories (RF31). It replaces any before."""
+        contact.consent = Consent(categories=list(categories), source=source, grantedAt=granted_at)
+        return self._save_own(contact)
+
+    def withdraw_consent(self, contact: Contact, when: datetime) -> Contact:
+        """The contact withdrew it: it is kept, with when, and nothing outside the window is sent any more."""
+        if contact.consent is None:
+            # There was nothing to withdraw: nothing changes, and nothing is sent outside the window either way.
+            return contact
+        if contact.consent.withdrawnAt is None:
+            contact.consent.withdrawnAt = when
+        return self._save_own(contact)
+
+    # --- What the client sends to its contacts (ADR-0031) ------------------------------------------------------------
+
+    def last_phone_id(self, contact: Contact) -> str | None:
+        """The phone_number_id of the bot's number the contact last wrote to, opened; None if not known yet."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        return self._cipher.decrypt("Contact.lastPhoneId", contact.lastPhoneId) if contact.lastPhoneId else None
+
+    def remember_phone(self, contact: Contact, phone_id: str) -> None:
+        """The bot's number the contact wrote to now, encrypted, if it is another: only then is anything written."""
+        if contact.clientId != self.client_id or not phone_id or self.last_phone_id(contact) == phone_id:
+            return
+        sealed = self._cipher.encrypt("Contact.lastPhoneId", phone_id)
+        self._own(Contact, _uuid=contact._uuid).update_one(set__lastPhoneId=sealed)
+        contact.lastPhoneId = sealed
+
+    def first_phone_id(self, bot_uuid: UUID) -> str | None:
+        """The phone_number_id of the first number registered for the bot, opened; None if it has none."""
+        phone = self._own(ChatbotPhone, bot_id=bot_uuid).order_by("id").first()
+        return self.phone_numbers(phone)["phoneId"] if phone is not None else None
+
+    def find_template(self, bot_uuid: UUID, name: str, language: str) -> MessageTemplate | None:
+        return self._own(MessageTemplate, key=MessageTemplate.key_for(bot_uuid, name, language)).first()
+
+    def list_templates(self, bot_uuid: UUID) -> list:
+        return list(self._own(MessageTemplate, botId=bot_uuid).order_by("name", "language"))
+
+    def template_by_meta_id(self, bot_uuid: UUID, meta_id: str) -> MessageTemplate | None:
+        return self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).first()
+
+    def save_template(self, bot: ChatBot, template: MessageTemplate) -> MessageTemplate:
+        """Hive's copy of a template of one of the client's chatbots, over the one it had of it."""
+        if bot.clientId != self.client_id:
+            raise NotFound(bot.uuid)
+        template.clientId, template.botId = self.client_id, bot.uuid
+        template.key = MessageTemplate.key_for(bot.uuid, template.name, template.language)
+        template.updatedAt = datetime.now(timezone.utc)
+        # What Hive did or saw in Meta now: a notice of Meta from a little before still counts (HIG-86).
+        template.statusAt = template.updatedAt - NOTICE_MARGIN
+        template.save()
+        if not self._own(ChatBot, uuid=bot.uuid).count():
+            # The chatbot was deleted between the lookup and the save: this would be left behind, out of reach.
+            template.delete()
+            raise NotFound(bot.uuid)
+        return template
+
+    def apply_template_notice(self, bot_uuid: UUID, meta_id: str, status: str | None, reason: str | None,
+                              at: datetime) -> str:
+        """
+            Applies a notice of Meta to the copy of a template, in one write that only goes through if the copy is
+            not newer than the notice: a notice delivered late does not undo one that came after it. With status
+            None, it only says as of when. Says whether it was applied, older, or of a template Hive does not have.
+        """
+        if not self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).count():
+            return "unknown"
+        changes = {"set__statusAt": at, "set__updatedAt": datetime.now(timezone.utc)}
+        if status is not None:
+            changes.update(set__status=status, set__statusReason=reason)
+        applied = self._own(MessageTemplate, botId=bot_uuid, metaId=meta_id).filter(
+            Q(statusAt=None) | Q(statusAt__lte=at)).update_one(**changes)
+        return "applied" if applied else "older"
+
+    def forget_templates(self, bot_uuid: UUID, keep: set) -> int:
+        """Removes the copies of the templates Meta does not have any more: how many."""
+        return self._own(MessageTemplate, botId=bot_uuid, key__nin=sorted(keep)).delete()
+
+    def delete_template(self, template: MessageTemplate) -> None:
+        self._own(MessageTemplate, key=template.key).delete()
+
+    def outbound_request(self, idempotency_key: str) -> OutboundRequest | None:
+        return self._own(OutboundRequest, key=OutboundRequest.key_for(self.client_id, idempotency_key)).first()
+
+    def remember_outbound(self, request: OutboundRequest) -> bool:
+        """Stores a request under its idempotency key. False if another one with the same key got there first."""
+        if request.clientId != self.client_id:
+            raise NotFound(request.uuid)
+        try:
+            request.save(force_insert=True)
+        except NotUniqueError:
+            return False
+        return True
+
+    def outbound_of(self, contact: Contact, request_id) -> OutboundRequest | None:
+        """A request to send to that contact, by its uuid, while it is remembered (24 hours)."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        return self._own(OutboundRequest, uuid=as_uuid(request_id), botId=contact.botId,
+                         contactId=contact._uuid).first()
+
+    def outbound_sent(self, request_id: UUID, message_id: str, sent_at: datetime) -> bool:
+        """Meta took the request: its message id. Only a request not failed meanwhile; says whether it changed."""
+        return bool(self._own(OutboundRequest, uuid=request_id, status__ne=FAILED).update_one(
+            set__status=SENT, set__messageId=message_id, set__sentAt=sent_at))
+
+    def outbound_failed(self, request_id: UUID, code: int | None, reason: str, failed_at: datetime) -> bool:
+        """The request will not be sent: why. Not one already sent; says whether it changed."""
+        return bool(self._own(OutboundRequest, uuid=request_id, status__ne=SENT).update_one(
+            set__status=FAILED, set__failureCode=code, set__failureReason=reason, set__failedAt=failed_at))
+
+    def forget_outbound(self, request: OutboundRequest) -> None:
+        """A request the bus did not take: the same key can be tried again."""
+        self._own(OutboundRequest, key=request.key).delete()
+
+    # --- History ----------------------------------------------------------------------------------------------------
+
+    def last_incoming_at(self, contact: Contact) -> datetime | None:
+        """When the contact last wrote, which opens Meta's window of 24 hours; None if it never did."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        last = (self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid, direction=INCOMING)
+                .order_by("-sentAt").only("sentAt").first())
+        return last.sentAt if last else None
+
+    def has_message(self, bot_uuid: UUID, direction: str, message_id: str) -> bool:
+        """Whether a message is already in the history: one Meta sends again is."""
+        return bool(self._own(ConversationMessage, key=ConversationMessage.key_for(bot_uuid, direction,
+                                                                                  message_id)).count())
+
+    def record_message(self, contact: Contact, direction: str, message_id: str, channel: str, sent_at: datetime,
+                       text: str | None = None, attachments: tuple = (), intent: str | None = None,
+                       in_reply_to: str | None = None, origin: str | None = None,
+                       sent_by: str | None = None) -> bool:
+        """
+            Stores one message of the contact's conversation, with its text encrypted. False if it was already
+            stored: storing it twice changes nothing, and does not tell whoever sent it again apart.
+        """
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        now = datetime.now(timezone.utc)
+        message = ConversationMessage(
+            key=ConversationMessage.key_for(contact.botId, direction, message_id), clientId=self.client_id,
+            botId=contact.botId, contactId=contact._uuid, direction=direction, messageId=message_id,
+            channel=channel, sentAt=sent_at, text=self._cipher.encrypt("Message.text", text),
+            attachments=list(attachments), intent=intent, inReplyTo=in_reply_to, origin=origin, sentBy=sent_by,
+            createdAt=now,
+            expiresAt=now + HISTORY_RETENTION)
+        try:
+            message.save(force_insert=True)
+        except NotUniqueError:
+            return False
+        if not self._own(Contact, _uuid=contact._uuid).count():
+            # The contact was deleted between finding it and storing this: nothing is left behind in its name.
+            message.delete()
+            raise NotFound(contact._uuid)
+        return True
+
+    def recent_history(self, contact: Contact, limit: int = 50) -> list[dict]:
+        """The last `limit` messages of the contact's conversation, oldest first, with each text opened."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        last = list(self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid)
+                    .order_by("-sentAt").limit(limit))
+        return self._opened(reversed(last))
+
+    def history(self, contact: Contact) -> list[dict]:
+        """The contact's conversation, oldest first, with each text opened."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        return self._opened(self._own(ConversationMessage, botId=contact.botId,
+                                      contactId=contact._uuid).order_by("sentAt"))
+
+    def last_turns(self, contact: Contact, turns: int = 10) -> list[dict]:
+        """
+            The last turns of the contact's conversation, oldest first: from the `turns`-th last message the contact
+            sent, everything that came after, both ways (RF15). What the engine's coordinator rebuilds its context
+            with when it has none.
+        """
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        conversation = self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid)
+        starts = list(conversation.filter(direction=INCOMING).order_by("-sentAt").limit(turns).only("sentAt"))
+        if not starts:
+            return []
+        return self._opened(conversation.filter(sentAt__gte=starts[-1].sentAt).order_by("sentAt"))
+
+    def _opened(self, messages) -> list[dict]:
+        return [{"direction": message.direction, "messageId": message.messageId, "channel": message.channel,
+                 "sentAt": message.sentAt.replace(tzinfo=timezone.utc), "intent": message.intent,
+                 "inReplyTo": message.inReplyTo, "origin": message.origin, "sentBy": message.sentBy,
+                 "text": self._cipher.decrypt("Message.text", message.text),
+                 "attachments": list(message.attachments)} for message in messages]

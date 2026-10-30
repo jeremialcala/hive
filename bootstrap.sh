@@ -1,11 +1,11 @@
 #!/bin/bash
-gh repo clone jeremialcala/wh-python-fastapi-messenger
-cd wh-python-fastapi-messenger/ || exit
+gh repo clone jeremialcala/hive
+cd hive/ || exit
 git checkout develop
 git pull
 
-docker rm -f wh-python-fastapi-messenger
-docker rmi wh-python-fastapi-messenger
+docker rm -f hive-api
+docker rmi hive-gateway
 docker system prune -a -f
-docker build -t wh-python-fastapi-messenger:latest .
-docker run -it -p 5002:5002 --name wh-python-fastapi-messenger -d wh-python-fastapi-messenger
+docker build -t hive-gateway:latest .
+docker run -it -p 5002:5002 --name hive-api -d hive-gateway

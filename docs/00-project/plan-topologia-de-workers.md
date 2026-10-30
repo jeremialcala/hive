@@ -204,8 +204,8 @@ artefactos de los gates 0 y 1 como cambios sobre la línea base 0.3.0, y luego s
 | Paso | Gate | Qué se produce |
 |---|---|---|
 | 0 | Cierre del Gate 2 actual | **Hecho el 2026-10-18**: revisión dual, corte de la 0.3.0 en el CHANGELOG y tag |
-| 1 | Requisitos (Gate 0) | PRD: RNF01 con 250 ms de mediana y menos de un 1 % sobre 1 s para WhatsApp; requisitos de orden por conversación, de traza y del canal de Instagram; escenarios de abuso nuevos (un evento repetido, un evento fuera de orden, datos personales en el bus o en una traza, un servicio que publica en un sujeto ajeno); clasificación de datos con el bus, los spans y el identificador de Instagram |
-| 2 | Diseño (Gate 1) | ADR-0017 (D6, ya propuesta); ADRs de D1 (NATS JetStream), de su placement en midgard, de D2 (reescribe ADR-0006 y ADR-0015) y de D3 (amplía ADR-0016); ADR-0011 y AsyncAPI 2.0.0; arquitectura con el worker de ingesta y NATS; threat model con los límites de confianza nuevos y T11 |
+| 1 | Requisitos (Gate 0) | **Aprobado el 2026-10-18** (PRD 0.3.0). PRD: RNF01 con 250 ms de mediana y menos de un 1 % sobre 1 s para WhatsApp; requisitos de orden por conversación, de traza y del canal de Instagram; escenarios de abuso nuevos (un evento repetido, un evento fuera de orden, datos personales en el bus o en una traza, un servicio que publica en un sujeto ajeno); clasificación de datos con el bus, los spans y el identificador de Instagram |
+| 2 | Diseño (Gate 1) | **Aprobado el 2026-10-18**, con ADR-0017, ADR-0019 y ADR-0020 aceptadas a condición de I0. ADR-0017 (D6); [ADR-0019](adr/0019-nats-jetstream-como-bus.md) (D1, NATS JetStream) y [ADR-0020](adr/0020-placement-de-bifrost.md) (su placement en midgard, como Bifröst), [ADR-0021](adr/0021-el-webhook-solo-publica.md) (D2) y [ADR-0022](adr/0022-una-credencial-por-worker.md) (D3), propuestas, y el [AsyncAPI 2.0.0](../02-design/contracts/asyncapi-v2.yaml); arquitectura y threat model del objetivo (en revisión); de D2 (reescribe ADR-0006 y ADR-0015) y de D3 (amplía ADR-0016); ADR-0011 y AsyncAPI 2.0.0; arquitectura con el worker de ingesta y NATS; threat model con los límites de confianza nuevos y T11 |
 | 3 | Implementación (Gate 2) | Los incrementos de abajo, uno por PR a `develop` |
 | 4 | Pruebas (Gate 3) | Medición de latencia contra Atlas y NATS reales en midgard, que es la evidencia de RNF01; corte de la 0.4.0 |
 
@@ -213,20 +213,20 @@ Incrementos del paso 3, en este orden (eje trazabilidad: qué depende de qué):
 
 ```mermaid
 flowchart LR
-    IS["IS Separar el webhook de la API de gestion (RD-05)"] --> I1
-    I1["I1 Medir el webhook actual en midgard"] --> I4
-    I0["I0 NATS JetStream en midgard (R8)"] --> I2
-    I2["I2 Puerto de publicacion sobre NATS (R2)"] --> I3
-    I3["I3 Contrato v2 y publicacion por mensaje (R3)"] --> I4
-    I4["I4 Worker de ingesta y webhook que solo publica (R1)"] --> I5
+    IS["IS Separar el webhook de la API de gestion (RD-05), hecho"] --> I1
+    I1["I1 Medir el webhook actual en midgard, hecho"] --> I4
+    I0["I0 NATS JetStream en midgard (R8), hecho"] --> I2
+    I2["I2 Puerto de publicacion sobre NATS (R2), hecho"] --> I3
+    I3["I3 Contrato v2 y un evento por notificacion (R3), hecho"] --> I4
+    I4["I4 Worker de ingesta y webhook que solo publica (R1), hecho"] --> I5
     I4 --> I8
-    I5["I5 OpenTelemetry con la regla de los logs (R4)"]
+    I5["I5 OpenTelemetry con la regla de los logs (R4), hecho"]
     I6["I6 Credencial por worker (R5)"]
     I7["I7 Destinos de los intents (R6)"]
     I8["I8 Canal de Instagram (R7)"]
 ```
 
-IS va antes que nada: es la condición con la que se aceptó RD-05 al cerrar el Gate 2, y tiene que estar antes del primer despliegue. Deja el webhook en su propio contenedor, sin las rutas ni las claves de gestión. I1 va después porque da la cifra contra la que se mide todo lo demás, y se mide con el camino actual, todavía
+IS va antes que nada: es la condición con la que se aceptó RD-05 al cerrar el Gate 2, y tiene que estar antes del primer despliegue. Hecho con [ADR-0018](adr/0018-webhook-y-gestion-por-separado.md). Deja el webhook en su propio contenedor, sin las rutas ni las claves de gestión. I1 va después porque da la cifra contra la que se mide todo lo demás, y se mide con el camino actual, todavía
 sobre Hermod. I0 es un despliegue en midgard, como el de Hermod y Andvari. I6 e I7 no dependen del resto y pueden
 ir en paralelo; Instagram va detrás del worker de ingesta para nacer ya en el camino nuevo. Del lado del motor,
 que es otro repositorio, quedan partirlo en workers, leer de NATS el contrato v2, deduplicar y respetar la clave

@@ -17,6 +17,26 @@ y ADR-0002 a ADR-0012 en `accepted`.
 | Contratos | [`openapi.yaml`](../../docs/02-design/contracts/openapi.yaml), generado de la aplicación, y [`asyncapi.yaml`](../../docs/02-design/contracts/asyncapi.yaml); ocho pruebas en `tests/contract` |
 | Patrones por amenaza | Tabla de patrones en `architecture.md`, ordenada por DREAD |
 
+## Refactor de la topología de workers: aprobado el 2026-10-18
+
+El refactor reabre el diseño como cambios sobre esta línea base ([plan](../../docs/00-project/plan-topologia-de-workers.md),
+paso 2).
+
+| Criterio | Evidencia del refactor |
+|---|---|
+| Arquitectura C4 | `architecture.md` 0.3.0, "Objetivo del refactor": Container con los tres servicios del gateway, Bifröst y el bucket de contexto; secuencia de la notificación con sus fallos; ciclo de vida de un evento en `WEBHOOK`; qué tiene cada servicio; brecha por incrementos |
+| Threat model | `threat-model.md` 0.3.0: DFD del objetivo con la frontera TB7 (Bifröst), y T22–T31 con STRIDE, DREAD y su verificación prevista |
+| ADRs | ADR-0017 a ADR-0022 (la 0018, aceptada; las demás, propuestas) |
+| Contratos | `asyncapi-v2.yaml`, con su prueba de coherencia; los dos OpenAPI, generados de los dos servicios |
+| Patrones por amenaza | Siete patrones nuevos en `architecture.md`, para T22–T31 |
+
+**Aprobado el 2026-10-18 por Jeremi Alcala**, con las cinco casillas cumplidas también para los cambios:
+arquitectura, threat model y `asyncapi-v2.yaml` en `approved`. ADR-0021 y ADR-0022 quedan aceptadas. ADR-0017,
+ADR-0019 y ADR-0020 se aceptan **con condición**: que I0 confirme en el NATS de midgard que el bucket de contexto
+renueva su caducidad en cada escritura y que el `fsync` en cada escritura cabe en el plazo del webhook. Si no, vuelven
+a `proposed` con la salida que dice cada una. **I0, el 2026-10-19:** la caducidad del bucket se cumple, y ADR-0017 queda aceptada sin condición. El `fsync` cabe para una notificación de un mensaje (44,5 ms de mediana), pero no para las de varios. El 2026-10-19 se decidió un evento por notificación: hasta la notificación más grande de Meta (3 MB) cabe en 196 ms de mediana, y ADR-0019 y ADR-0020 quedan aceptadas sin condición. ADR-0006 queda sustituida por ADR-0021, y ADR-0016 ampliada por
+ADR-0022. No se corta versión: la `0.4.0` es del Gate 3 del refactor.
+
 ## Qué significa este cierre
 
 El gate aprueba el **diseño**, no su construcción. La sección "Brecha entre lo construido y el diseño" de
