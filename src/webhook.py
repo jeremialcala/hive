@@ -13,6 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
 from shared import bus
+from auth import request_limits
 from classes import ChatBot, FacebookRequest
 from constants import HUB_CHALLENGE, HUB_MODE, HUB_SIGNATURE, HUB_VERIFY_TOKEN, SUBSCRIBE, WEBHOOK_DESCRIPTION
 from controller import RETRY_LATER, ctr_process_messages
@@ -94,7 +95,9 @@ async def get_signed_webhook_bot(request: Request, _bot: ChatBot = Depends(get_w
     return _bot
 
 
-app = build(title="Meta webhook", summary="What Meta calls for each chatbot", description=WEBHOOK_DESCRIPTION,
+# An origin that keeps sending what Meta did not sign waits, before its body is read (HIG-139).
+app = build(limit=request_limits.WEBHOOK, title="Meta webhook", summary="What Meta calls for each chatbot",
+            description=WEBHOOK_DESCRIPTION,
             openapi_tags=[{"name": "Chat", "description": "The verification and the notifications of a chatbot."}])
 
 

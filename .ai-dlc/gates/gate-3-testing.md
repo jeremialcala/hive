@@ -24,7 +24,6 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o
     una ADR citados dejan de existir.
   - **Falta:** sus huecos, cada uno con su tarea:
-    - límites en el resto de rutas (HIG-139);
     - el pipeline del Gate 4 (HIG-20);
     - las alertas y el runbook (HIG-140).
 - [x] DAST limpio
