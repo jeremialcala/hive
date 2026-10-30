@@ -12,6 +12,7 @@
 import hashlib
 import hmac
 import json
+import re
 from urllib.parse import quote
 
 import pytest
@@ -60,7 +61,7 @@ BODIES = {
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health"), ("POST", "/oauth/token")}
 WITH_IDS = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
                   for method in route.methods if "{" in route.path and (method, route.path) not in PUBLIC)
-CASES = [(method, path, name) for method, path in WITH_IDS for name in __import__("re").findall(r"{(\w+)}", path)]
+CASES = [(method, path, name) for method, path in WITH_IDS for name in re.findall(r"{(\w+)}", path)]
 APP_SECRET = "an-app-secret-of-the-hostile-tests"
 
 
@@ -94,7 +95,7 @@ def address(path: str, ids: dict, hostile_name: str, hostile: str) -> str:
 
 
 @pytest.mark.parametrize("hostile", HOSTILE, ids=lambda value: repr(value[:24]))
-@pytest.mark.parametrize("method,path,name", CASES, ids=lambda part: str(part))
+@pytest.mark.parametrize("method,path,name", CASES, ids=str)
 def test_a_hostile_id_in_the_address_is_a_4xx_that_matches_nothing(http, caller, stored, method, path, name,
                                                                     hostile):
     url = address(path, stored, name, hostile)
