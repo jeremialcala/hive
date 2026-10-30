@@ -15,9 +15,16 @@ lo que está y lo que falta. Lo que falta es HIG-125.
   - **Falta:** `tests/e2e/` y `tests/security/` están vacíos. Las comprobaciones de seguridad existen, pero como pruebas
     unitarias: `test_client_isolation`, `test_dpop`, `test_role_matrix` y `test_webhook_security`, entre otras.
 - [ ] Matriz OWASP Top 10 ejecutada
-  - **Falta:** `.ai-dlc/owasp-mapping.md` sigue siendo la copia de la plantilla, «sin adaptar todavía». Los controles
-    que hay de verdad (aislamiento por cliente, DPoP, firma de Meta, CSP del portal, cifrado por cliente) no están
-    trazados en ella.
+  - **Está** (2026-10-30, HIG-133): [`owasp-mapping.md`](../owasp-mapping.md) traza A01–A10 a los controles reales, con
+    la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o
+    una ADR citados dejan de existir.
+  - **Falta:** sus huecos, cada uno con su tarea:
+    - DAST (HIG-90);
+    - payloads hostiles (HIG-134);
+    - cabeceras en `hive-api` (HIG-138);
+    - límites en el resto de rutas (HIG-139);
+    - el pipeline del Gate 4 (HIG-20);
+    - las alertas y el runbook (HIG-140).
 - [ ] DAST limpio
   - **Falta:** no hay DAST (HIG-90, OWASP ZAP en los PR hacia `main`).
 - [ ] Rendimiento dentro de SLOs
