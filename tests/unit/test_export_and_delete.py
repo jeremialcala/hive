@@ -236,10 +236,10 @@ def test_the_number_never_travels_in_an_address():
     """An address is written down by every proxy on the way: whoever is looked for goes in the body."""
     routes = [route for route in app_module.app.routes if "contacts" in getattr(route, "path", "")]
 
-    assert len(routes) == 8
+    assert len(routes) == 10
     for route in routes:
         assert {parameter.name for parameter in route.dependant.query_params} <= {"offset", "limit"}
-        assert {parameter.name for parameter in route.dependant.path_params} <= {"bot_id", "contact_id"}
+        assert {parameter.name for parameter in route.dependant.path_params} <= {"bot_id", "contact_id", "request_id"}
 
 
 # --- Exporting a contact -----------------------------------------------------------------------------------------

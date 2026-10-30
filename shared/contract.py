@@ -33,6 +33,11 @@ def reply_subject(bot_id) -> str:
     return f"engine.reply.sent.{bot_id}"
 
 
+def failure_subject(bot_id) -> str:
+    """Where the notifier publishes a request of a client it could not send, in the stream RESPUESTAS (HIG-87)."""
+    return f"engine.reply.failed.{bot_id}"
+
+
 class _Event(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -119,6 +124,19 @@ class SentReply(_Event):
     # Of a client's message: who asked for it, and the request it came from (ADR-0031).
     sentBy: str | None = Field(default=None, min_length=1, max_length=200)
     requestId: UUID | None = None
+
+
+class FailedSend(_Event):
+    """
+        EnvioFallido (HIG-87): a request of the client that the notifier did not send, and will not. Meta's code, when
+        it was Meta that said no; and the reason, a word of the notifier: rejected, no_token, gave_up.
+    """
+    contactId: UUID
+    channel: Channel
+    requestId: UUID
+    code: int | None = None
+    reason: Literal["rejected", "no_token", "gave_up"]
+    failedAt: datetime
 
 
 # --- What a message says ----------------------------------------------------------------------------------------------

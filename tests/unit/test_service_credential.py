@@ -302,7 +302,7 @@ def test_the_envelope_says_whose_chatbot_it_is_and_that_is_all_the_engine_needs(
 def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, method, path):
     intent = http.get(f"/chat/{bot}/intents", headers=acme.auth).json()["data"][0]["uuid"]
     address = path.format(bot_id=bot, intent_id=intent, contact_id=uuid4(), client_id=acme.client_id,
-                          template_id="1234567890", person_id=uuid4(),
+                          template_id="1234567890", person_id=uuid4(), request_id=uuid4(),
                           kid=acme.kid)
     before = dump()
 
@@ -313,7 +313,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 37
+    assert len(NOT_FOR_THE_ENGINE) == 40
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 

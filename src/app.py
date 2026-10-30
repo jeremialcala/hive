@@ -29,13 +29,14 @@ from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, Ch
                      SigningKeyRequest, TemplateCreateRequest, TemplateEditRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
 from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_service_key, ctr_add_signing_key,
-                        ctr_change_person, ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent,
-                        ctr_create_template, ctr_invite_person, ctr_list_people, ctr_remove_person,
+                        ctr_change_person, ctr_conversation, ctr_create_chatbot, ctr_create_chatbot_rules,
+                        ctr_create_intent, ctr_create_template, ctr_invite_person, ctr_list_people, ctr_remove_person,
                         ctr_delete_chatbot, ctr_delete_client, ctr_delete_contact, ctr_delete_intent,
                         ctr_delete_template, ctr_edit_template, ctr_export_contact, ctr_list_templates,
                         ctr_gateway_keys, ctr_get_bot_tokens, ctr_get_bot_tools, ctr_get_chatbot_from_uuid,
                         ctr_get_chatbot_phones, ctr_get_chatbot_rules_from_uuid, ctr_get_client, ctr_get_intent,
-                        ctr_get_intents, ctr_last_turns, ctr_list_clients, ctr_list_contacts, ctr_register_client,
+                        ctr_get_intents, ctr_last_turns, ctr_list_bots, ctr_list_clients, ctr_list_contacts,
+                        ctr_register_client, ctr_send_status,
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent)
 from enums import Role, Worker
@@ -120,6 +121,9 @@ ANALYST_ROUTES = {
     ("GET", "/chat/{bot_id}/intents"), ("GET", "/chat/{bot_id}/intents/{intent_id}"),
     ("GET", "/chat/{bot_id}/tools"), ("GET", "/chat/{bot_id}/contacts"), ("POST", "/contacts/search"),
     ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"), ("GET", "/chat/{bot_id}/templates"),
+    # What the PWA reads (HIG-87): the chatbots, a contact's conversation without its number, and what came of a send.
+    ("GET", "/bots"), ("GET", "/chat/{bot_id}/contacts/{contact_id}/conversation"),
+    ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -501,6 +505,33 @@ async def send_message(bot_id: str, contact_id: str, message: OutboundMessageReq
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
     return await ctr_send_message(TenantRepository(principal.client_id), bot_id, contact_id, message,
                                   idempotency_key, sent_by=principal.actor)
+
+
+@app.get(path="/bots", tags=["Bot"], response_model=ResponseData)
+def list_bots(principal: Principal = Depends(get_principal)):
+    """The chatbots of the client, with which Meta credentials each has loaded, never their values."""
+    return ctr_list_bots(TenantRepository(principal.client_id))
+
+
+@app.get(path="/chat/{bot_id}/contacts/{contact_id}/conversation", tags=["Contacts"], response_model=ResponseData)
+def get_conversation(bot_id: str, contact_id: str, principal: Principal = Depends(get_principal)):
+    """
+        A contact's last 50 messages, each with its origin (the engine or the client, and who), and Meta's window of 24
+        hours: open or not, and until when. Without the contact's number. When a person reads it, the log says who.
+    """
+    return ctr_conversation(TenantRepository(principal.client_id), bot_id, contact_id, principal.actor,
+                            principal.is_person)
+
+
+@app.get(path="/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}", tags=["Contacts"],
+         response_model=ResponseData)
+def get_send_status(bot_id: str, contact_id: str, request_id: str, principal: Principal = Depends(get_principal)):
+    """
+        What came of a request to send, for 24 hours: accepted (the bus holds it), sent (Meta took it) or failed, with
+        Meta's code and why (window_closed, template_paused, template_disabled, template_parameters, marketing_limit,
+        no_token, gave_up...).
+    """
+    return ctr_send_status(TenantRepository(principal.client_id), bot_id, contact_id, request_id)
 
 
 @app.put(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)

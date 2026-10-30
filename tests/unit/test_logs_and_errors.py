@@ -363,7 +363,7 @@ def test_no_route_writes_what_its_address_carries(http, operator, logged, method
     made = set_up(http, operator)
     parts = {"bot_id": made["bot"], "intent_id": made["intent"], "contact_id": made["contact"],
              "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID,
-             "person_id": str(uuid4())}
+             "person_id": str(uuid4()), "request_id": str(uuid4())}
     parts[planted] = "address-marker%0AFORGED"
 
     response = call(http, operator, method, path.format(**parts), BODIES.get((method, path)))
@@ -394,7 +394,7 @@ def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, lo
     made = set_up(http, operator)
     address = path.format(bot_id=made["bot"], intent_id=made["intent"], contact_id=made["contact"],
                           client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID,
-                          person_id=uuid4())
+                          person_id=uuid4(), request_id=uuid4())
     # Adding a key of its own needs a proof for the token of that same request: the body cannot be made ahead.
     request = (operator.adding(new_signing_key()) if (method, path) == ("POST", "/keys") else
                {"headers": operator.auth, "json": BODIES.get((method, path))})
