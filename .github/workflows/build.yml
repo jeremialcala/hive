@@ -16,6 +16,9 @@ on:
       - "engine/**"
       - ".github/workflows/engine.yml"
       - ".github/workflows/build-engine.yml"
+      # Nor one that only changes the portal (HIG-93), which has its own image.
+      - "portal/**"
+      - ".github/workflows/portal.yml"
   workflow_dispatch:
 
 permissions:

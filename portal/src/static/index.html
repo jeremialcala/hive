@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hive</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Hive</h1>
+    <!-- La PWA del área del cliente llega con HIG-87. Mientras, el portal dice si hay sesión y deja cerrarla. -->
+    <p id="estado">Comprobando la sesión…</p>
+    <p><a id="entrar" href="/auth/login" hidden>Entrar</a></p>
+    <p><button id="salir" type="button" hidden>Cerrar sesión</button></p>
+  </main>
+</body>
+</html>
