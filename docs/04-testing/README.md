@@ -13,6 +13,10 @@ Pruebas de punta a punta:
 
 - [Del webhook a la respuesta](e2e.md), con las imágenes de producción (HIG-135).
 
+Seguridad:
+
+- [DAST con OWASP ZAP](dast.md): `hive-api`, el webhook y el portal, sobre el mismo stack (HIG-90).
+
 Mediciones:
 
 - [I1: cuánto tarda hoy el webhook en responder a Meta](medicion-webhook-i1.md), la línea base de RNF01.
