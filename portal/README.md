@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 
 El BFF de la PWA de Hive (HIG-93; [ADR-0029](../docs/00-project/adr/0029-autenticacion-de-personas.md), punto 5) en
 `https://hive-app.higerotech.com`.
@@ -24,8 +24,39 @@ El BFF de la PWA de Hive (HIG-93; [ADR-0029](../docs/00-project/adr/0029-autenti
 | `GET` | `/auth/session` | Si hay sesión, de qué cliente y con qué rol. Nunca un token. |
 | `POST` | `/auth/logout` | Cierra la sesión y dice adónde ir para cerrar también la de Zitadel. |
 | cualquiera | `/api/<ruta>` | La petición de la PWA a `hive-api` como la persona: `GET /api/people` es `GET /people`. `/api/oauth/…` no se alcanza. |
-| `GET` | `/` | La PWA. Hasta HIG-87, una página que dice si hay sesión. |
+| `GET` | `/` | La PWA (HIG-87): sus pantallas, más abajo. |
 | `GET` | `/health` | Si el proceso está vivo. |
+
+## La PWA
+
+El área del cliente (HIG-87), en `src/static/`. No hay paso de build: React 18 y [htm](https://github.com/developit/htm)
+van como ficheros UMD y la aplicación son módulos ES. Todo sale del propio portal, así que la CSP sigue siendo
+`'self'` ([ADR-0027](../docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md)).
+
+| Pantalla | Ruta | Qué hace |
+|---|---|---|
+| Bots | `#/` | Los bots del cliente (`GET /bots`). |
+| Plantillas | `#/bots/<bot>/plantillas` | Las plantillas del bot, con su estado de Meta y el motivo de un rechazo. «Sincronizar con Meta» trae la lista de Meta (`?sync=true`). El `cliente-admin` crea, edita y borra. El editor tiene vista previa con los ejemplos y comprueba lo que Meta comprobaría. |
+| Contactos | `#/bots/<bot>/contactos` | Los contactos del bot, sin su número. |
+| Contacto | `#/bots/<bot>/contactos/<contacto>` | La conversación, la ventana de 24 horas con lo que le queda y el consentimiento. Desde aquí se envía. |
+
+- **Enviar:** el `cliente-admin` manda texto con la ventana abierta. Cualquiera de los dos roles manda una plantilla
+  aprobada, con sus valores y su vista previa. Cada envío lleva su `Idempotency-Key`.
+- **Qué salió:** la PWA consulta el pedido cada 2 segundos, hasta 90
+  (`GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}`). Dice si Meta lo aceptó o, si lo rechazó, el
+  motivo en palabras y el código de Meta. Pasados los 90 segundos, avisa de que sigue en curso.
+- **El rol:** sale de la sesión. Un `cliente-analista` no ve ningún botón que solo le daría un `403`. Quien decide es
+  `hive-api`, no la PWA.
+- **Cada pantalla** lleva el cURL de la llamada que hace, contra `https://hive-api.higerotech.com` y con DPoP.
+
+| Directorio | Qué es | De dónde |
+|---|---|---|
+| `ds/` | `tokens.css`, `bundle.css` y `bundle.js` del sistema de diseño (`window.Hive`) | Copia de `assets/design-system/`. Un test comprueba que son iguales byte a byte. |
+| `vendor/` | React y ReactDOM 18.3.1 (`*.production.min.js`), htm 3.1.1 (`htm.umd.js`), con sus licencias | El registro de npm, con el `integrity` sha512 comprobado. |
+| `fonts/` | Geist y JetBrains Mono (400, 500 y 700, latín), con sus licencias OFL | `@fontsource` y `geist` del registro de npm. |
+
+Para verla sin Zitadel ni `hive-api`, basta con un servidor que entregue `src/static/` con la CSP del portal y
+responda `/auth/session` y `/api/*` con datos de prueba.
 
 ## Seguridad
 

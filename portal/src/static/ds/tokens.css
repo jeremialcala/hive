@@ -1,0 +1,108 @@
+/* Hive — generated from tokens.json (snapshot v5, 2026-10-26). No editar a mano. */
+:root, [data-theme="dark"] {
+  --slate-black: #0f1115;
+  --dark-ash: #161b22;
+  --dark-ash-raised: #1f2630;
+  --border: #2a323d;
+  --border-strong: #6b7280;
+  --ink: #e6edf3;
+  --ink-muted: #8b949e;
+  --ink-faint: #4b5563;
+  --hive-amber: #ffc837;
+  --on-amber: #0f1115;
+  --amber-text: #ffc837;
+  --amber-soft: #2e2300;
+  --meta-blue: #0668e1;
+  --meta-blue-text: #5aa2ff;
+  --whatsapp-green: #25d366;
+  --whatsapp-green-text: #25d366;
+  --on-channel: #ffffff;
+  --success-green: #10b981;
+  --success-text: #10b981;
+  --success-soft: #06281f;
+  --error-red: #ef4444;
+  --error-text: #f87171;
+  --error-soft: #3a1515;
+  --on-error: #0f1115;
+  --warn: #f97316;
+  --warn-soft: #3a1c08;
+  --info: #60a5fa;
+  --info-soft: #0f2340;
+  --focus-ring: #ffc837;
+  --scrim: #000000a6;
+  --shadow-menu: 0 4px 12px #00000080;
+  --shadow-overlay: -8px 0 32px #000000a6;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --slate-black: #ffffff;
+  --dark-ash: #f6f8fa;
+  --dark-ash-raised: #eef1f4;
+  --border: #d8dee4;
+  --border-strong: #6e7781;
+  --ink: #0f1115;
+  --ink-muted: #57606a;
+  --ink-faint: #9ca3af;
+  --hive-amber: #ffc837;
+  --on-amber: #0f1115;
+  --amber-text: #7a5200;
+  --amber-soft: #fff3c4;
+  --meta-blue: #0668e1;
+  --meta-blue-text: #0556bd;
+  --whatsapp-green: #25d366;
+  --whatsapp-green-text: #0f7a3c;
+  --on-channel: #ffffff;
+  --success-green: #10b981;
+  --success-text: #0a7a56;
+  --success-soft: #d8f5ea;
+  --error-red: #ef4444;
+  --error-text: #c62828;
+  --error-soft: #fde2e2;
+  --on-error: #0f1115;
+  --warn: #b4460a;
+  --warn-soft: #ffe6d5;
+  --info: #1f5fbf;
+  --info-soft: #dce8fb;
+  --focus-ring: #0668e1;
+  --scrim: #0f1115a6;
+  --shadow-menu: 0 4px 12px #0f111526;
+  --shadow-overlay: -8px 0 32px #0f111533;
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --hairline: 1px;
+  --control-sm: 32px;
+  --control-md: 36px;
+  --touch-min: 44px;
+  --row-dense: 36px;
+  --sidebar-w: 240px;
+  --slideover-w: 480px;
+  --content-max: 1200px;
+  --reading-max: 640px;
+  --cell-size: 36px;
+  --font-sans: "Geist", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.heading-xl { font-family: var(--font-sans); font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; }
+.heading-lg { font-family: var(--font-sans); font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em; }
+.heading-md { font-family: var(--font-sans); font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.heading-sm { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 600; }
+.body { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 400; }
+.body-strong { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 600; }
+.body-lg { font-family: var(--font-sans); font-size: 16px; line-height: 24px; font-weight: 400; }
+.label { font-family: var(--font-sans); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.06em; }
+.caption { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 400; }
+.code { font-family: var(--font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }
+.key { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 500; }
+.data-lg { font-family: var(--font-mono); font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: -0.01em; }

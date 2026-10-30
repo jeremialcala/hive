@@ -8,6 +8,8 @@
     - the browser never gets a token.
 """
 import os
+import re
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -15,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from conftest import CLIENT_ID, CLIENT_SECRET, PORTAL, FakeHive, FakeZitadel, Servers, id_token
 from shared.auth.idp import IdentityProvider
-from src.app import CSRF_HEADER, LOGIN_COOKIE, SESSION_COOKIE, build
+from src.app import CSRF_HEADER, LOGIN_COOKIE, SESSION_COOKIE, STATIC, build
 from src.hive import Hive
 from src.oidc import Zitadel
 from src.sessions import IDLE, LIFETIME, LOGIN_FOR, MemoryStore, Sealer, Sessions
@@ -379,6 +381,35 @@ def test_every_page_says_what_the_browser_may_load(http):
     assert page.headers["x-content-type-options"] == "nosniff"
     assert page.headers["strict-transport-security"].startswith("max-age=")
     assert http.get("/auth/session").headers["content-security-policy"] == csp
+
+
+def test_the_pwa_loads_only_its_own_files_and_each_as_what_it_is(http):
+    """
+        What the page, its modules and its styles ask for (HIG-87) comes from the portal, under its CSP, with the type
+        the browser checks: with nosniff, a module that came as text/plain would not run.
+    """
+    page = http.get("/").text
+    assert '<script src="/app.js" type="module">' in page and "<div id=\"app\">" in page
+    wanted = re.findall(r'(?:href|src)="([^"]+)"', page)
+    for module in STATIC.glob("*.js"):
+        wanted += [f"/{name}" for name in re.findall(r'from "\./([^"]+)"', module.read_text(encoding="utf-8"))]
+    wanted += re.findall(r'url\("([^"]+)"\)', (STATIC / "app.css").read_text(encoding="utf-8"))
+    kinds = {".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2"}
+
+    assert len(set(wanted)) >= 15
+    for path in set(wanted):
+        assert path.startswith("/") and not path.startswith("//"), path
+        answer = http.get(path)
+        assert answer.status_code == 200, path
+        assert answer.headers["content-type"].startswith(kinds[Path(path).suffix]), path
+        assert answer.headers["x-content-type-options"] == "nosniff"
+
+
+def test_the_design_system_is_the_one_of_the_repository():
+    """The PWA's copy of assets/design-system (ADR-0027) is that one, byte for byte: a change goes to both."""
+    source = Path(__file__).resolve().parents[3] / "assets" / "design-system"
+    for name in ("tokens.css", "bundle.css", "bundle.js"):
+        assert (STATIC / "ds" / name).read_bytes() == (source / name).read_bytes(), name
 
 
 def test_the_health_check(http):

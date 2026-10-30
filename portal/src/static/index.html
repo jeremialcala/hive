@@ -1,19 +1,21 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hive</title>
+  <!-- The order of the design system (assets/design-system/README.md): tokens, fonts, components, React, Hive. -->
+  <link rel="stylesheet" href="/ds/tokens.css">
   <link rel="stylesheet" href="/app.css">
-  <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/ds/bundle.css">
+  <script src="/vendor/react.production.min.js" defer></script>
+  <script src="/vendor/react-dom.production.min.js" defer></script>
+  <script src="/vendor/htm.umd.js" defer></script>
+  <script src="/ds/bundle.js" defer></script>
+  <script src="/app.js" type="module"></script>
 </head>
 <body>
-  <main>
-    <h1>Hive</h1>
-    <!-- La PWA del área del cliente llega con HIG-87. Mientras, el portal dice si hay sesión y deja cerrarla. -->
-    <p id="estado">Comprobando la sesión…</p>
-    <p><a id="entrar" href="/auth/login" hidden>Entrar</a></p>
-    <p><button id="salir" type="button" hidden>Cerrar sesión</button></p>
-  </main>
+  <div id="app"><p class="pwa-loading">Cargando Hive…</p></div>
+  <noscript>El área del cliente de Hive necesita JavaScript.</noscript>
 </body>
 </html>
