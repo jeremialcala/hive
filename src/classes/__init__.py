@@ -22,12 +22,12 @@ from .dto_contact_search import ContactSearchRequest
 from .dto_outbound import ConsentRequest, OutboundMessageRequest, TemplateRequest
 from .dto_templates import TemplateCreateRequest, TemplateEditRequest
 from .dto_people import PersonChangeRequest, PersonInviteRequest
-from .dto_chatbot import ChatbotRequest
+from .dto_chatbot import ChatbotRequest, PersonaRequest
 from .dto_response import ResponseData, BotResponse
 from .dto_chatbot_phone import ChatbotPhoneRequest
 from .dto_event import EventTransport
 from .dto_message_body import MessageBody
-from .dto_chatbot_rules_request import RulesRequest
+from .dto_chatbot_rules_request import RuleRequest, RulesRequest
 from .dto_intent_request import (IntentRequest, ActionRequest, ApiCallRequest, ActionParameterRequest)
 
 # Let's bring Facebook Objects

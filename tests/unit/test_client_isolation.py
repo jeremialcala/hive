@@ -6,7 +6,7 @@
 
     The routes are taken from the application, so a new one that is not covered here fails the test.
 """
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.routing import APIRoute
@@ -23,6 +23,9 @@ TEMPLATE = {"name": "order_update", "language": "es", "category": "UTILITY",
 BODIES = {
     ("POST", "/chat/{bot_id}/phones"): {"phoneNumber": "12025550101", "phoneId": "100000000000001"},
     ("POST", "/chat/{bot_id}/rules"): {"rules": ["Be kind"]},
+    ("PUT", "/chat/{bot_id}/rules/{rule_id}"): {"rule": "Be brief"},
+    ("PUT", "/chat/{bot_id}/persona"): {"name": "Other", "role": "Tech Support", "description": "Another persona",
+                                        "tone": "brief"},
     ("POST", "/chat/{bot_id}/intents"): INTENT,
     ("PUT", "/chat/{bot_id}/intents/{intent_id}"): INTENT,
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "an-app-secret"},
@@ -85,20 +88,23 @@ def stored(owner):
 
 
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
+    # The rule of the chatbot, if it has one: a chatbot that does not exist has none.
+    rule = Rule.objects(botId=bot_id).first() if isinstance(bot_id, UUID) else None
     return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
-                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID, version=1),
+                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID, version=1,
+                                            rule_id=rule.uuid if rule else uuid4()),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 28 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 31 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.
     assert sorted(OTHER_ROUTES) == sorted([
         ("DELETE", "/clients/{client_id}"), ("DELETE", "/clients/{client_id}/keys/{kid}"),
         ("DELETE", "/clients/{client_id}/service-keys/{kid}"), ("DELETE", "/keys/{kid}"),
-        ("GET", "/clients"), ("GET", "/gateway/keys"), ("GET", "/keys"), ("POST", "/bot"), ("POST", "/clients"),
+        ("GET", "/client"), ("GET", "/clients"), ("GET", "/gateway/keys"), ("GET", "/keys"), ("POST", "/bot"), ("POST", "/clients"),
         ("POST", "/clients/{client_id}/keys"), ("POST", "/clients/{client_id}/service-keys"),
         ("POST", "/contacts/search"), ("POST", "/keys"), ("POST", "/oauth/token"),
     ] + PEOPLE)

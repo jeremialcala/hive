@@ -175,8 +175,11 @@ def test_the_engine_gets_the_rest_of_what_it_answers_with(http, engine, bot):
     assert (rules.status_code, tools.status_code, keys.status_code) == (200, 200, 200)
     # The persona and the rules as data, for the engine to write Claude's system with: no prompt of Llama 2.
     # Created, its rules added and an intent: three versions (RF26).
-    assert rules.json()["data"] == {"name": "Mine", "role": "Sales Assistant", "tone": "helpful",
-                                    "description": "A test chatbot", "rules": ["Be kind"], "version": 3}
+    data = dict(rules.json()["data"])
+    rule_list = data.pop("ruleList")
+    assert [rule["rule"] for rule in rule_list] == ["Be kind"]
+    assert data == {"name": "Mine", "role": "Sales Assistant", "tone": "helpful", "description": "A test chatbot",
+                    "rules": ["Be kind"], "version": 3}
     assert "<<SYS>>" not in rules.text and "<s>" not in rules.text
     assert [tool["name"] for tool in tools.json()["data"]] == ["get_order"]
     assert keys.json()["data"]["audience"] == GATEWAY_AUDIENCE
@@ -304,7 +307,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
     intent = http.get(f"/chat/{bot}/intents", headers=acme.auth).json()["data"][0]["uuid"]
     address = path.format(bot_id=bot, intent_id=intent, contact_id=uuid4(), client_id=acme.client_id,
                           template_id="1234567890", person_id=uuid4(), request_id=uuid4(),
-                          kid=acme.kid, version=1)
+                          kid=acme.kid, version=1, rule_id=uuid4())
     before = dump()
 
     response = http.request(method, address, headers=engine.auth, json=BODIES.get((method, path)))
@@ -314,7 +317,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 43
+    assert len(NOT_FOR_THE_ENGINE) == 47
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 

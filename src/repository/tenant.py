@@ -319,6 +319,32 @@ class TenantRepository:
     def list_rules(self, bot_id) -> list:
         return list(self._own(Rule, botId=self.get_bot(bot_id).uuid))
 
+    def count_rules(self, bot_id) -> int:
+        return self._own(Rule, botId=self.get_bot(bot_id).uuid).count()
+
+    def get_rule(self, bot_id, rule_id) -> Rule:
+        rule = self._own(Rule, botId=self.get_bot(bot_id).uuid, uuid=as_uuid(rule_id)).first()
+        if rule is None:
+            raise NotFound(rule_id)
+        return rule
+
+    def set_rule(self, rule: Rule, text: str) -> Rule:
+        rule.rule = text
+        return self._save_own(rule)
+
+    def delete_rule(self, rule: Rule) -> None:
+        if not self._own(Rule, uuid=rule.uuid).delete():
+            # Somebody else deleted it in the meantime.
+            raise NotFound(rule.uuid)
+
+    def set_persona(self, bot_id, name: str, role: str, tone: str, description: str) -> ChatBot:
+        """The persona of the chatbot (RF23): its name, role, tone and description, the rest as it was."""
+        bot_uuid = self.get_bot(bot_id).uuid
+        if not self._own(ChatBot, uuid=bot_uuid).update(set__name=name, set__role=role, set__tone=tone,
+                                                        set__description=description):
+            raise NotFound(bot_id)
+        return self.get_bot(bot_uuid)
+
     # --- Intents ----------------------------------------------------------------------------------------------------
 
     def add_intent(self, bot_id, intent: Intent) -> Intent:
@@ -388,8 +414,7 @@ class TenantRepository:
         """
         bot_uuid = self.get_bot(bot_id).uuid
         persona = config["persona"]
-        self._own(ChatBot, uuid=bot_uuid).update(set__name=persona["name"], set__role=persona["role"],
-                                                 set__tone=persona["tone"], set__description=persona["description"])
+        self.set_persona(bot_uuid, persona["name"], persona["role"], persona["tone"], persona["description"])
         self._own(Rule, botId=bot_uuid).delete()
         for rule in config["rules"]:
             Rule(uuid=UUID(rule["uuid"]), clientId=self.client_id, botId=bot_uuid, rule=rule["rule"]).save(

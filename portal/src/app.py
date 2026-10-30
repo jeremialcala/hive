@@ -53,6 +53,9 @@ STATIC = Path(__file__).resolve().parent / "static"
 # text/plain, which the browser, with nosniff, would not run as a module.
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("image/png", ".png")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 NO_STORE = {"Cache-Control": "no-store"}
 # The PWA's files, kept but asked again each time by their etag: a 304 if nothing changed. Without it, Cloudflare and
 # the browser kept them 4 hours (max-age=14400), and after a deploy a new app.js could run with an old api.js.

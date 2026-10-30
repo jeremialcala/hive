@@ -288,7 +288,7 @@ ROUTES = sorted((method, route.path) for route in app_module.app.routes if isins
 NOT_FOR_THE_ANALYST = [route for route in ROUTES if route not in app_module.ANALYST_ROUTES]
 PLACES = {"bot_id": str(uuid4()), "intent_id": str(uuid4()), "contact_id": str(uuid4()), "client_id": str(uuid4()),
           "kid": "a-kid", "template_id": "1234567890", "person_id": str(uuid4()), "request_id": str(uuid4()),
-          "version": "1"}
+          "version": "1", "rule_id": str(uuid4())}
 
 
 @pytest.mark.parametrize("method,path", NOT_FOR_THE_ANALYST)
@@ -414,3 +414,14 @@ def test_a_machine_credential_is_neither_a_person_nor_an_analyst():
     machine = Principal(client_id=uuid4(), role=Role.CLIENT, kid="k", jti="j")
 
     assert (machine.is_person, machine.is_analyst, machine.actor) == (False, False, "key k")
+
+
+def test_a_person_reads_whose_area_it_is_and_nothing_of_its_keys(http, acme, zitadel):
+    """The card of the client in the PWA (HIG-126): its id and its name, for the analyst too."""
+    person(acme, role=PersonRole.ANALYST)
+    token = exchange(http, zitadel.id_token()).json()["access_token"]
+    KEY_OF[token] = BFF
+
+    answer = http.get("/client", headers=auth(token))
+
+    assert answer.status_code == 200 and answer.json()["data"] == {"uuid": str(acme.client_id), "name": "acme"}

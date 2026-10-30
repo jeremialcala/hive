@@ -394,7 +394,8 @@ def test_the_pwa_loads_only_its_own_files_and_each_as_what_it_is(http):
     for module in STATIC.glob("*.js"):
         wanted += [f"/{name}" for name in re.findall(r'from "\./([^"]+)"', module.read_text(encoding="utf-8"))]
     wanted += re.findall(r'url\("([^"]+)"\)', (STATIC / "app.css").read_text(encoding="utf-8"))
-    kinds = {".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2"}
+    kinds = {".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml",
+             ".png": "image/png", ".webmanifest": "application/manifest+json"}
 
     assert len(set(wanted)) >= 15
     for path in set(wanted):
@@ -425,6 +426,36 @@ def test_the_design_system_is_the_one_of_the_repository():
     source = Path(__file__).resolve().parents[3] / "assets" / "design-system"
     for name in ("tokens.css", "bundle.css", "bundle.js"):
         assert (STATIC / "ds" / name).read_bytes() == (source / name).read_bytes(), name
+
+
+def test_the_marks_are_the_ones_of_the_repository():
+    """The PWA's copy of assets/logos (its README): the same files, byte for byte, and only those it shows."""
+    source = Path(__file__).resolve().parents[3] / "assets" / "logos"
+    copied = sorted(path.name for path in (STATIC / "logos").glob("*.svg"))
+    assert copied == ["hive-favicon.svg", "hive-logo-dark.svg", "hive-logo-light.svg", "hive-logo-stacked-dark.svg",
+                      "hive-logo-stacked-light.svg", "hive-mark.svg"]
+    for name in copied:
+        assert (STATIC / "logos" / name).read_bytes() == (source / name).read_bytes(), name
+
+
+def test_the_page_has_its_favicon_and_its_manifest_with_the_icons_of_the_app(http):
+    """The favicon and the icons of assets/logos, exported at the sizes of the manifest (ADR-0027)."""
+    page = http.get("/").text
+    assert '<link rel="icon" href="/logos/hive-favicon.svg" type="image/svg+xml">' in page
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in page
+    manifest = http.get("/manifest.webmanifest").json()
+    assert (manifest["start_url"], manifest["display"]) == ("/", "standalone")
+    assert manifest["theme_color"] == manifest["background_color"] == "#0f1115"
+    sizes = {}
+    for icon in manifest["icons"]:
+        answer = http.get(icon["src"])
+        assert answer.status_code == 200 and answer.headers["content-type"].startswith(icon["type"]), icon["src"]
+        if icon["type"] == "image/png":
+            # The width and the height are in the PNG's header: it is the size the manifest says.
+            width, height = int.from_bytes(answer.content[16:20], "big"), int.from_bytes(answer.content[20:24], "big")
+            assert f"{width}x{height}" == icon["sizes"], icon["src"]
+            sizes.setdefault(icon["purpose"], set()).add(icon["sizes"])
+    assert sizes == {"any": {"192x192", "512x512"}, "maskable": {"192x192", "512x512"}}
 
 
 def test_the_health_check(http):

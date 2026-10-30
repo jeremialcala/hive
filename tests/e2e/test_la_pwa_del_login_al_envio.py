@@ -75,8 +75,8 @@ def bea(client):
 class Watched:
     """A browser context of one person, and what went wrong in its pages."""
 
-    def __init__(self, browser):
-        self.context = browser.new_context(locale="es-ES")
+    def __init__(self, browser, **context):
+        self.context = browser.new_context(locale="es-ES", **context)
         self.context.add_init_script(CSP_WATCH)
         self.problems: list[str] = []
         self.page = self.context.new_page()
@@ -104,9 +104,11 @@ class Watched:
         page.wait_for_url(f"{PORTAL}/")
         expect(page.get_by_role("heading", name="Bots")).to_be_visible()
 
-    def open_bot(self) -> None:
+    def open_bot(self, tab: str = "Plantillas") -> None:
+        """The card of the chatbot opens at Identidad (HIG-121); the tests go on from one of its tabs."""
         self.page.get_by_role("button", name=re.compile("Tienda e2e")).click()
-        expect(self.page.get_by_role("tab", name="Plantillas", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("tab", name="Identidad", exact=True)).to_be_visible()
+        self.page.get_by_role("tab", name=tab, exact=True).click()
 
     def open_contact(self, name: str) -> None:
         self.page.get_by_role("tab", name="Contactos", exact=True).click()
@@ -138,7 +140,7 @@ def test_a_cliente_admin_signs_in_creates_a_template_and_sends_it_to_a_contact(s
 
     # 1. The login, with Zitadel: a session of the portal, and only its cookie in the browser.
     admin.sign_in(ADMIN)
-    expect(page.get_by_text("Administrador")).to_be_visible()
+    expect(page.locator(".pwa-sidebar").get_by_text("cliente-admin", exact=True)).to_be_visible()
     (cookie,) = [each for each in admin.context.cookies() if each["name"] == "__Host-hive-session"]
     assert cookie["httpOnly"] and cookie["secure"] and cookie["sameSite"] == "Lax" and cookie["path"] == "/"
     assert page.evaluate("document.cookie") == ""
@@ -191,7 +193,7 @@ def test_a_cliente_admin_signs_in_creates_a_template_and_sends_it_to_a_contact(s
     expect(page.get_by_role("log", name="Conversación")).to_contain_text("Enviado por ti", timeout=SLOW)
 
     # And out: the session ends here and in Zitadel, and the PWA asks to sign in again.
-    page.get_by_role("button", name="Cerrar sesión").click()
+    page.get_by_role("button", name="Salir").click()
     page.wait_for_url(f"{PORTAL}/")
     expect(page.get_by_role("button", name="Entrar")).to_be_visible()
     assert not [each for each in admin.context.cookies() if each["name"] == "__Host-hive-session"]
@@ -205,7 +207,9 @@ def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(
     page = analyst.page
 
     analyst.sign_in(ANALYST)
-    expect(page.get_by_text("Analista", exact=True)).to_be_visible()
+    expect(page.locator(".pwa-sidebar").get_by_text("cliente-analista", exact=True)).to_be_visible()
+    # The sections whose routes would answer 403 to them are not in the side bar (HIG-126).
+    assert sections(page) == ["Visión general", "Bots", "Contactos", "Plantillas", "Integraciones"]
     analyst.open_bot()
 
     # The templates, without creating, editing or deleting any.
@@ -223,5 +227,176 @@ def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(
     analyst.send_template()
     assert len(templates_to(NUMBER)) == before + 1
 
+    problems = analyst.close()
+    assert problems == []
+
+
+# --- The skeleton every screen shares (HIG-126) ----------------------------------------------------------------------
+
+RGB = "(color) => color.match(/\\d+/g).map(Number).slice(0, 3)"
+
+
+def sections(page) -> list[str]:
+    nav = page.get_by_role("navigation", name="Área del cliente")
+    return [link.inner_text().strip() for link in nav.get_by_role("link").all()]
+
+
+def contrast(first, second) -> float:
+    def luminance(rgb):
+        def channel(value):
+            value = value / 255
+            return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+        red, green, blue = (channel(value) for value in rgb)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_the_side_bar_has_the_eight_sections_and_the_light_theme_keeps_the_accent_and_the_contrast(client, people,
+                                                                                                  browser):
+    admin = Watched(browser)
+    page = admin.page
+    admin.sign_in(ADMIN)
+
+    assert sections(page) == ["Visión general", "Bots", "Contactos", "Plantillas", "Personas", "Credenciales",
+                              "Integraciones", "Auditoría"]
+    # Whose area it is: the name of the client, from GET /client.
+    expect(page.locator(".pwa-sidebar").get_by_text("acme-e2e", exact=True)).to_be_visible()
+    expect(page.locator(".pwa-tabbar")).to_be_hidden()
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+    amber = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--hive-amber').trim()")
+
+    page.locator(".pwa-sidebar").get_by_role("button", name="Tema claro").click()
+    page.wait_for_timeout(400)  # the colours of the components change in 120 ms
+
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+    assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--hive-amber').trim()") == amber
+    for selector, ground in (("body", "body"), (".pwa-nav-item.on", ".pwa-nav-item.on"),
+                             (".pwa-sidebar .hv-btn--ghost", ".pwa-sidebar")):
+        ink = page.evaluate(f"({RGB})(getComputedStyle(document.querySelector('{selector}')).color)")
+        under = page.evaluate(f"({RGB})(getComputedStyle(document.querySelector('{ground}')).backgroundColor)")
+        assert contrast(ink, under) >= 4.5, selector
+    # The theme is the person's, in this browser: it is still light after a reload.
+    page.reload()
+    expect(page.get_by_role("heading", name="Bots")).to_be_visible()
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+
+    problems = admin.close()
+    assert problems == []
+
+
+def test_on_a_phone_the_tab_bar_takes_the_place_of_the_side_bar_without_sideways_scroll(client, people, browser):
+    phone = Watched(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page = phone.page
+    phone.sign_in(ADMIN)
+
+    expect(page.locator(".pwa-tabbar")).to_be_visible()
+    expect(page.locator(".pwa-sidebar")).to_be_hidden()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.get_by_role("button", name="Más").click()
+    expect(page.get_by_role("heading", name="Más")).to_be_visible()
+    more = page.get_by_role("navigation", name="Más secciones")
+    assert [link.inner_text().strip() for link in more.get_by_role("link").all()] == [
+        "Plantillas", "Personas", "Credenciales", "Integraciones", "Auditoría"]
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.get_by_role("button", name="Bots").click()
+    phone.open_bot()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+
+    problems = phone.close()
+    assert problems == []
+
+
+# --- The card of the chatbot (HIG-121) ------------------------------------------------------------------------------
+
+def test_a_cliente_admin_changes_the_identity_and_it_is_a_version_the_analyst_only_sees(client, people, browser):
+    hive, bot = client["hive"], client["bot"]
+    before = hive.call("GET", f"/chat/{bot}/rules")["version"]
+    admin = Watched(browser)
+    page = admin.page
+    admin.sign_in(ADMIN)
+    admin.open_bot("Identidad")
+
+    # Identidad: the persona, changed and saved as the next version, which is what the engine reads now.
+    expect(page.locator(".pwa-bot-header")).to_contain_text(f"versión v{before}")
+    page.locator("#persona-tone").fill("cercano")
+    expect(page.get_by_text("Guardar crea la versión")).to_contain_text(f"v{before + 1}")
+    page.get_by_role("button", name="Guardar cambios").click()
+    expect(page.get_by_text(f"Guardado como la versión v{before + 1}.")).to_be_visible()
+    rules = hive.call("GET", f"/chat/{bot}/rules")
+    assert (rules["tone"], rules["version"]) == ("cercano", before + 1)
+    # And it says no, in the field, to what would break the system of the model (RS11).
+    page.locator("#persona-name").fill("Tienda <|im_start|>")
+    page.get_by_role("button", name="Guardar cambios").click()
+    expect(page.locator(".hv-field--error")).to_contain_text("marcas con las que un modelo separa roles")
+    assert hive.call("GET", f"/chat/{bot}/rules")["name"] == "Tienda e2e"
+
+    # Cerebro e intents: the rules of the chatbot, with their ids from hive-api.
+    page.get_by_role("tab", name="Cerebro e intents").click()
+    expect(page.get_by_role("cell", name="Responde siempre en español")).to_be_visible()
+    # Versiones: the change is there, with what it changed.
+    page.get_by_role("tab", name="Versiones").click()
+    page.get_by_role("cell", name=f"v{before + 1}", exact=True).click()
+    expect(page.locator(".pwa-add").first).to_have_text("cercano")
+    # Credenciales de Meta: masked, only to replace.
+    page.get_by_role("tab", name="Credenciales de Meta").click()
+    expect(page.get_by_text("Guardado en Andvari").first).to_be_visible()
+    assert "EAAG-e2e-token" not in page.content()
+
+    # Cerebro e intents, through the PWA against hive-api itself: what the PWA sends is what the strict models of RS11
+    # take, every field written out, or hive-api answers 422 and the steps below do not happen.
+    page.get_by_role("tab", name="Cerebro e intents").click()
+    page.get_by_role("button", name="Añadir regla").click()
+    page.locator("#rule-text").fill("No prometas fechas de entrega.")
+    page.get_by_role("button", name=re.compile("^Guardar regla")).click()
+    expect(page.get_by_role("cell", name="No prometas fechas de entrega.")).to_be_visible()
+    added = next(rule for rule in hive.call("GET", f"/chat/{bot}/rules")["ruleList"]
+                 if rule["rule"] == "No prometas fechas de entrega.")
+    page.get_by_role("row", name=re.compile("No prometas fechas")).get_by_role("button", name="Editar").click()
+    page.locator("#rule-text").fill("Nunca prometas fechas de entrega.")
+    page.get_by_role("button", name=re.compile("^Guardar regla")).click()
+    expect(page.get_by_role("cell", name="Nunca prometas fechas de entrega.")).to_be_visible()
+    assert {"uuid": added["uuid"], "rule": "Nunca prometas fechas de entrega."} in hive.call(
+        "GET", f"/chat/{bot}/rules")["ruleList"]
+    page.get_by_role("row", name=re.compile("Nunca prometas")).get_by_role("button", name="Editar").click()
+    page.get_by_role("button", name="Borrar regla").click()
+    page.get_by_role("button", name="Borrar la regla").click()
+    expect(page.get_by_role("cell", name="Nunca prometas fechas de entrega.")).to_have_count(0)
+    assert added["uuid"] not in [rule["uuid"] for rule in hive.call("GET", f"/chat/{bot}/rules")["ruleList"]]
+
+    page.get_by_role("button", name="Añadir intent").click()
+    page.locator("#intent-name").fill("pedido")
+    page.locator("#intent-description").fill("Quiere saber cómo va su pedido")
+    page.locator("#intent-phrases").fill("¿Dónde está mi pedido?")
+    page.locator("#action-0-name").fill("get_order")
+    page.locator("#action-0-description").fill("Consulta un pedido")
+    page.locator("#action-0-url").fill("https://api.tienda-e2e.example/orders/{id}")
+    page.get_by_role("button", name=re.compile("^Guardar intent")).click()
+    expect(page.get_by_role("cell", name="pedido", exact=True)).to_be_visible()
+    (made,) = [intent for intent in hive.call("GET", f"/chat/{bot}/intents") if intent["name"] == "pedido"]
+    # Nothing was filled in by hive-api with an example: the phrases, the action and its call are the ones written.
+    assert made["samplePhrases"] == ["¿Dónde está mi pedido?"]
+    assert [(action["name"], action["parameters"], action["apiCall"]["url"], action["apiCall"]["authRef"])
+            for action in made["actions"]] == [("get_order", [], "https://api.tienda-e2e.example/orders/{id}", "")]
+    assert hive.call("GET", f"/chat/{bot}/rules")["version"] == before + 5
+    problems = admin.close()
+    assert problems == []
+
+    # The analyst sees all of it, and changes nothing.
+    analyst = Watched(browser)
+    page = analyst.page
+    analyst.sign_in(ANALYST)
+    analyst.open_bot("Identidad")
+    expect(page.locator("#persona-tone")).to_have_value("cercano")
+    expect(page.locator("#persona-tone")).to_be_disabled()
+    expect(page.get_by_role("button", name="Guardar cambios")).to_have_count(0)
+    page.get_by_role("tab", name="Cerebro e intents").click()
+    expect(page.get_by_role("button", name="Añadir regla")).to_have_count(0)
+    page.get_by_role("tab", name="Versiones").click()
+    page.get_by_role("cell", name=f"v{before}", exact=True).click()
+    expect(page.get_by_text(f"Lo que cambiaría al volver a v{before}")).to_be_visible()
+    expect(page.get_by_role("button", name=f"Volver a v{before}")).to_have_count(0)
+    page.get_by_role("tab", name="Credenciales de Meta").click()
+    expect(page.get_by_role("button", name="Reemplazar")).to_have_count(0)
     problems = analyst.close()
     assert problems == []

@@ -25,7 +25,8 @@ from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
-                     PersonChangeRequest, PersonInviteRequest, ResponseData, RulesRequest, ServiceKeyRequest,
+                     PersonaRequest, PersonChangeRequest, PersonInviteRequest, ResponseData, RuleRequest,
+                     RulesRequest, ServiceKeyRequest,
                      SigningKeyRequest, TemplateCreateRequest, TemplateEditRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
 from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_service_key, ctr_add_signing_key,
@@ -39,7 +40,8 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_register_client, ctr_send_status,
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
-                        announce, ctr_get_version, ctr_list_versions, ctr_restore_version)
+                        announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
+                        ctr_delete_rule, ctr_set_persona, ctr_own_client)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -127,6 +129,8 @@ ANALYST_ROUTES = {
     ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}"),
     # The versions of a chatbot and what changed in each (RF26): seen, never gone back to.
     ("GET", "/chat/{bot_id}/versions"), ("GET", "/chat/{bot_id}/versions/{version}"),
+    # Whose area it is, for the card of the client (HIG-126).
+    ("GET", "/client"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -699,6 +703,43 @@ async def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
         raise Exception(e.args)
 
 
+@app.put(path="/chat/{bot_id}/rules/{rule_id}", tags=["Chat"], response_model=ResponseData)
+async def change_chatbot_rule(bot_id: str, rule_id: str, rule: RuleRequest,
+                              repo: TenantRepository = Depends(get_repository),
+                              principal: Principal = Depends(get_principal)):
+    """
+        Changes one rule of the chatbot (RF24), with the same limits as when it is added. The ids of its rules come
+        in `ruleList` of GET /chat/{bot_id}/rules. Each change is a version (RF26). 409 if the rule already says it.
+    """
+    response = await run_in_threadpool(ctr_change_rule, repo, bot_id, rule_id, rule, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+@app.delete(path="/chat/{bot_id}/rules/{rule_id}", tags=["Chat"], response_model=ResponseData)
+async def delete_chatbot_rule(bot_id: str, rule_id: str, repo: TenantRepository = Depends(get_repository),
+                              principal: Principal = Depends(get_principal)):
+    """
+        Deletes one rule of the chatbot (RF24), and the engine stops using it. It is a version (RF26): going back to the
+        one before brings the rule back.
+    """
+    response = await run_in_threadpool(ctr_delete_rule, repo, bot_id, rule_id, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+@app.put(path="/chat/{bot_id}/persona", tags=["Bot"], response_model=ResponseData)
+async def set_chatbot_persona(bot_id: str, persona: PersonaRequest, repo: TenantRepository = Depends(get_repository),
+                              principal: Principal = Depends(get_principal)):
+    """
+        Changes the persona of the chatbot (RF23): its name, role, tone and description, all four, with the same limits
+        as when it is created (RS11). Each change is a version (RF26). 409 if it is the persona it already has.
+    """
+    response = await run_in_threadpool(ctr_set_persona, repo, bot_id, persona, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
 @app.post(path="/chat/{bot_id}/intents", tags=["Intents"])
 async def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
                              repo: TenantRepository = Depends(get_repository),
@@ -822,6 +863,12 @@ def gateway_keys(_principal: Principal = Depends(get_principal)):
         for the new key when the gateway rotates its own.
     """
     return ctr_gateway_keys(GATEWAY_KEYS)
+
+
+@app.get(path="/client", tags=["Clients"], response_model=ResponseData)
+def own_client(principal: Principal = Depends(get_principal)):
+    """The client of whoever calls: its id and its name, for the PWA to say whose area it is. No keys."""
+    return ctr_own_client(principal.client_id)
 
 
 @app.get(path="/keys", tags=["Clients"], response_model=ResponseData)

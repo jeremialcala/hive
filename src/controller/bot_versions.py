@@ -23,7 +23,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from classes import BotVersion, IntentRequest, Settings
+from classes import BotVersion, IntentRequest, PersonaRequest, RuleRequest, Settings
+from classes.bot_text import RULES_PER_BOT
 from classes.tool_clock import as_utc
 from repository import NotFound, TenantRepository, database_failed
 from shared import bus
@@ -47,7 +48,7 @@ BEFORE_VERSIONS, HIVE = "before versions", "hive"
 CHATBOT_NOT_FOUND = "This chatbot was not found"
 VERSION_NOT_FOUND = "This version was not found"
 ALREADY_CURRENT = "ALREADY_CURRENT: the chatbot already has the configuration of this version"
-NOT_ALLOWED = "NOT_ALLOWED: an intent of this version is not allowed any more"
+NOT_ALLOWED = "NOT_ALLOWED: something of this version is not allowed any more"
 
 
 @dataclass
@@ -116,6 +117,16 @@ async def announce(repo: TenantRepository, bot_id) -> None:
     except bus.BusUnavailable as e:
         log.warning(f"The engine was not told of a change of chatbot {bot.uuid} ({type(e).__name__}): it reads it "
                     f"again within 5 minutes")
+
+
+def _what(refused: dict) -> str:
+    """What a log line says was refused: which part, and the ids."""
+    parts = ["the persona"] if refused.get("persona") else []
+    if "rules" in refused:
+        parts.append(f"rules {', '.join(refused['rules'])}" if refused["rules"] else "how many rules there are")
+    if "intents" in refused:
+        parts.append(f"intents {', '.join(refused['intents'])}")
+    return ", ".join(parts) + (" are" if len(parts) > 1 or "intents" in refused else " is")
 
 
 def _number(value) -> int:
@@ -192,21 +203,43 @@ def _without_empty(value):
     return value
 
 
-def _not_allowed(config: dict) -> list[str]:
-    """The intents of a configuration that would not be saved today: the rules of an intent are checked again."""
-    refused = []
-    for intent in config["intents"]:
-        try:
-            IntentRequest.model_validate(_without_empty(intent))
-        except ValidationError:
-            refused.append(intent["uuid"])
+def _allowed(model, value) -> bool:
+    try:
+        model.model_validate(value)
+    except ValidationError:
+        return False
+    return True
+
+
+def _as_request(intent: dict) -> dict:
+    """An intent of a version, as a request would bring it: without what Hive keeps of it (its id, its states)."""
+    kept = _without_empty({key: value for key, value in intent.items() if key not in ("uuid", "botId", "status")})
+    kept["actions"] = [{key: value for key, value in action.items() if key != "status"}
+                       for action in kept.get("actions", [])]
+    return kept
+
+
+def _not_allowed(config: dict) -> dict:
+    """
+        What of a configuration would not be saved today, checked with today's rules: the persona and the rules with
+        their limits (RS11), the intents with their destinations (RS16). Empty if all of it would.
+    """
+    refused = {}
+    if not _allowed(PersonaRequest, {"description": "", **_without_empty(config["persona"])}):
+        refused["persona"] = True
+    rules = [rule["uuid"] for rule in config["rules"] if not _allowed(RuleRequest, {"rule": rule["rule"]})]
+    if rules or len(config["rules"]) > RULES_PER_BOT:
+        refused["rules"] = rules
+    intents = [intent["uuid"] for intent in config["intents"] if not _allowed(IntentRequest, _as_request(intent))]
+    if intents:
+        refused["intents"] = intents
     return refused
 
 
 def ctr_restore_version(repo: TenantRepository, bot_id: str, number: str, author: str) -> JSONResponse:
     """
         Gives the chatbot the configuration of a version, and writes it as a new one. 409 if it already has it; 422 if
-        an intent of it is not allowed any more (RS16), and then nothing changes.
+        something of it is not allowed any more (RS11, RS16), and then nothing changes.
     """
     try:
         repo.get_bot(bot_id)
@@ -220,11 +253,12 @@ def ctr_restore_version(repo: TenantRepository, bot_id: str, number: str, author
         return answer(status.HTTP_409_CONFLICT, ALREADY_CURRENT)
     refused = _not_allowed(version.config)
     if refused:
-        # The ids only: their names and destinations are what the client wrote.
-        log.warning(f"{author} could not restore version {version.version} of chatbot {version.botId}: intents "
-                    f"{', '.join(refused)} are not allowed any more")
-        names = [intent["name"] for intent in version.config["intents"] if intent["uuid"] in refused]
-        return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, NOT_ALLOWED, data={"intents": names})
+        # The ids only: the texts, names and destinations are what the client wrote.
+        log.warning(f"{author} could not restore version {version.version} of chatbot {version.botId}: "
+                    f"{_what(refused)} not allowed any more")
+        names = [intent["name"] for intent in version.config["intents"] if intent["uuid"] in refused.get("intents", [])]
+        return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, NOT_ALLOWED, data={
+            "persona": bool(refused.get("persona")), "rules": refused.get("rules", []), "intents": names})
     try:
         with versioned(repo, bot_id, author, RESTORED, restored_from=version.version) as made:
             repo.apply_config(bot_id, version.config)

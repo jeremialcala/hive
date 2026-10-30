@@ -7,6 +7,79 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-30
+
+### Añadido
+- **Los logos de `assets/logos/` en la PWA y en la documentación** (ADR-0027).
+  - **La PWA:** el lockup en la barra lateral, según el tema; el isotipo en la barra del teléfono; y el lockup
+    vertical en la pantalla de entrada. Sustituyen al hexágono dibujado con CSS: según el brand book, el hexágono
+    de `Cell` identifica bots y clientes, y no es el logo.
+  - **Favicon y manifest:** la PWA tiene `hive-favicon.svg` y un manifest con los iconos de la app en PNG, `any` y
+    `maskable` a 192 y 512. Antes, `/favicon.ico` y el manifest daban `404`.
+  - **La documentación de la API** tiene el favicon.
+  - **Las copias** son iguales byte a byte a `assets/logos/`, y lo comprueban sus pruebas.
+- **La ficha del bot en la PWA** (HIG-121; RF23, RF24, RF26; las pantallas 05 a 08 del canvas).
+  - **La cabecera:** el estado REG/ACT/ERR, el `bot_id` y la versión. En ERR dice qué hacer.
+  - **Identidad:** el `cliente-admin` cambia la persona; guardar crea la versión siguiente y un rechazo de RS11 sale
+    en su campo.
+  - **Credenciales de Meta:** dice qué está cargado, sin mostrar nunca su valor, y solo deja cargarlo o reemplazarlo.
+  - **Cerebro e intents:** las reglas y los intents, cada uno con su destino; se añaden, editan y borran con los
+    destinos permitidos a la vista.
+  - **Versiones:** la lista y lo que cambiaría al volver a una. «Volver a vN», solo para el `cliente-admin`; si algo
+    ya no cumple las reglas de hoy, la ficha dice qué.
+  - **El `cliente-analista`** lo ve todo en solo lectura.
+- **El esqueleto de la PWA: barra lateral, cabecera de página, `TabBar` en el teléfono y tema** (HIG-126; el canvas
+  «Pantallas de Hive»).
+  - **La barra lateral:** 240 px y ocho secciones, con la tarjeta del cliente abajo (nombre, `client_id`, rol, «Salir»
+    y el tema).
+  - **En un teléfono:** la `TabBar` sustituye a la barra lateral (Inicio, Bots, Contactos, Más), y «Más» tiene el
+    resto. A 390 px no hay desplazamiento horizontal.
+  - **Cada página:** la ruta, el cliente como eyebrow, el título, una sola acción primaria y su cURL al pie.
+  - **El tema:** oscuro por defecto. El claro se elige en la tarjeta, va en `data-theme` de la raíz y el navegador lo
+    recuerda; los acentos son los mismos y el contraste del texto pasa de 4,5:1.
+  - **El `cliente-analista`** no ve Personas, Credenciales ni Auditoría.
+  - **`GET /client`:** el id y el nombre del cliente de quien llama, sin sus claves, para la tarjeta. El
+    `cliente-analista` también lo lee.
+- **Editar la persona y las reglas de un bot** (HIG-105 y HIG-106; RF23, RF24).
+  - **La persona:** `PUT /chat/{bot_id}/persona` cambia el nombre, el rol, el tono y la descripción, los cuatro a la
+    vez. `409` si es la que ya tiene.
+  - **Las reglas:** `PUT` y `DELETE /chat/{bot_id}/rules/{rule_id}`. `GET /chat/{bot_id}/rules` trae sus ids en
+    `ruleList`, y `POST /chat/{bot_id}/rules` devuelve las que añade, con su id.
+  - **Versiones:** cada cambio es una versión con su autor, y el motor se entera por `gateway.bot.configured`. Una regla
+    borrada por error vuelve al volver a la versión anterior, con el mismo id.
+  - **Roles:** el `cliente-analista` las ve y recibe `403` al cambiarlas.
+
+### Cambiado
+- **La persona y las reglas tienen límites, los mismos al crear que al editar** (RS11; decisiones de Jeremi del
+  2026-10-30).
+  - **Las longitudes:** nombre, rol y tono de 1 a 100 caracteres en una línea; descripción hasta 2000; regla de 1 a
+    1000; y 50 reglas por bot.
+  - **Lo que se rechaza:** caracteres de control y las marcas con las que un modelo separa roles (`<|...|>`, `[INST]`,
+    `<<SYS>>`, `<s>`, `</s>`), con un `422`.
+  - **Sin valores de ejemplo:** `POST /bot` y `POST /chat/{bot_id}/rules` piden todos sus campos, y un campo de más es
+    un `422`. Antes rellenaban lo que faltaba con valores de ejemplo.
+  - **Volver a una versión** revisa también la persona y las reglas con los límites de hoy: la respuesta `422` dice qué
+    no pasa (`persona`, `rules`, `intents`).
+
+### Corregido
+- **Un intent ya no se rellena con ejemplos** (HIG-142, RS11). Sin `actions`, `IntentRequest` le ponía la acción
+  de ejemplo `get_order`, que llamaba a `api.example.com`, y sin `samplePhrases` tres frases inventadas.
+  - **Sin ejemplos:** ahora pide lo que hace falta y deja neutro lo opcional.
+  - **El texto que lee el modelo:** tiene límites y no admite caracteres de control ni marcas de rol: nombre de 100
+    caracteres y en una línea, descripción de 1000, hasta 50 frases de 500 y hasta 10 acciones.
+  - **Nombres:** el de cada acción es un nombre de herramienta, y no se repite.
+  - **Las llamadas:** sus cabeceras y su consulta no admiten saltos de línea, y `authRef` es solo el nombre de un
+    secreto.
+  - **Un `handoff`** va sin `apiCall`, y una `api_call` lo lleva siempre.
+  - **Volver a una versión** revisa los intents con este mismo modelo.
+- **La PWA ya no pierde una acción al editar un intent.** Las acciones que no son una llamada a una API (un
+  `handoff`) no tienen formulario en la ficha, y guardar las quitaba sin avisar. Desde HIG-142 `hive-api` acepta un
+  `handoff` sin `apiCall`, y la ficha lo guarda como vino. En producción no hay ningún intent, así que no se perdió
+  nada.
+- **El README dice lo que piden hoy `POST /bot` y las reglas:** todos los campos, sin ejemplos y con los límites
+  de RS11. Faltaban también en sus tablas las rutas de la persona, de editar y borrar reglas, de las versiones y
+  `GET /client`.
+
 ## [0.8.0] - 2026-10-30
 
 ### Añadido
@@ -1327,7 +1400,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jeremialcala/hive/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jeremialcala/hive/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jeremialcala/hive/compare/v0.5.0...v0.6.0

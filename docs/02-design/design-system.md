@@ -77,7 +77,8 @@ Dos cosas que las superficies dan por hechas y la API todavía no hace:
 ## Pendiente
 
 - Vendorizar las fuentes en cada superficie cuando exista la primera (hoy no hay front-end en el repo).
-- Exportar `hive-app-icon.svg` y `hive-app-icon-maskable.svg` a PNG 192/512 para el manifest de la PWA.
+- ~~Exportar `hive-app-icon.svg` y `hive-app-icon-maskable.svg` a PNG 192/512 para el manifest de la PWA.~~ Hecho
+  el 2026-10-30: están en `portal/src/static/icons/` y en su manifest.
 - Copiar los iconos Lucide que usa el sistema como assets propios.
 - Corregir en el artifact, para la próxima exportación:
   - el brand book dice que los secretos viven «cifrados, en Andvari», cuando están en MongoDB, cifrados con la clave

@@ -1,5 +1,6 @@
 # The root .dockerignore leaves docs/ and deploy/ out of the gateway's image. This image needs only the contract
-# and this directory.
+# and this directory, and the favicon of assets/logos.
 *
 !docs/02-design/contracts/openapi.yaml
+!assets/logos/hive-favicon.svg
 !deploy/docs/

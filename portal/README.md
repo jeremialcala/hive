@@ -33,9 +33,29 @@ El área del cliente (HIG-87), en `src/static/`. No hay paso de build: React 18 
 van como ficheros UMD y la aplicación son módulos ES. Todo sale del propio portal, así que la CSP sigue siendo
 `'self'` ([ADR-0027](../docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md)).
 
+Todas las pantallas comparten el esqueleto del diseño (HIG-126, `src/static/shell.js`):
+
+- **La barra lateral, de 240 px,** con ocho secciones: Visión general, Bots, Contactos, Plantillas, Personas,
+  Credenciales, Integraciones y Auditoría. Abajo va la tarjeta del cliente, con su nombre (`GET /client`), su
+  `client_id`, el rol, «Salir» y el tema.
+- **En un teléfono** (48 rem o menos), la barra lateral deja paso a una barra arriba y a la `TabBar` del sistema de
+  diseño abajo: Inicio, Bots, Contactos y Más. «Más» (`#/mas`) tiene el resto de secciones, el tema y la salida.
+- **La cabecera de cada página** lleva la ruta (breadcrumb), el cliente como eyebrow, el título y como mucho una acción
+  primaria en ámbar. Al pie va el cURL de su llamada.
+- **El tema** es oscuro por defecto. El claro se elige en la tarjeta del cliente, va en `data-theme` de `<html>` y este
+  navegador lo recuerda (`localStorage`, `hive-theme`).
+- **Las secciones que darían `403`** al `cliente-analista` (Personas, Credenciales y Auditoría) no se le muestran, y su
+  dirección escrita a mano le lleva a Bots. Quien decide sigue siendo `hive-api`.
+- **Las secciones que la PWA aún no tiene** lo dicen, con la llamada a la API que las sustituye mientras tanto, si existe.
+
 | Pantalla | Ruta | Qué hace |
 |---|---|---|
-| Bots | `#/` | Los bots del cliente (`GET /bots`). |
+| Bots | `#/`, `#/bots` | Los bots del cliente (`GET /bots`). |
+| Más | `#/mas` | En el teléfono: las secciones que no caben en la `TabBar`. |
+| Ficha del bot · Identidad | `#/bots/<bot>/identidad` | La cabecera del bot (estado REG/ACT/ERR, `bot_id`, versión) y su persona. El `cliente-admin` la cambia (`PUT /chat/{bot_id}/persona`); guardar crea la versión siguiente. Los errores de RS11 salen en su campo. |
+| Credenciales de Meta | `#/bots/<bot>/credenciales` | Qué tokens están cargados, nunca su valor: solo se cargan o se reemplazan (`PUT /chat/{bot_id}/credentials`). El `verifyToken` y la URL del webhook, para el `cliente-admin`. |
+| Cerebro e intents | `#/bots/<bot>/cerebro` | Las reglas (añadir, editar y borrar) y los intents con el destino de cada acción, en un `SlideOver` con los destinos permitidos a la vista (RS16). |
+| Versiones | `#/bots/<bot>/versiones` | Las versiones, con la actual en ámbar. Al elegir una, lo que cambiaría al volver a ella y, para el `cliente-admin`, «Volver a vN». Un `422` dice qué ya no cumple las reglas de hoy. |
 | Plantillas | `#/bots/<bot>/plantillas` | Las plantillas del bot, con su estado de Meta y el motivo de un rechazo. «Sincronizar con Meta» trae la lista de Meta (`?sync=true`). El `cliente-admin` crea, edita y borra. El editor tiene vista previa con los ejemplos y comprueba lo que Meta comprobaría. |
 | Contactos | `#/bots/<bot>/contactos` | Los contactos del bot, sin su número. |
 | Contacto | `#/bots/<bot>/contactos/<contacto>` | La conversación, la ventana de 24 horas con lo que le queda y el consentimiento. Desde aquí se envía. |
@@ -54,6 +74,9 @@ van como ficheros UMD y la aplicación son módulos ES. Todo sale del propio por
 | `ds/` | `tokens.css`, `bundle.css` y `bundle.js` del sistema de diseño (`window.Hive`) | Copia de `assets/design-system/`. Un test comprueba que son iguales byte a byte. |
 | `vendor/` | React y ReactDOM 18.3.1 (`*.production.min.js`), htm 3.1.1 (`htm.umd.js`), con sus licencias | El registro de npm, con el `integrity` sha512 comprobado. |
 | `fonts/` | Geist y JetBrains Mono (400, 500 y 700, latín), con sus licencias OFL | `@fontsource` y `geist` del registro de npm. |
+| `logos/` | El favicon, el isotipo y los lockups horizontal y vertical, oscuro y claro | Copia de `assets/logos/`. Un test comprueba que son iguales byte a byte. |
+| `icons/` | Los iconos de la app en PNG: `any` y `maskable` a 192 y 512, y el de Apple a 180 | Exportados de `hive-app-icon.svg` y `hive-app-icon-maskable.svg` con Chromium, sobre `#0f1115`. Un test comprueba que miden lo que dice el manifest. |
+| `manifest.webmanifest` | El manifest de la PWA: nombre, `start_url`, `standalone`, `theme_color` y `background_color` en `#0f1115`, y los iconos | Escrito a mano (ADR-0027). |
 
 Para verla sin Zitadel ni `hive-api`, basta con un servidor que entregue `src/static/` con la CSP del portal y
 responda `/auth/session` y `/api/*` con datos de prueba.

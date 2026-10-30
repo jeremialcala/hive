@@ -6,21 +6,35 @@
 components:
   schemas:
     ActionParameterRequest:
+      additionalProperties: false
       properties:
         description:
+          maxLength: 1000
           title: Description
           type: string
         enum:
-          items: {}
+          items:
+            maxLength: 500
+            minLength: 1
+            type: string
+          maxItems: 50
           title: Enum
           type: array
         name:
+          pattern: ^[A-Za-z_][A-Za-z0-9_]{0,63}$
           title: Name
           type: string
         required:
           title: Required
           type: boolean
         type:
+          enum:
+          - string
+          - number
+          - integer
+          - boolean
+          - object
+          - array
           title: Type
           type: string
       required:
@@ -28,21 +42,35 @@ components:
       title: ActionParameterRequest
       type: object
     ActionRequest:
+      additionalProperties: false
+      description: 'What the bot can do for an intent: call an API (api_call, with its apiCall) or hand the conversation
+        over to a
+
+        person (handoff, without one).'
       properties:
         apiCall:
-          $ref: '#/components/schemas/ApiCallRequest'
+          anyOf:
+          - $ref: '#/components/schemas/ApiCallRequest'
+          - type: 'null'
         description:
+          maxLength: 1000
+          minLength: 1
           title: Description
           type: string
         name:
+          pattern: ^[A-Za-z0-9_-]{1,64}$
           title: Name
           type: string
         parameters:
           items:
             $ref: '#/components/schemas/ActionParameterRequest'
+          maxItems: 20
           title: Parameters
           type: array
         type:
+          enum:
+          - api_call
+          - handoff
           title: Type
           type: string
       required:
@@ -51,8 +79,10 @@ components:
       title: ActionRequest
       type: object
     ApiCallRequest:
+      additionalProperties: false
       properties:
         authRef:
+          pattern: ^[A-Za-z0-9_.-]{0,100}$
           title: Authref
           type: string
         authType:
@@ -68,7 +98,8 @@ components:
           title: Body
           type: object
         headers:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           title: Headers
           type: object
         method:
@@ -81,7 +112,8 @@ components:
           title: Method
           type: string
         query:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           title: Query
           type: object
         timeout:
@@ -237,19 +269,33 @@ components:
       title: ChatbotPhoneRequest
       type: object
     ChatbotRequest:
+      additionalProperties: false
+      description: 'A new chatbot: for now, its persona. Its numbers, rules and intents are added afterwards.'
       properties:
         description:
+          maxLength: 2000
           title: Description
           type: string
         name:
+          maxLength: 100
+          minLength: 1
           title: Name
           type: string
         role:
+          maxLength: 100
+          minLength: 1
           title: Role
           type: string
         tone:
+          maxLength: 100
+          minLength: 1
           title: Tone
           type: string
+      required:
+      - name
+      - role
+      - description
+      - tone
       title: ChatbotRequest
       type: object
     ClientRequest:
@@ -373,20 +419,30 @@ components:
       title: Header
       type: object
     IntentRequest:
+      additionalProperties: false
       properties:
         actions:
           items:
             $ref: '#/components/schemas/ActionRequest'
+          maxItems: 10
           title: Actions
           type: array
         description:
+          maxLength: 1000
+          minLength: 1
           title: Description
           type: string
         name:
+          maxLength: 100
+          minLength: 1
           title: Name
           type: string
         samplePhrases:
-          items: {}
+          items:
+            maxLength: 500
+            minLength: 1
+            type: string
+          maxItems: 50
           title: Samplephrases
           type: array
       required:
@@ -493,6 +549,35 @@ components:
       - role
       title: PersonInviteRequest
       type: object
+    PersonaRequest:
+      additionalProperties: false
+      properties:
+        description:
+          maxLength: 2000
+          title: Description
+          type: string
+        name:
+          maxLength: 100
+          minLength: 1
+          title: Name
+          type: string
+        role:
+          maxLength: 100
+          minLength: 1
+          title: Role
+          type: string
+        tone:
+          maxLength: 100
+          minLength: 1
+          title: Tone
+          type: string
+      required:
+      - name
+      - role
+      - description
+      - tone
+      title: PersonaRequest
+      type: object
     PhoneButton:
       additionalProperties: false
       properties:
@@ -555,12 +640,33 @@ components:
           type: string
       title: ResponseData
       type: object
+    RuleRequest:
+      additionalProperties: false
+      description: One rule, changed.
+      properties:
+        rule:
+          maxLength: 1000
+          minLength: 1
+          title: Rule
+          type: string
+      required:
+      - rule
+      title: RuleRequest
+      type: object
     RulesRequest:
+      additionalProperties: false
       properties:
         rules:
-          items: {}
+          items:
+            maxLength: 1000
+            minLength: 1
+            type: string
+          maxItems: 50
+          minItems: 1
           title: Rules
           type: array
+      required:
+      - rules
       title: RulesRequest
       type: object
     ServiceKeyRequest:
@@ -804,7 +910,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.8.0
+  version: 0.9.0
 openapi: 3.1.0
 paths:
   /bot:
@@ -1490,6 +1596,44 @@ paths:
       summary: Update Chatbot Intent
       tags:
       - Intents
+  /chat/{bot_id}/persona:
+    put:
+      description: 'Changes the persona of the chatbot (RF23): its name, role, tone and description, all four, with
+        the same limits
+
+        as when it is created (RS11). Each change is a version (RF26). 409 if it is the persona it already has.'
+      operationId: set_chatbot_persona_chat__bot_id__persona_put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonaRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Set Chatbot Persona
+      tags:
+      - Bot
   /chat/{bot_id}/phones:
     get:
       operationId: get_chatbot_phones_chat__bot_id__phones_get
@@ -1603,6 +1747,88 @@ paths:
       security:
       - OAuth2: []
       summary: Add Chatbot Rule
+      tags:
+      - Chat
+  /chat/{bot_id}/rules/{rule_id}:
+    delete:
+      description: 'Deletes one rule of the chatbot (RF24), and the engine stops using it. It is a version (RF26):
+        going back to the
+
+        one before brings the rule back.'
+      operationId: delete_chatbot_rule_chat__bot_id__rules__rule_id__delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: rule_id
+        required: true
+        schema:
+          title: Rule Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Delete Chatbot Rule
+      tags:
+      - Chat
+    put:
+      description: 'Changes one rule of the chatbot (RF24), with the same limits as when it is added. The ids of
+        its rules come
+
+        in `ruleList` of GET /chat/{bot_id}/rules. Each change is a version (RF26). 409 if the rule already says
+        it.'
+      operationId: change_chatbot_rule_chat__bot_id__rules__rule_id__put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: rule_id
+        required: true
+        schema:
+          title: Rule Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Change Chatbot Rule
       tags:
       - Chat
   /chat/{bot_id}/templates:
@@ -1958,6 +2184,22 @@ paths:
       summary: Restore Version
       tags:
       - Versions
+  /client:
+    get:
+      description: 'The client of whoever calls: its id and its name, for the PWA to say whose area it is. No keys.'
+      operationId: own_client_client_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+      security:
+      - OAuth2: []
+      summary: Own Client
+      tags:
+      - Clients
   /clients:
     get:
       operationId: list_clients_clients_get
