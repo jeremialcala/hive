@@ -25,6 +25,9 @@ ADDRESS, ROOT_TOKEN = os.environ.get("OPENBAO_TEST_ADDR"), os.environ.get("OPENB
 # The same as politicas/motor-claves.hcl and politicas/motor-<worker>.hcl in the andvari repository.
 COMMAND_POLICY = 'path "motor/data/clientes/+/+" { capabilities = ["create", "read"] }'
 WORKER_POLICY = 'path "motor/data/clientes/+/{worker}" {{ capabilities = ["read"] }}'
+# The same as politicas/motor-contexto.hcl: the coordinator encrypts and decrypts with the Transit key `contexto`.
+CONTEXT_POLICY = ('path "transit/encrypt/contexto" { capabilities = ["update"] } '
+                  'path "transit/decrypt/contexto" { capabilities = ["update"] }')
 
 
 def as_root(method: str, path: str, body: dict | None = None, allowed=(200, 204)) -> dict:
@@ -55,10 +58,13 @@ def roles(tmp_path_factory):
     as_root("POST", "sys/mounts/motor", {"type": "kv", "options": {"version": "2"}}, allowed=(200, 204, 400))
     as_root("POST", "motor/config", {"cas_required": True})
     as_root("POST", "sys/auth/approle", {"type": "approle"}, allowed=(200, 204, 400))
+    as_root("POST", "sys/mounts/transit", {"type": "transit"}, allowed=(200, 204, 400))
+    as_root("POST", "transit/keys/contexto", {"derived": True}, allowed=(200, 204))
     directory = tmp_path_factory.mktemp("motor")
     return {"command": role("motor-claves", COMMAND_POLICY, directory),
             "notifier": role("motor-notifier", WORKER_POLICY.format(worker="notifier"), directory),
-            "classifier": role("motor-classifier", WORKER_POLICY.format(worker="classifier"), directory)}
+            "classifier": role("motor-classifier", WORKER_POLICY.format(worker="classifier"), directory),
+            "coordinator": role("motor-contexto", CONTEXT_POLICY, directory)}
 
 
 @pytest.fixture
@@ -135,3 +141,26 @@ def test_a_store_that_cannot_be_used_is_reported_and_nothing_else(roles, tmp_pat
         store.read(uuid4(), "notifier")
 
     assert "not-the-secret" not in str(failure.value) and "127.0.0.1" not in str(failure.value)
+
+
+# --- Transit: the context of each conversation (ADR-0017, HIG-19) ----------------------------------------------------
+
+def test_what_is_encrypted_for_a_client_opens_for_that_client_and_no_other(roles):
+    coordinator, client = EngineKeyStore(ADDRESS, *roles["coordinator"]), uuid4()
+
+    ciphertext = coordinator.encrypt("contexto", client, "¿y el horario?".encode("utf-8"))
+
+    assert ciphertext.startswith("vault:v1:") and "horario" not in ciphertext
+    assert coordinator.decrypt("contexto", client, ciphertext).decode("utf-8") == "¿y el horario?"
+    with pytest.raises(KeyStoreUnavailable, match="decrypt refused: 400"):
+        coordinator.decrypt("contexto", uuid4(), ciphertext)
+
+
+def test_only_the_coordinator_reaches_the_key_of_the_context(command, roles):
+    notifier = EngineKeyStore(ADDRESS, *roles["notifier"])
+
+    for store in (command, notifier):
+        with pytest.raises(KeyStoreUnavailable, match="encrypt refused: 403"):
+            store.encrypt("contexto", uuid4(), b"x")
+    with pytest.raises(KeyStoreUnavailable, match="encrypt refused: 403"):
+        EngineKeyStore(ADDRESS, *roles["coordinator"]).encrypt("otra", uuid4(), b"x")

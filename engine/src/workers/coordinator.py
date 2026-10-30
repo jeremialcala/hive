@@ -16,20 +16,33 @@
       se pide el texto fijo de «no disponible», para no dejar a nadie sin respuesta.
     - **Si el bot o el contacto ya no existen**, no hay a quién responder: se descarta.
 
-    En el esqueleto no llama al enlace (ADR-0008) ni guarda el contexto en el bucket de Bifröst (ADR-0017 del
-    gateway): pide las vueltas al gateway en cada mensaje.
+    - **El contexto de cada conversación** vive en el bucket `contexto` de Bifröst, cifrado con la clave `contexto`
+      de Andvari (ADR-0017 del gateway, HIG-19, src/domain/memoria.py). Las vueltas salen de ahí; si no están, o no
+      sirven para el mensaje, se piden al gateway como antes. El coordinador apunta en él lo que dijo la persona, y
+      con su consumidor `MOTOR/coordinator-respuesta`, lo que contestó el bot.
+    - **Lo que el gateway suprime** lo borra del contexto: el consumidor `SUPRESIONES/coordinator` purga las
+      conversaciones del contacto, el bot o el cliente borrados. Si un aviso se pierde, el bucket lo olvida en 24 horas.
+
+    En el esqueleto no llama al enlace (ADR-0008), ni guarda el resumen que pide la ADR-0017 (HIG-143).
 """
 import asyncio
+import json
 import logging
+from typing import Literal, Optional
+from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from shared import bus, tracing
 from shared.contract import CONFIGURED_SUBJECT, BotConfigured
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
-from src.domain.models.sobre import RESPUESTA_POR_MOTIVO, MensajeClasificado, MensajePedido, Pedido, subject_pedido
+from src.domain.memoria import Memoria
+from src.domain.models.sobre import (RESPUESTA_POR_MOTIVO, MensajeClasificado, MensajePedido, MensajeRespondido, Pedido,
+                                     subject_pedido)
+from src.domain.ports.contexto import Contexto, ContextoNoDisponible
 from src.domain.ports.fuente_del_bot import FuenteDelBot, FuenteNoDisponible, NoEncontrado
+from src.infrastructure.bifrost.contexto import ContextoEnBifrost
 from src.infrastructure.gateway import ApiDelGateway
 from src.infrastructure.gateway.api import clave_publica_del_gateway
 from src.workers.runtime import Descartado, Resultado, ejecutar, entregas, leer_del_motor, publicador
@@ -39,16 +52,28 @@ log = logging.getLogger(__name__)
 
 NOMBRE = Worker.COORDINATOR.value
 STREAM, CONSUMIDOR = "MOTOR", NOMBRE
+# Lo que contestó el bot, para el contexto; y lo que suprimió el gateway (bifrost: consumidores del coordinador).
+CONSUMIDOR_RESPUESTAS = f"{NOMBRE}-respuesta"
+SUPRESIONES = "SUPRESIONES"
 
 
 class Coordinar:
     """Lo que hace el worker con cada mensaje."""
 
-    def __init__(self, fuente: FuenteDelBot, publisher: bus.EventPublisher, max_deliver: int):
+    def __init__(self, fuente: FuenteDelBot, publisher: bus.EventPublisher, max_deliver: int,
+                 memoria: Memoria | None = None):
         self._fuente = fuente
         self._publisher = publisher
         # Sin límite (-1), nunca es la última entrega: se espera siempre.
         self._max_deliver = max_deliver
+        # Sin ella (las pruebas que no la necesitan), las vueltas se piden al gateway en cada mensaje.
+        self._memoria = memoria
+
+    async def _vueltas(self, sobre: MensajeClasificado):
+        if self._memoria is not None:
+            return await self._memoria.vueltas(sobre)
+        return await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid, sobre.messageId,
+                                          sobre.receivedAt)
 
     def _ultima(self, mensaje) -> bool:
         return 0 < self._max_deliver <= entregas(mensaje)
@@ -72,8 +97,7 @@ class Coordinar:
             return Pedido(respuesta=RESPUESTA_POR_MOTIVO[sobre.clasificacion.motivo])
         try:
             persona = await self._fuente.persona(sobre.clientId, sobre.botId)
-            vueltas = await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid, sobre.messageId,
-                                                 sobre.receivedAt)
+            vueltas = await self._vueltas(sobre)
         except NoEncontrado as e:
             log.warning("El bot %s o su contacto ya no existen (%s): el mensaje se descarta", sobre.botId, e)
             return Resultado.DESCARTADO
@@ -103,6 +127,62 @@ class Coordinar:
             return Resultado.EN_ESPERA
         log.info("Pedido de un mensaje del bot %s: %s, con %d vueltas", sobre.botId, pedido.respuesta,
                  len(pedido.vueltas))
+        if self._memoria is not None:
+            await self._memoria.apuntar_persona(sobre)
+        return Resultado.CONFIRMADO
+
+
+class Respondido:
+    """Lo que hace el coordinador con cada respuesta del de respuesta: apuntarla en el contexto. Nunca la retiene."""
+
+    def __init__(self, memoria: Memoria):
+        self._memoria = memoria
+
+    async def __call__(self, mensaje) -> Resultado:
+        try:
+            sobre, _ = leer_del_motor(mensaje, MensajeRespondido, "respuesta")
+        except Descartado as e:
+            log.warning("Una respuesta de %s se descarta: %s", STREAM, e)
+            return Resultado.DESCARTADO
+        await self._memoria.apuntar_bot(sobre)
+        return Resultado.CONFIRMADO
+
+
+class Supresion(BaseModel):
+    """El aviso de que el gateway suprimió un contacto, un bot o un cliente (Supresion del AsyncAPI v2 del gateway)."""
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    schemaVersion: Literal[2]
+    entity: Literal["contact", "bot", "client"]
+    clientId: UUID
+    botId: Optional[UUID] = None
+    contactId: Optional[UUID] = None
+
+
+class Suprimido:
+    """Lo que hace el coordinador con cada supresión del gateway: borrar sus conversaciones del contexto."""
+
+    def __init__(self, contexto: Contexto):
+        self._contexto = contexto
+
+    async def __call__(self, mensaje) -> Resultado:
+        try:
+            aviso = Supresion.model_validate(json.loads(mensaje.data))
+            if (aviso.entity == "contact" and (aviso.botId is None or aviso.contactId is None)) or (
+                    aviso.entity == "bot" and aviso.botId is None):
+                raise ValueError("le falta a quién")
+        except (ValueError, UnicodeDecodeError) as e:
+            # ValidationError es un ValueError. Sus errores llevan los valores: solo se dice el tipo.
+            log.warning("Un aviso de %s se descarta: %s", SUPRESIONES, type(e).__name__)
+            return Resultado.DESCARTADO
+        try:
+            await self._contexto.olvidar(aviso.clientId, aviso.botId if aviso.entity != "client" else None,
+                                         aviso.contactId if aviso.entity == "contact" else None)
+        except ContextoNoDisponible as e:
+            # Borrar es una obligación: se intenta otra vez. Si nunca se pudiera, la caducidad lo borra en 24 horas.
+            log.warning("No se pudo borrar del contexto lo que suprimió el gateway, se intentará otra vez: %s", e)
+            return Resultado.EN_ESPERA
+        log.info("Contexto borrado: %s de %s", aviso.entity, aviso.clientId)
         return Resultado.CONFIRMADO
 
 
@@ -131,27 +211,53 @@ async def preparar(settings: CoordinatorSettings, max_deliver: int, store: Engin
         almacén de claves de Andvari, el publicador y, con la conexión con Bifröst, la escucha de los avisos de
         configuración. Devuelve cómo atender cada mensaje y cómo cerrar lo abierto.
     """
-    store = store or EngineKeyStore(settings.andvari_addr, settings.engine_role_id, settings.engine_secret_id_file,
-                                    settings.andvari_ca_file)
+    store = store or almacen(settings)
     fuente = ApiDelGateway(settings.gateway_url, settings.gateway_audience,
                            clave_publica_del_gateway(settings.gateway_public_keys_file), store, NOMBRE,
                            ca_file=settings.gateway_ca_file, timeout=settings.coordinator_timeout)
     publisher = publicador(settings, NOMBRE)
     avisos = await conexion.subscribe(CONFIGURED_SUBJECT, cb=al_configurar(fuente)) if conexion is not None else None
+    memoria = Memoria(fuente, ContextoEnBifrost(conexion.jetstream(), store)) if conexion is not None else None
 
     async def cerrar() -> None:
         if avisos is not None:
             await avisos.unsubscribe()
         await publisher.close()
 
-    return Coordinar(fuente, publisher, max_deliver), cerrar
+    return Coordinar(fuente, publisher, max_deliver, memoria), cerrar
+
+
+def almacen(settings: CoordinatorSettings) -> EngineKeyStore:
+    """Andvari con el rol del coordinador: su clave para cada cliente, y la clave Transit `contexto`."""
+    return EngineKeyStore(settings.andvari_addr, settings.engine_role_id, settings.engine_secret_id_file,
+                          settings.andvari_ca_file)
+
+
+async def preparar_respuestas(settings: CoordinatorSettings, conexion, store: EngineKeyStore | None = None):
+    """El consumidor de las respuestas: apunta en el contexto lo que contestó el bot."""
+    async def cerrar() -> None:
+        return None
+
+    return Respondido(Memoria(None, ContextoEnBifrost(conexion.jetstream(), store or almacen(settings)))), cerrar
+
+
+async def preparar_supresiones(settings: CoordinatorSettings, conexion, store: EngineKeyStore | None = None):
+    """El consumidor de las supresiones: borra del contexto lo que el gateway borró."""
+    async def cerrar() -> None:
+        return None
+
+    return Suprimido(ContextoEnBifrost(conexion.jetstream(), store or almacen(settings))), cerrar
 
 
 def main() -> None:
     """El worker: su configuración y su bucle sobre MOTOR."""
     settings = CoordinatorSettings()
     asyncio.run(ejecutar(NOMBRE, settings, STREAM, CONSUMIDOR,
-                         lambda max_deliver, conexion: preparar(settings, max_deliver, conexion=conexion)))
+                         lambda max_deliver, conexion: preparar(settings, max_deliver, conexion=conexion),
+                         ademas=[(STREAM, CONSUMIDOR_RESPUESTAS,
+                                  lambda _max_deliver, conexion: preparar_respuestas(settings, conexion)),
+                                 (SUPRESIONES, NOMBRE,
+                                  lambda _max_deliver, conexion: preparar_supresiones(settings, conexion))]))
 
 
 if __name__ == "__main__":
