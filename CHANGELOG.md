@@ -7,6 +7,26 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **La prueba de punta a punta del webhook a la respuesta** (HIG-135, Gate 3;
+  [e2e](docs/04-testing/e2e.md)). Una persona escribe a un bot y recibe su respuesta, pasando por cada pieza de
+  producción.
+  - **Qué levanta:** las imágenes del gateway y del motor, construidas del mismo commit, con
+    `ENVIRONMENT=production` y TLS. Bifröst va con su configuración y su aprovisionamiento reales, del repo
+    `higerotech/bifrost`. OpenBao tiene TLS y la configuración de Andvari. Además, MongoDB y RabbitMQ, y un Meta y
+    un LLM falsos (`tests/e2e/compose.yaml`).
+  - **Cómo se prepara:** como lo haría un operador. Se registra la clave del operador y se da de alta un cliente,
+    con su bot, sus credenciales y las claves del motor (`tests/e2e/conftest.py`).
+  - **Qué comprueba:**
+    - Meta recibe el texto del LLM desde el número del bot y con su token;
+    - el historial guarda el mensaje y su respuesta;
+    - el bot queda en `ACT`;
+    - una firma con otro secreto da `403` y no llega nada.
+  - **El workflow `e2e`** corre en los PR a `main` y a mano, y lee Bifröst con la clave de despliegue
+    `BIFROST_DEPLOY_KEY`. Si falla, el informe lleva el log de cada servicio. En local tarda unos 30 s con las
+    imágenes construidas.
+  - La matriz OWASP pasa a la 1.2.0.
+
 ## [0.5.0] - 2026-10-30
 
 ### Seguridad

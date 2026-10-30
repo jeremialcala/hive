@@ -9,12 +9,14 @@ lo que está y lo que falta. Lo que falta es HIG-125.
 
     | | unit | integration | contract | e2e | security |
     |---|---|---|---|---|---|
-    | gateway | 1 879 | 49 | 87 | 0 | 654 (1 752 con `-m security`) |
+    | gateway y motor | 1 879 | 49 | 87 | 2 (`tests/e2e`, juntos) | 654 (1 752 con `-m security`) |
     | motor | 268 | 7 | 57 | 0 | 0 |
     | portal | 60 | 2 | — | — | — |
   - **Seguridad** (HIG-134): `tests/security/` prueba lo hostil en cada ruta. `pytest -m security` la corre junto a
     las pruebas unitarias de la matriz OWASP, que `tests/conftest.py` marca.
-  - **Falta:** `tests/e2e/` sigue vacío (HIG-135), y el motor no tiene suite de seguridad propia.
+  - **e2e** (HIG-135): [del webhook a la respuesta](../../docs/04-testing/e2e.md), con las imágenes de producción,
+    Bifröst tal como está configurado, OpenBao con TLS, y Meta y el LLM falsos. Corre en los PR a `main`.
+  - **Falta:** el recorrido de la PWA (HIG-141), y el motor no tiene suite de seguridad propia.
 - [ ] Matriz OWASP Top 10 ejecutada
   - **Está** (2026-10-30, HIG-133): [`owasp-mapping.md`](../owasp-mapping.md) traza A01–A10 a los controles reales, con
     la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o

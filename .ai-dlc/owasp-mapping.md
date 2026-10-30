@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.1.0
+* **Versión:** 1.2.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -18,7 +18,7 @@ Cómo se lee:
 Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine · test` y `portal · test`.
 - **La suite de seguridad del gateway** se corre sola con `pytest -m security`: son `tests/security/` y las
   pruebas unitarias de esta matriz, que `tests/conftest.py` marca.
-- **`tests/e2e/`** sigue vacío (HIG-135).
+- **`tests/e2e/`** recorre del webhook a la respuesta con las imágenes de producción ([e2e](../docs/04-testing/e2e.md)).
 
 ## Resumen
 
@@ -246,7 +246,9 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **La firma de Meta** (`X-Hub-Signature-256`), un HMAC sobre el cuerpo crudo con el App Secret de cada bot
   (`src/utils/security.py`, `src/webhook.py`).
   - **Prueba:** `tu/test_webhook_security.py::test_signature_matches_only_the_signed_body`,
-    `tu/test_webhook_answers.py::test_without_a_good_signature_the_answer_is_403_and_the_body_is_not_read`.
+    `tu/test_webhook_answers.py::test_without_a_good_signature_the_answer_is_403_and_the_body_is_not_read`, y con las
+    imágenes de producción,
+    `tests/e2e/test_del_webhook_a_la_respuesta.py::test_a_notification_signed_with_another_secret_reaches_nothing`.
   - **Decidido en:** ADR-0004, ADR-0007; RS03.
 - **Contratos versionados** del bus, de la cola y de la API.
   - **Prueba:** `tests/contract/` (`test_bus_contract.py`, `test_queue_contract.py`, `test_openapi_contract.py`) y
