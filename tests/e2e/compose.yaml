@@ -1,12 +1,14 @@
-# Hive end to end (HIG-135): the gateway and the engine of production, with Bifröst as it is configured
-# (higerotech/bifrost), OpenBao with TLS, MongoDB, RabbitMQ (Hermod, while the ingestion still feeds the `llm` queue)
-# and a fake Meta and LLM. tests/e2e/conftest.py makes the secrets in $E2E_DIR and drives it:
+# Hive end to end (HIG-135, HIG-141): the gateway, the engine and the portal of production, with Bifröst as it is
+# configured (higerotech/bifrost), OpenBao with TLS, MongoDB, RabbitMQ (Hermod, while the ingestion still feeds the
+# `llm` queue) and a fake Meta, LLM and Zitadel. tests/e2e/conftest.py makes the secrets in $E2E_DIR and drives it:
 #
 #   E2E=1 BIFROST_DIR=../bifrost pytest tests/e2e
 #
-# What changes from deploy/docker-compose.yml and engine/deploy/docker-compose.yml: the images are the ones just built,
-# the secrets are born in $E2E_DIR, Meta and the LLM are tests/e2e/fakes.py, and nothing restarts. The rest, as in
-# production: ENVIRONMENT=production, TLS to Bifröst and to Andvari, the workers read-only and without capabilities.
+# What changes from deploy/docker-compose.yml, engine/deploy/docker-compose.yml and portal/deploy/docker-compose.yml:
+# the images are the ones just built, the secrets are born in $E2E_DIR, Meta, the LLM and Zitadel are
+# tests/e2e/fakes.py, the portal is at http://localhost:15004 instead of behind the tunnel, and nothing restarts. The
+# rest, as in production: ENVIRONMENT=production, TLS to Bifröst and to Andvari, the workers read-only and without
+# capabilities.
 name: hive-e2e
 
 x-gateway: &gateway
@@ -34,6 +36,13 @@ x-llm: &llm
   LLM_API_KEY_FILE: /run/e2e/llm-api-key
   LLM_CALENTAR_CADA: "0"
   LOG_LEVEL: INFO
+
+# Zitadel, by one name for the browser and for the containers: the browser maps it to 127.0.0.1 (conftest.py).
+x-zitadel: &zitadel
+  IDP_ISSUER: http://zitadel.e2e.test:18090
+  OIDC_CLIENT_ID: "300000000000000001"
+  IDP_ORGANIZATION_ID: "300000000000000002"
+  PORTAL_URL: http://localhost:15004
 
 x-to-gateway: &to-gateway
   GATEWAY_URL: http://hive-api:5002
@@ -76,9 +85,12 @@ services:
   fakes:
     image: python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
     command: ["python", "-I", "/fakes/fakes.py"]
-    volumes: ["./fakes.py:/fakes/fakes.py:ro"]
-    ports: ["127.0.0.1:18080:8080"]
-    networks: [e2e]
+    environment: *zitadel
+    volumes: ["./fakes.py:/fakes/fakes.py:ro", "${E2E_DIR}:/run/e2e:ro"]
+    ports: ["127.0.0.1:18080:8080", "127.0.0.1:18090:18090"]
+    networks:
+      e2e:
+        aliases: [zitadel.e2e.test]
 
   # --- The gateway ---------------------------------------------------------------------------------------------------
 
@@ -89,6 +101,11 @@ services:
       GATEWAY_KEYS_FILE: /run/e2e/gateway-keys.json
       GATEWAY_URLS: http://hive-api:5002,http://127.0.0.1:15002
       ERASURES_DIR: /tmp/erasures
+      # The people (ADR-0029): the ID tokens of Zitadel for the portal, and its service account to invite them.
+      IDP_ISSUER: http://zitadel.e2e.test:18090
+      IDP_AUDIENCE: "300000000000000001"
+      IDP_ORGANIZATION_ID: "300000000000000002"
+      IDP_TOKEN_FILE: /run/e2e/zitadel-token
     tmpfs: [/tmp]
     ports: ["127.0.0.1:15002:5002"]
 
@@ -113,6 +130,25 @@ services:
       GATEWAY_PUBLIC_KEYS_FILE: /run/e2e/gateway-public.json
       OPERATOR_KEY_FILE: /run/e2e/operador.json
       ENGINE_KEYS_SECRET_ID_FILE: /run/e2e/motor-claves-secret-id
+
+  # --- The portal (HIG-141) ------------------------------------------------------------------------------------------
+
+  portal:
+    image: ${PORTAL_IMAGE:-hive-portal:e2e}
+    env_file: ["${E2E_DIR}/nats-portal.env"]
+    environment:
+      <<: *zitadel
+      ENVIRONMENT: production
+      HIVE_API_URL: http://hive-api:5002
+      OIDC_CLIENT_SECRET_FILE: /run/e2e/oidc-client-secret
+      SESSION_KEY_FILE: /run/e2e/session-key
+    volumes: ["${E2E_DIR}:/run/e2e:ro"]
+    ports: ["127.0.0.1:15004:8080"]
+    networks: [e2e]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
 
   # --- The engine ----------------------------------------------------------------------------------------------------
 

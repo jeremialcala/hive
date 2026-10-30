@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The fixtures of the end-to-end test (HIG-135): the stack, and a client with its chatbot. See e2e_stack.py."""
+"""The fixtures of the end-to-end test (HIG-135, HIG-141): the stack, and a client with its chatbot. See e2e_stack.py."""
 import os
 import secrets
 import subprocess
@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 import requests
 
-from .e2e_stack import API, ROOT, WEBHOOK, Hive, Stack, until, wanted
+from .e2e_stack import API, PORTAL, ROOT, WEBHOOK, Hive, Stack, until, wanted
 
+WABA_ID = "100000000000009"
 # The stack that is up, so that a failing test carries the log of every service in its report.
 UP: list = []
 
@@ -28,7 +29,8 @@ def stack():
     if not wanted():
         pytest.skip("The end-to-end test needs Docker and Bifröst: E2E=1 BIFROST_DIR=<higerotech/bifrost>")
     if not os.environ.get("E2E_NO_BUILD"):
-        for args in (["-t", "hive-gateway:e2e", "."], ["-f", "engine/Dockerfile", "-t", "hive-engine:e2e", "."]):
+        for args in (["-t", "hive-gateway:e2e", "."], ["-f", "engine/Dockerfile", "-t", "hive-engine:e2e", "."],
+                     ["-f", "portal/Dockerfile", "-t", "hive-portal:e2e", "."]):
             subprocess.run(["docker", "build", "-q", *args], cwd=ROOT, check=True, capture_output=True)
     with tempfile.TemporaryDirectory(prefix="hive-e2e-") as directory:
         # It is made 0700, and the containers' users must get into it, as into its files (Stack.write). Docker Desktop
@@ -42,9 +44,10 @@ def stack():
             gateway_role, engine_keys_role = built.andvari()
             built.gateway_env(gateway_role, engine_keys_role)
             built.bifrost()
-            built.compose("up", "-d", "hive-api", "webhook", "ingest")
+            built.compose("up", "-d", "hive-api", "webhook", "ingest", "portal")
             until("hive-api", lambda: requests.get(f"{API}/health", timeout=3).ok)
             until("the webhook", lambda: requests.get(f"{WEBHOOK}/health", timeout=3).ok)
+            until("the portal", lambda: requests.get(f"{PORTAL}/health", timeout=3).ok)
             UP.append(built)
             yield built
             UP.remove(built)
@@ -70,7 +73,9 @@ def client(stack):
     bot = acme.call("POST", "/bot", {"name": "Tienda e2e", "role": "Sales Assistant", "tone": "amable",
                                      "description": "Una tienda de prueba de Hive"})
     app_secret = secrets.token_urlsafe(24)
-    acme.call("PUT", f"/chat/{bot['uuid']}/credentials", {"whatsappToken": "EAAG-e2e-token", "appSecret": app_secret})
+    # And its WhatsApp Business Account: the PWA manages the chatbot's templates there (HIG-141).
+    acme.call("PUT", f"/chat/{bot['uuid']}/credentials", {"whatsappToken": "EAAG-e2e-token", "appSecret": app_secret,
+                                                          "wabaId": WABA_ID})
     acme.call("POST", f"/chat/{bot['uuid']}/rules", {"rules": ["Responde siempre en español"]})
 
     stack.ops("ops.engine_keys", made["uuid"], extra_env={"OPERATOR_CLIENT_ID": operator_id})
