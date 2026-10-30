@@ -60,10 +60,20 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     no pasa (`persona`, `rules`, `intents`).
 
 ### Corregido
+- **Un intent ya no se rellena con ejemplos** (HIG-142, RS11). Sin `actions`, `IntentRequest` le ponía la acción
+  de ejemplo `get_order`, que llamaba a `api.example.com`, y sin `samplePhrases` tres frases inventadas.
+  - **Sin ejemplos:** ahora pide lo que hace falta y deja neutro lo opcional.
+  - **El texto que lee el modelo:** tiene límites y no admite caracteres de control ni marcas de rol: nombre de 100
+    caracteres y en una línea, descripción de 1000, hasta 50 frases de 500 y hasta 10 acciones.
+  - **Nombres:** el de cada acción es un nombre de herramienta, y no se repite.
+  - **Las llamadas:** sus cabeceras y su consulta no admiten saltos de línea, y `authRef` es solo el nombre de un
+    secreto.
+  - **Un `handoff`** va sin `apiCall`, y una `api_call` lo lleva siempre.
+  - **Volver a una versión** revisa los intents con este mismo modelo.
 - **La PWA ya no pierde una acción al editar un intent.** Las acciones que no son una llamada a una API (un
-  `handoff`) no tienen formulario en la ficha, y `hive-api` no acepta una acción sin su llamada: guardar las quitaba sin
-  avisar. Ahora la ficha lo dice y no deja guardar ese intent. En producción no hay ningún intent, así que no se
-  perdió nada.
+  `handoff`) no tienen formulario en la ficha, y guardar las quitaba sin avisar. Desde HIG-142 `hive-api` acepta un
+  `handoff` sin `apiCall`, y la ficha lo guarda como vino. En producción no hay ningún intent, así que no se perdió
+  nada.
 - **El README dice lo que piden hoy `POST /bot` y las reglas:** todos los campos, sin ejemplos y con los límites
   de RS11. Faltaban también en sus tablas las rutas de la persona, de editar y borrar reglas, de las versiones y
   `GET /client`.

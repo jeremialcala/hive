@@ -6,21 +6,35 @@
 components:
   schemas:
     ActionParameterRequest:
+      additionalProperties: false
       properties:
         description:
+          maxLength: 1000
           title: Description
           type: string
         enum:
-          items: {}
+          items:
+            maxLength: 500
+            minLength: 1
+            type: string
+          maxItems: 50
           title: Enum
           type: array
         name:
+          pattern: ^[A-Za-z_][A-Za-z0-9_]{0,63}$
           title: Name
           type: string
         required:
           title: Required
           type: boolean
         type:
+          enum:
+          - string
+          - number
+          - integer
+          - boolean
+          - object
+          - array
           title: Type
           type: string
       required:
@@ -28,21 +42,35 @@ components:
       title: ActionParameterRequest
       type: object
     ActionRequest:
+      additionalProperties: false
+      description: 'What the bot can do for an intent: call an API (api_call, with its apiCall) or hand the conversation
+        over to a
+
+        person (handoff, without one).'
       properties:
         apiCall:
-          $ref: '#/components/schemas/ApiCallRequest'
+          anyOf:
+          - $ref: '#/components/schemas/ApiCallRequest'
+          - type: 'null'
         description:
+          maxLength: 1000
+          minLength: 1
           title: Description
           type: string
         name:
+          pattern: ^[A-Za-z0-9_-]{1,64}$
           title: Name
           type: string
         parameters:
           items:
             $ref: '#/components/schemas/ActionParameterRequest'
+          maxItems: 20
           title: Parameters
           type: array
         type:
+          enum:
+          - api_call
+          - handoff
           title: Type
           type: string
       required:
@@ -51,8 +79,10 @@ components:
       title: ActionRequest
       type: object
     ApiCallRequest:
+      additionalProperties: false
       properties:
         authRef:
+          pattern: ^[A-Za-z0-9_.-]{0,100}$
           title: Authref
           type: string
         authType:
@@ -68,7 +98,8 @@ components:
           title: Body
           type: object
         headers:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           title: Headers
           type: object
         method:
@@ -81,7 +112,8 @@ components:
           title: Method
           type: string
         query:
-          additionalProperties: true
+          additionalProperties:
+            type: string
           title: Query
           type: object
         timeout:
@@ -387,20 +419,30 @@ components:
       title: Header
       type: object
     IntentRequest:
+      additionalProperties: false
       properties:
         actions:
           items:
             $ref: '#/components/schemas/ActionRequest'
+          maxItems: 10
           title: Actions
           type: array
         description:
+          maxLength: 1000
+          minLength: 1
           title: Description
           type: string
         name:
+          maxLength: 100
+          minLength: 1
           title: Name
           type: string
         samplePhrases:
-          items: {}
+          items:
+            maxLength: 500
+            minLength: 1
+            type: string
+          maxItems: 50
           title: Samplephrases
           type: array
       required:

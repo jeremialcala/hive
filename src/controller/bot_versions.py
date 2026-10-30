@@ -211,6 +211,14 @@ def _allowed(model, value) -> bool:
     return True
 
 
+def _as_request(intent: dict) -> dict:
+    """An intent of a version, as a request would bring it: without what Hive keeps of it (its id, its states)."""
+    kept = _without_empty({key: value for key, value in intent.items() if key not in ("uuid", "botId", "status")})
+    kept["actions"] = [{key: value for key, value in action.items() if key != "status"}
+                       for action in kept.get("actions", [])]
+    return kept
+
+
 def _not_allowed(config: dict) -> dict:
     """
         What of a configuration would not be saved today, checked with today's rules: the persona and the rules with
@@ -222,8 +230,7 @@ def _not_allowed(config: dict) -> dict:
     rules = [rule["uuid"] for rule in config["rules"] if not _allowed(RuleRequest, {"rule": rule["rule"]})]
     if rules or len(config["rules"]) > RULES_PER_BOT:
         refused["rules"] = rules
-    intents = [intent["uuid"] for intent in config["intents"]
-               if not _allowed(IntentRequest, _without_empty(intent))]
+    intents = [intent["uuid"] for intent in config["intents"] if not _allowed(IntentRequest, _as_request(intent))]
     if intents:
         refused["intents"] = intents
     return refused

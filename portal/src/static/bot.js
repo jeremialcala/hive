@@ -286,16 +286,21 @@ function blankAction() {
     apiCall: { method: "GET", url: "", headers: {}, query: {}, body: {}, authType: "none", authRef: "", timeout: 30 } };
 }
 
-// What PUT and POST of an intent take: the whole intent, the parameters of each action as they were.
+// What PUT and POST of an intent take: the whole intent, the parameters of each action as they were, and its
+// handoffs, which call nothing and have no form here, as they came (HIG-142).
+function actionBody(action) {
+  const call = action.apiCall;
+  return { name: action.name, description: action.description, type: action.type || "api_call",
+    parameters: (action.parameters || []).map((p) => ({ name: p.name, type: p.type || "string",
+      description: p.description || "", required: Boolean(p.required), enum: p.enum || [] })),
+    apiCall: call ? { method: call.method || "GET", url: call.url || "", headers: call.headers || {}, query: call.query || {},
+      body: call.body || {}, authType: call.authType || "none", authRef: call.authRef || "", timeout: call.timeout || 30 } : null };
+}
+
 function intentBody(draft) {
   return { name: draft.name, description: draft.description,
     samplePhrases: draft.phrases.split("\n").map((phrase) => phrase.trim()).filter(Boolean),
-    actions: draft.actions.map((action) => ({ name: action.name, description: action.description, type: action.type || "api_call",
-      parameters: (action.parameters || []).map((p) => ({ name: p.name, type: p.type || "string",
-        description: p.description || "", required: Boolean(p.required), enum: p.enum || [] })),
-      apiCall: { method: action.apiCall.method || "GET", url: action.apiCall.url || "", headers: action.apiCall.headers || {},
-        query: action.apiCall.query || {}, body: action.apiCall.body || {}, authType: action.apiCall.authType || "none",
-        authRef: action.apiCall.authRef || "", timeout: action.apiCall.timeout || 30 } })) };
+    actions: [...draft.actions, ...draft.handoffs].map(actionBody) };
 }
 
 function IntentEditor({ botId, intent, version, onClose, onSaved }) {
@@ -304,6 +309,7 @@ function IntentEditor({ botId, intent, version, onClose, onSaved }) {
     name: intent ? intent.name : "", description: intent ? intent.description : "",
     phrases: intent ? (intent.samplePhrases || []).join("\n") : "",
     actions: intent ? intent.actions.filter((action) => action.apiCall).map((action) => ({ ...action })) : [blankAction()],
+    handoffs: intent ? intent.actions.filter((action) => !action.apiCall) : [],
   }));
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
@@ -311,9 +317,6 @@ function IntentEditor({ botId, intent, version, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const route = creating ? `chat/${botId}/intents` : `chat/${botId}/intents/${intent.uuid}`;
   const body = intentBody(draft);
-  // An action that is not a call to an API (a handoff) has no form here, and hive-api takes no action without its
-  // call: saving would drop it. The intent is not saved from here, so nothing is lost without a word.
-  const untouchable = intent ? intent.actions.filter((action) => !action.apiCall).map((action) => action.name) : [];
 
   const setAction = (index, change) => setDraft({ ...draft,
     actions: draft.actions.map((action, at) => (at === index ? change(action) : action)) });
@@ -335,11 +338,11 @@ function IntentEditor({ botId, intent, version, onClose, onSaved }) {
         footer=${html`
           <${Button} variant="ghost" onClick=${onClose}>Cancelar<//>
           <${Button} variant="primary" icon="check"
-              disabled=${!draft.name.trim() || !draft.description.trim() || saving || untouchable.length > 0}
+              disabled=${!draft.name.trim() || !draft.description.trim() || saving}
               onClick=${() => send(creating ? "POST" : "PUT")}>Guardar intent · v${(version || 0) + 1}<//>`}>
-      ${untouchable.length > 0 && html`<p class="pwa-error" role="alert">
-        Este intent tiene acciones que no son una llamada a una API (${untouchable.join(", ")}), y la PWA no puede
-        guardarlo sin quitarlas. Cámbialo por la API.</p>`}
+      ${draft.handoffs.length > 0 && html`<p class="pwa-notice">
+        Además pasa la conversación a una persona: ${draft.handoffs.map((action) => action.name).join(", ")}. Esas acciones
+        no llaman a ninguna API y se guardan como están.</p>`}
       <${Field} id="intent-name" label="Intent" mono required value=${draft.name}
           onChange=${(event) => setDraft({ ...draft, name: event.target.value })} help="Una palabra: lo que quiere la persona." />
       <${Field} id="intent-description" label="Descripción" required value=${draft.description}
