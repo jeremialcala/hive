@@ -175,8 +175,9 @@ def test_the_engine_gets_the_rest_of_what_it_answers_with(http, engine, bot):
     assert (rules.status_code, tools.status_code, keys.status_code) == (200, 200, 200)
     # The persona and the rules as data, for the engine to write Claude's system with: no prompt of Llama 2.
     # Created, its rules added and an intent: three versions (RF26).
-    data = rules.json()["data"]
-    assert [rule["rule"] for rule in data.pop("ruleList")] == ["Be kind"]
+    data = dict(rules.json()["data"])
+    rule_list = data.pop("ruleList")
+    assert [rule["rule"] for rule in rule_list] == ["Be kind"]
     assert data == {"name": "Mine", "role": "Sales Assistant", "tone": "helpful", "description": "A test chatbot",
                     "rules": ["Be kind"], "version": 3}
     assert "<<SYS>>" not in rules.text and "<s>" not in rules.text

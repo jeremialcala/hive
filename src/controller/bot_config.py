@@ -7,12 +7,10 @@
     change is a version (RF26, ADR-0035), so a rule deleted by mistake comes back by going back to the version before,
     and the route tells the engine so that it reads the chatbot again.
 """
-import logging
-
 from fastapi import status
 from fastapi.responses import JSONResponse
 
-from classes import PersonaRequest, Rule, RuleRequest, Settings
+from classes import PersonaRequest, Rule, RuleRequest
 from repository import NotFound, TenantRepository
 
 from .answers import answer
@@ -20,9 +18,6 @@ from .bot_versions import versioned
 
 __all__ = ["PERSONA_CHANGED", "RULE_CHANGED", "RULE_DELETED", "TOO_MANY_RULES", "TooManyRules", "rule_info",
            "persona_info", "ctr_set_persona", "ctr_change_rule", "ctr_delete_rule"]
-
-settings = Settings()
-log = logging.getLogger(settings.environment)
 
 # What each version says it was.
 PERSONA_CHANGED, RULE_CHANGED, RULE_DELETED = "persona changed", "rule changed", "rule deleted"
