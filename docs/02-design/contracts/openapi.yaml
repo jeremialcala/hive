@@ -1019,7 +1019,10 @@ paths:
 
         nothing more. 60 sends a minute for each chatbot and 1 000 a day for each client: more get 429 with
 
-        Retry-After.'
+        Retry-After.
+
+
+        A cliente-analista only sends approved templates (D10): a text from them gets 403.'
       operationId: send_message_chat__bot_id__contacts__contact_id__messages_post
       parameters:
       - in: path
@@ -1148,6 +1151,7 @@ paths:
       - Chat
   /chat/{bot_id}/info:
     get:
+      description: The card of a chatbot, with its verifyToken; a cliente-analista gets it without it (D6).
       operationId: get_chatbot_info_chat__bot_id__info_get
       parameters:
       - in: path
@@ -2027,12 +2031,14 @@ paths:
       - Clients
   /oauth/token:
     post:
-      description: The client authenticates with an assertion its key signed, as in RFC 7523, section 2.2 (ADR-0025),
-        and gets an access token the gateway signs, for every other route.
+      description: A machine credential authenticates with an assertion its key signed (client_credentials, RFC
+        7523, section 2.2, ADR-0025). The BFF of the PWA exchanges the ID token of a person (token-exchange, RFC
+        8693, ADR-0029), and the token says the person and their role in their client. Either way, an access token
+        the gateway signs, for every other route.
       operationId: oauth_token_oauth_token_post
       parameters:
-      - description: A DPoP proof (RFC 9449) for POST and this URL, signed with the same key as the assertion, without
-          ath.
+      - description: 'A DPoP proof (RFC 9449) for POST and this URL, without ath: signed with the same key as the
+          assertion, or, in an exchange, with the BFF''s own key.'
         in: header
         name: DPoP
         required: true
@@ -2042,6 +2048,8 @@ paths:
         content:
           application/x-www-form-urlencoded:
             schema:
+              description: client_credentials takes client_assertion_type and client_assertion; token-exchange (RFC
+                8693, ADR-0029), subject_token and subject_token_type.
               properties:
                 client_assertion:
                   description: A JWT the client signs (ES256, with the kid of its registered key; iss and sub, the
@@ -2055,11 +2063,27 @@ paths:
                 grant_type:
                   enum:
                   - client_credentials
+                  - urn:ietf:params:oauth:grant-type:token-exchange
+                  type: string
+                hive_client:
+                  description: 'token-exchange: the client the person enters, only needed for a person of more than
+                    one.'
+                  format: uuid
+                  type: string
+                requested_token_type:
+                  enum:
+                  - urn:ietf:params:oauth:token-type:access_token
+                  type: string
+                subject_token:
+                  description: 'token-exchange: the ID token Zitadel gave the person, for the BFF, with mfa in its
+                    amr.'
+                  type: string
+                subject_token_type:
+                  enum:
+                  - urn:ietf:params:oauth:token-type:id_token
                   type: string
               required:
               - grant_type
-              - client_assertion_type
-              - client_assertion
               type: object
         required: true
       responses:
@@ -2072,6 +2096,10 @@ paths:
                     type: string
                   expires_in:
                     type: integer
+                  issued_token_type:
+                    enum:
+                    - urn:ietf:params:oauth:token-type:access_token
+                    type: string
                   token_type:
                     enum:
                     - DPoP
@@ -2081,7 +2109,7 @@ paths:
                 - token_type
                 - expires_in
                 type: object
-          description: An access token, good for 10 minutes.
+          description: An access token, good for 10 minutes. An exchange also says issued_token_type.
         '400':
           content:
             application/json:
@@ -2093,7 +2121,10 @@ paths:
                 - error
                 type: object
           description: 'invalid_request, unsupported_grant_type, or invalid_dpop_proof: the DPoP header is missing,
-            is not good, or is not signed by the key that signed the assertion.'
+            is not good, or is not signed by the key that signed the assertion. In an exchange, invalid_grant: the
+            ID token is not good, has no second factor, or its person is not in Hive, is blocked or removed, or
+            their client is not active, whatever the reason; and invalid_target: the person is of more than one
+            client, and hive_client does not say which.'
         '401':
           content:
             application/json:
@@ -2123,7 +2154,18 @@ paths:
               description: Seconds to wait.
               schema:
                 type: integer
-      summary: An access token for a client that proves who it is (OAuth 2.0 client_credentials, RFC 7523)
+        '503':
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                required:
+                - error
+                type: object
+          description: 'temporarily_unavailable: in an exchange, the keys of the IdP could not be read.'
+      summary: An access token, for a client that proves who it is or for a person of a client
       tags:
       - OAuth
 servers:

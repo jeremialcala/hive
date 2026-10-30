@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # the public one, which is the audience, and the one the engine uses inside midgard. Without it, only the
     # audience.
     gateway_urls: str | None = None
+    # The IdP of the people of a client (ADR-0029): Zitadel. Its issuer, the client id the BFF has there, which its ID
+    # tokens are for, and where its public keys are, by its public name and with TLS. Without the issuer and the
+    # audience, the exchange of an ID token for an access token is turned away as a grant this service does not take.
+    idp_issuer: str | None = None
+    idp_audience: str | None = None
+    idp_jwks_url: str | None = None
     # The key service that holds the master key: an OpenBao. The app starts without reaching it, but nothing
     # encrypted can be read or written until it answers.
     andvari_addr: str = Field(min_length=8)

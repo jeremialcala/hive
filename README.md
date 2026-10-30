@@ -311,6 +311,7 @@ Todas las entidades son `Document` de mongoengine y se conectan a la base config
 
 | Entidad | Fichero | Campos clave | Propósito |
 |---|---|---|---|
+| `ClientUser` | `entity_client_user.py` | `key`, `uuid`, `clientId`, `issuer`, `subject`, `email`, `emailIndex`, `role`, `status`, `invitedBy` | Una persona de un cliente ([ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md)): quién es en Zitadel (`iss`, `sub`), su rol en Hive (`cliente-admin` o `cliente-analista`) y su estado. El correo va cifrado y se busca por su índice ciego. Se borra con el cliente. |
 | `Client` | `entity_client.py` | `uuid`, `name`, `role`, `signingKeys`, `serviceKeys`, `wrappedDataKey`, `status` | Un cliente de Hive: sus claves públicas, las de los workers del motor que lo atienden y su clave de datos, envuelta por Andvari. |
 | `ChatBot` | `entity_chatbot.py` | `uuid`, `clientId`, `name`, `role`, `description`, `tone`, `verifyToken`, `facebookToken`, `whatsappToken`, `appSecret`, `wabaId`, `status` | Un chatbot. Los tokens, el App Secret y el `verifyToken` se guardan cifrados; el `wabaId`, en claro. `generate_verification_token()` emite el JWT firmado que se usa para verificar el webhook ante Meta. |
 | `ChatbotPhone` | `entity_chatbot_phones.py` | `uuid`, `clientId`, `bot_id`, `environment`, `phoneNumber`, `phoneId` | Números de WhatsApp asociados a un bot, separados por entorno. El número va cifrado. |
@@ -345,6 +346,7 @@ Los ajustes los carga `src/classes/tool_settings.py` (`pydantic-settings`) desde
 |---|---|
 | `GATEWAY_KEYS_FILE` | Ruta del fichero con las claves del gateway: el par al que los clientes cifran sus aserciones y el que firma los tokens de acceso. Fuera del repositorio y de la imagen; la API no arranca sin una de cada. Se crean con `python -m ops.gateway_key generate` y `generate-signing`. |
 | `GATEWAY_AUDIENCE` | Lo que los clientes ponen en el `aud` de sus aserciones: la URL pública de la API, `https://hive-api.higerotech.com`. |
+| `IDP_ISSUER`, `IDP_AUDIENCE`, `IDP_JWKS_URL` | El IdP de las personas ([ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md)): el `iss` de los ID tokens de Zitadel, el client id del BFF allí y sus claves públicas (por defecto, `<IDP_ISSUER>/oauth/v2/keys`). Sin los dos primeros, nadie cambia un ID token por un token de Hive. |
 | `OPERATOR_CLIENT_ID`, `ENGINE_KEYS_ROLE_ID` | Para `ops.engine_keys`: el cliente del operador y el rol `motor-claves` de Andvari con el que guarda las claves del motor. |
 | `ANDVARI_ADDR`, `ANDVARI_ROLE_ID` | Dirección del servicio de claves (OpenBao) y rol con el que entra el gateway. Fuera de desarrollo la dirección tiene que ser `https`. |
 | `ANDVARI_SECRET_ID_FILE`, `ANDVARI_CA_FILE` | Rutas del fichero con la credencial de ese rol y de la autoridad que firmó el certificado del servicio de claves. |

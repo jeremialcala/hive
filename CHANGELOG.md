@@ -46,6 +46,52 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **Las personas de un cliente entran por Zitadel, y Hive decide qué pueden hacer** (HIG-92,
+  [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md); RF17, RS22, RS23).
+  - **`ClientUser`**, en la colección `client_users`, guarda de cada persona:
+    - su `iss` y su `sub` en Zitadel;
+    - el correo, cifrado con la clave del cliente y con índice ciego;
+    - el rol (`cliente-admin` o `cliente-analista`), el estado y quién la invitó.
+
+    Una persona puede ser de más de un cliente, y no puede estar dos veces en el mismo: lo impide la clave primaria.
+    Se borra con su cliente.
+  - **El intercambio** (`token-exchange`, RFC 8693) en `POST /oauth/token`. El BFF presenta el ID token de la persona
+    con una prueba DPoP de su propia clave. Hive comprueba del ID token:
+    - la firma, con el JWKS de Zitadel, que guarda una hora y relee como mucho una vez por minuto;
+    - el `iss`, el `aud` y el `azp`;
+    - la caducidad;
+    - el `mfa` del `amr`.
+
+    Después exige que la persona esté invitada o activa y que su cliente esté activo, y emite el token con la persona y
+    su rol (`hive_user`, `hive_user_role`), atado a la clave del BFF. Una persona de más de un cliente elige con
+    `hive_client`.
+  - **Los errores del intercambio:**
+    - lo que no vale da siempre el mismo `invalid_grant`;
+    - una persona de más de un cliente sin `hive_client`, `invalid_target`;
+    - sin IdP configurado, `unsupported_grant_type`;
+    - sin las claves de Zitadel, `503`.
+
+    Los tokens se cuentan por persona con el límite de la ADR-0028.
+  - **Configuración:** `IDP_ISSUER`, `IDP_AUDIENCE` y, si hace falta, `IDP_JWKS_URL`. Sin los dos primeros solo entran
+    las credenciales de máquina.
+  - **El `Principal`** gana la persona y su rol. El envío a un contacto guarda `sentBy: person <uuid>`. La credencial
+    de máquina conserva los permisos de `cliente-admin` (D3).
+  - **La autorización por rol:**
+    - el `cliente-analista` solo alcanza las rutas de `ANALYST_ROUTES` y recibe `403` en el resto (AB23);
+    - en el envío, solo plantillas;
+    - la ficha del bot le llega sin el `verifyToken` (D6);
+    - una persona del operador alcanza el registro de clientes solo si es `cliente-admin`.
+  - **La matriz contra el código:** la matriz (1.4.0) gana la sección «Rutas y roles», ruta por ruta, y
+    `tests/unit/test_role_matrix.py` la compara con las dependencias de cada ruta, `ANALYST_ROUTES` y
+    `WORKER_ROUTES`.
+  - **Pruebas:** `tests/unit/test_people.py`, con 81 pruebas contra un IdP falso con su propio JWKS. Cubren AB23,
+    AB24, AB26 y AB27, la firma falsificada, el `kid` inventado, el `amr` sin `mfa`, la persona de dos clientes, el
+    límite y que la aserción de una máquina sigue igual.
+  - **Documentación:**
+    - la guía de autenticación (0.4.0) explica el intercambio paso a paso y la configuración del IdP, y corrige que
+      el token ya está atado a una clave;
+    - el README, el PRD (0.9.0) y el contrato OpenAPI.
+  - **Pendiente:** que la persona exista en producción. Las invitaciones son HIG-94, y el BFF, HIG-93.
 - **El webhook recibe los cambios de estado de las plantillas** (HIG-86,
   [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md); RF30). Meta avisa con `message_template_status_update`
   cuando una plantilla queda aprobada, rechazada, en pausa o desactivada.
