@@ -104,9 +104,11 @@ class Watched:
         page.wait_for_url(f"{PORTAL}/")
         expect(page.get_by_role("heading", name="Bots")).to_be_visible()
 
-    def open_bot(self) -> None:
+    def open_bot(self, tab: str = "Plantillas") -> None:
+        """The card of the chatbot opens at Identidad (HIG-121); the tests go on from one of its tabs."""
         self.page.get_by_role("button", name=re.compile("Tienda e2e")).click()
-        expect(self.page.get_by_role("tab", name="Plantillas", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("tab", name="Identidad", exact=True)).to_be_visible()
+        self.page.get_by_role("tab", name=tab, exact=True).click()
 
     def open_contact(self, name: str) -> None:
         self.page.get_by_role("tab", name="Contactos", exact=True).click()
@@ -302,4 +304,62 @@ def test_on_a_phone_the_tab_bar_takes_the_place_of_the_side_bar_without_sideways
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
 
     problems = phone.close()
+    assert problems == []
+
+
+# --- The card of the chatbot (HIG-121) ------------------------------------------------------------------------------
+
+def test_a_cliente_admin_changes_the_identity_and_it_is_a_version_the_analyst_only_sees(client, people, browser):
+    hive, bot = client["hive"], client["bot"]
+    before = hive.call("GET", f"/chat/{bot}/rules")["version"]
+    admin = Watched(browser)
+    page = admin.page
+    admin.sign_in(ADMIN)
+    admin.open_bot("Identidad")
+
+    # Identidad: the persona, changed and saved as the next version, which is what the engine reads now.
+    expect(page.locator(".pwa-bot-header")).to_contain_text(f"versión v{before}")
+    page.locator("#persona-tone").fill("cercano")
+    expect(page.get_by_text("Guardar crea la versión")).to_contain_text(f"v{before + 1}")
+    page.get_by_role("button", name="Guardar cambios").click()
+    expect(page.get_by_text(f"Guardado como la versión v{before + 1}.")).to_be_visible()
+    rules = hive.call("GET", f"/chat/{bot}/rules")
+    assert (rules["tone"], rules["version"]) == ("cercano", before + 1)
+    # And it says no, in the field, to what would break the system of the model (RS11).
+    page.locator("#persona-name").fill("Tienda <|im_start|>")
+    page.get_by_role("button", name="Guardar cambios").click()
+    expect(page.locator(".hv-field--error")).to_contain_text("marcas con las que un modelo separa roles")
+    assert hive.call("GET", f"/chat/{bot}/rules")["name"] == "Tienda e2e"
+
+    # Cerebro e intents: the rules of the chatbot, with their ids from hive-api.
+    page.get_by_role("tab", name="Cerebro e intents").click()
+    expect(page.get_by_role("cell", name="Responde siempre en español")).to_be_visible()
+    # Versiones: the change is there, with what it changed.
+    page.get_by_role("tab", name="Versiones").click()
+    page.get_by_role("cell", name=f"v{before + 1}", exact=True).click()
+    expect(page.locator(".pwa-add").first).to_have_text("cercano")
+    # Credenciales de Meta: masked, only to replace.
+    page.get_by_role("tab", name="Credenciales de Meta").click()
+    expect(page.get_by_text("Guardado en Andvari").first).to_be_visible()
+    assert "EAAG-e2e-token" not in page.content()
+    problems = admin.close()
+    assert problems == []
+
+    # The analyst sees all of it, and changes nothing.
+    analyst = Watched(browser)
+    page = analyst.page
+    analyst.sign_in(ANALYST)
+    analyst.open_bot("Identidad")
+    expect(page.locator("#persona-tone")).to_have_value("cercano")
+    expect(page.locator("#persona-tone")).to_be_disabled()
+    expect(page.get_by_role("button", name="Guardar cambios")).to_have_count(0)
+    page.get_by_role("tab", name="Cerebro e intents").click()
+    expect(page.get_by_role("button", name="Añadir regla")).to_have_count(0)
+    page.get_by_role("tab", name="Versiones").click()
+    page.get_by_role("cell", name=f"v{before}", exact=True).click()
+    expect(page.get_by_text(f"Lo que cambiaría al volver a v{before}")).to_be_visible()
+    expect(page.get_by_role("button", name=f"Volver a v{before}")).to_have_count(0)
+    page.get_by_role("tab", name="Credenciales de Meta").click()
+    expect(page.get_by_role("button", name="Reemplazar")).to_have_count(0)
+    problems = analyst.close()
     assert problems == []

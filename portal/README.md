@@ -52,6 +52,10 @@ Todas las pantallas comparten el esqueleto del diseño (HIG-126, `src/static/she
 |---|---|---|
 | Bots | `#/`, `#/bots` | Los bots del cliente (`GET /bots`). |
 | Más | `#/mas` | En el teléfono: las secciones que no caben en la `TabBar`. |
+| Ficha del bot · Identidad | `#/bots/<bot>/identidad` | La cabecera del bot (estado REG/ACT/ERR, `bot_id`, versión) y su persona. El `cliente-admin` la cambia (`PUT /chat/{bot_id}/persona`); guardar crea la versión siguiente. Los errores de RS11 salen en su campo. |
+| Credenciales de Meta | `#/bots/<bot>/credenciales` | Qué tokens están cargados, nunca su valor: solo se cargan o se reemplazan (`PUT /chat/{bot_id}/credentials`). El `verifyToken` y la URL del webhook, para el `cliente-admin`. |
+| Cerebro e intents | `#/bots/<bot>/cerebro` | Las reglas (añadir, editar y borrar) y los intents con el destino de cada acción, en un `SlideOver` con los destinos permitidos a la vista (RS16). |
+| Versiones | `#/bots/<bot>/versiones` | Las versiones, con la actual en ámbar. Al elegir una, lo que cambiaría al volver a ella y, para el `cliente-admin`, «Volver a vN». Un `422` dice qué ya no cumple las reglas de hoy. |
 | Plantillas | `#/bots/<bot>/plantillas` | Las plantillas del bot, con su estado de Meta y el motivo de un rechazo. «Sincronizar con Meta» trae la lista de Meta (`?sync=true`). El `cliente-admin` crea, edita y borra. El editor tiene vista previa con los ejemplos y comprueba lo que Meta comprobaría. |
 | Contactos | `#/bots/<bot>/contactos` | Los contactos del bot, sin su número. |
 | Contacto | `#/bots/<bot>/contactos/<contacto>` | La conversación, la ventana de 24 horas con lo que le queda y el consentimiento. Desde aquí se envía. |

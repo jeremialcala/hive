@@ -3,18 +3,19 @@
 // No build: React 18, htm and the design system's components (window.Hive) come from the portal itself, so the CSP
 // stays 'self'. The role comes from the session: a cliente-analista sees no button that would only answer 403.
 import { session, signIn, api, explain } from "./api.js";
-import { Templates } from "./templates.js";
-import { Contacts, Contact } from "./contacts.js";
+import { BotCardPage, TABS } from "./bot.js";
 import { More, PageCall, PageHeader, Pending, Shell, applyTheme, go, isPending, savedTheme, sectionsFor } from "./shell.js";
 
 const { useState, useEffect } = window.React;
 const html = window.htm.bind(window.React.createElement);
-const { BotCard, EmptyState, LoadingState, Tabs } = window.Hive;
+const { BotCard, EmptyState, LoadingState } = window.Hive;
 
-// #/ and #/bots · #/bots/<bot>/plantillas · #/bots/<bot>/contactos · #/bots/<bot>/contactos/<contact> · #/<section>
+// #/ and #/bots · #/bots/<bot>/<tab> (bot.js: identidad by default) · #/bots/<bot>/contactos/<contact> · #/<section>
 function route() {
   const [, kind, bot, tab, contact] = window.location.hash.replace(/^#/, "").split("/");
-  if (kind === "bots" && bot) return { section: "bots", bot, tab: tab === "contactos" ? "contactos" : "plantillas", contact };
+  if (kind === "bots" && bot) {
+    return { section: "bots", bot, tab: TABS.some((each) => each.value === tab) ? tab : "identidad", contact };
+  }
   return { section: kind || "bots" };
 }
 
@@ -38,27 +39,9 @@ function Bots({ client }) {
             ${bots.map((bot) => html`<${BotCard} key=${bot.uuid} name=${bot.name}
                 state=${["REG", "ACT", "ERR", "REV"].includes(bot.status) ? bot.status : "REG"} botId=${bot.uuid}
                 channels=${bot.credentials && bot.credentials.whatsappToken ? ["whatsapp"] : []}
-                onClick=${() => go(`/bots/${bot.uuid}/plantillas`)} />`)}
+                onClick=${() => go(`/bots/${bot.uuid}/identidad`)} />`)}
           </div>`}`}
       <${PageCall} title="Listar los bots" method="GET" route="bots" />
-    </section>`;
-}
-
-function Bot({ where, admin, person, client }) {
-  const [bot, setBot] = useState(null);
-  useEffect(() => {
-    api("GET", `chat/${where.bot}/info`).then((answer) => setBot(answer.status === 200 ? answer.data : {}));
-  }, [where.bot]);
-  const tabs = [{ value: "plantillas", label: "Plantillas" }, { value: "contactos", label: "Contactos" }];
-  const name = (bot && bot.name) || "Bot";
-  return html`
-    <section aria-label="Bot">
-      <${PageHeader} client=${client} title=${name} crumbs=${[{ label: "Bots", href: "#/bots" }, { label: name }]} />
-      <${Tabs} items=${tabs} value=${where.tab} onChange=${(tab) => go(`/bots/${where.bot}/${tab}`)} />
-      ${where.tab === "plantillas" ? html`<${Templates} botId=${where.bot} admin=${admin} />`
-        : where.contact ? html`<${Contact} botId=${where.bot} contactId=${where.contact} admin=${admin} person=${person}
-            onBack=${`#/bots/${where.bot}/contactos`} />`
-          : html`<${Contacts} botId=${where.bot} onOpen=${(contact) => go(`/bots/${where.bot}/contactos/${contact}`)} />`}
     </section>`;
 }
 
@@ -67,7 +50,7 @@ function Screen({ where, who, client, admin, theme, onTheme }) {
   // A section that is not theirs, typed in the address: the same as one that does not exist.
   const theirs = sectionsFor(admin).some((section) => section.key === where.section);
   if (where.section === "bots" || !theirs) {
-    return where.bot ? html`<${Bot} where=${where} admin=${admin} person=${who.person} client=${client} />`
+    return where.bot ? html`<${BotCardPage} where=${where} admin=${admin} person=${who.person} client=${client} />`
       : html`<${Bots} client=${client} />`;
   }
   return isPending(where.section) ? html`<${Pending} client=${client} section=${where.section} />` : html`<${Bots} client=${client} />`;
