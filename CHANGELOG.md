@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-30
+
 ### Seguridad
 - **Una respuesta ya no devuelve el id ni el nombre que le llegaron** (HIG-134). Trece respuestas los interpolaban
   en su `message`, por ejemplo «This intent ' OR '1'='1 was not found»: diez `404` y tres `400` de bots e intents
@@ -1187,7 +1189,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jeremialcala/hive/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.1.0...v0.2.0
