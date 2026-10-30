@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.5.0
+* **Versión:** 0.5.1
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -267,10 +267,17 @@ en la consola de Zitadel, `https://hive-auth.higerotech.com/ui/console`:
    de midgard, sin pasar por el chat ni por un comando con argumentos.
 
    ```sh
-   # En midgard. Se pega el token, Enter y Ctrl-D: no queda en el historial ni en ps, y el fichero es solo de root.
-   sudo install -d -m 700 /srv/apps/hive-gateway/keys/idp
+   # En midgard. Se pega el token, Enter y Ctrl-D: no queda en el historial ni en ps.
+   # El fichero es del usuario del contenedor (10001) y solo él lo lee, como los otros secretos de keys/.
+   sudo install -d -m 700 -o 10001 -g 10001 /srv/apps/hive-gateway/keys/idp
    sudo sh -c 'umask 077; cat > /srv/apps/hive-gateway/keys/idp/zitadel-token'
+   sudo chown 10001:10001 /srv/apps/hive-gateway/keys/idp/zitadel-token
+   sudo chmod 400 /srv/apps/hive-gateway/keys/idp/zitadel-token
+   # Se comprueba sin enseñarlo: el largo, y que el último byte sea un salto de línea o no importa (se recorta).
+   sudo awk '{print length}' /srv/apps/hive-gateway/keys/idp/zitadel-token
    ```
+
+   El directorio ya existe desde el despliegue de HIG-94, con ese dueño.
 
    El contenedor lo lee de `/run/idp/zitadel-token` en cada invitación, así que rotarlo no pide reiniciar nada.
 4. **En el `.env` de `hive-api`:** `IDP_ORGANIZATION_ID=<el id de esa organización>`, junto a `IDP_ISSUER`. Si

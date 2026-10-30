@@ -663,6 +663,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **La guía guardaba el token de Zitadel donde `hive-api` no lo podía leer** (HIG-94). Lo dejaba como fichero de
+  root, pero el contenedor corre como el usuario 10001, como los otros secretos de `keys/`. Ahora la guía (0.5.1)
+  lo deja de ese usuario, en modo `400`. Se vio al desplegar, antes de crear el token.
 - **Cada aviso de plantilla deja su rastro en el log de producción** (HIG-86). Producción solo guarda desde
   `WARNING`, y el cambio aplicado iba en `INFO`, así que no quedaba nada. El primer aviso real (2026-10-29) se
   descartó «de otra cuenta» sin decir cuál. Ahora cada aviso deja un `WARNING` con su plantilla y su estado:
