@@ -25,7 +25,6 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     una ADR citados dejan de existir.
   - **Falta:** sus huecos, cada uno con su tarea:
     - DAST (HIG-90);
-    - cabeceras en `hive-api` (HIG-138);
     - límites en el resto de rutas (HIG-139);
     - el pipeline del Gate 4 (HIG-20);
     - las alertas y el runbook (HIG-140).

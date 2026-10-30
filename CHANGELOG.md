@@ -7,6 +7,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **`hive-api` y el webhook mandan las cabeceras de una API JSON** (HIG-138, A02 de la matriz OWASP). Antes no
+  mandaban ninguna; el portal y la documentación sí.
+  - **Qué cabeceras:** HSTS (un año, con subdominios), `nosniff`, `Referrer-Policy: no-referrer`,
+    `X-Frame-Options: DENY` y `Cache-Control: no-store`. Fuera de desarrollo, además
+    `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
+  - **Dónde:** en toda respuesta, también en un `404`, un `413` o un `500`. Las pone el interceptor de
+    `src/service.py` sin pisar las que ya trae una ruta.
+  - **Pruebas:** `tests/security/test_security_headers.py`. La matriz OWASP pasa a la 1.3.0.
+
 ### Añadido
 - **El recorrido de la PWA, de punta a punta** (HIG-141, Gate 3; [e2e](docs/04-testing/e2e.md#el-recorrido-de-la-pwa)).
   Chromium, con Playwright, contra `hive-portal` construido del mismo commit, junto al gateway y al motor de la prueba
