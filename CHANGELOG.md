@@ -632,6 +632,12 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **El 131058 de Meta tiene su motivo: `sample_template`** (HIG-87). Meta no lo documenta. Con el log del motor
+  (#133) se vio que, el 2026-10-30, Meta respondía con él a `hello_world`, su plantilla de muestra, que solo sale
+  desde sus números públicos de prueba.
+  - `GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}` devuelve el motivo `sample_template`.
+  - La PWA lo explica en palabras y propone enviar una plantilla propia aprobada.
+  - Prueba: un caso más en `tests/unit/test_conversations.py`.
 - **El motor deja en el log lo que Meta explica de un error, no solo su código**
   (`engine/src/infrastructure/meta/whatsapp.py`). El 131058 del 2026-10-30, que Meta no documenta, solo se pudo
   interpretar a ojo.
