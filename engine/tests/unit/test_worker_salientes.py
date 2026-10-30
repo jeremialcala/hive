@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 
 from shared import bus
-from shared.contract import SentReply
+from shared.contract import FailedSend, SentReply
 from src.domain.ports.envio import (
     CanalDeMeta, Enviados, EnvioFallido, EnvioRechazado, RegistroNoDisponible, TokenRechazado, TokensDelBot,
 )
@@ -148,13 +148,30 @@ def test_el_mismo_pedido_entregado_otra_vez_no_sale_dos_veces():
     assert piezas.bifrost.publicado[0].evento["messageId"] == "wamid.ENVIADO"
 
 
-@pytest.mark.parametrize("codigo", ["Meta 131047", "Meta 132015", "Meta 132016"],
+@pytest.mark.parametrize("codigo", [131047, 132015, 132016],
                          ids=["la ventana se cerró", "plantilla en pausa", "plantilla desactivada"])
-def test_lo_que_meta_no_aceptará_nunca_se_descarta_sin_publicar(codigo):
-    resultado, piezas = atender(pedido(), meta=Meta(EnvioRechazado(codigo)))
+def test_lo_que_meta_no_aceptará_nunca_se_descarta_y_se_avisa_con_su_código(codigo):
+    resultado, piezas = atender(pedido(), meta=Meta(EnvioRechazado(f"Meta {codigo}")))
 
     assert resultado is Resultado.DESCARTADO
-    assert piezas.bifrost.publicado == []
+    (aviso,) = piezas.bifrost.publicado
+    assert (aviso.subject, aviso.message_id) == (f"engine.reply.failed.{BOT}", f"{BOT}:fallido:{PEDIDO}")
+    fallo = FailedSend.model_validate(aviso.evento)
+    assert (fallo.requestId, fallo.code, fallo.reason, fallo.contactId) == (PEDIDO, codigo, "rejected", CONTACTO)
+    # Ni el texto ni el número viajan en el aviso.
+    assert NUMERO not in json.dumps(aviso.evento) and "cita" not in json.dumps(aviso.evento)
+
+
+def test_un_rechazo_sin_código_de_meta_se_avisa_sin_código():
+    (aviso,) = atender(pedido(), meta=Meta(EnvioRechazado("aceptado sin id")))[1].bifrost.publicado
+
+    assert (aviso.evento["code"], aviso.evento["reason"]) == (None, "rejected")
+
+
+def test_si_bifröst_no_toma_el_aviso_el_pedido_espera():
+    resultado, _ = atender(pedido(), meta=Meta(EnvioRechazado("Meta 131047")), bifrost=Bifrost(rechaza=True))
+
+    assert resultado is Resultado.EN_ESPERA
 
 
 @pytest.mark.parametrize("fallo", [EnvioFallido("Meta 130429"), FuenteNoDisponible("el gateway no responde")],
@@ -164,7 +181,17 @@ def test_lo_que_puede_ir_más_tarde_queda_en_espera_y_en_la_última_entrega_se_d
     gateway = Gateway(fallo) if isinstance(fallo, FuenteNoDisponible) else None
 
     assert atender(pedido(), meta=meta, gateway=gateway, entregas=1)[0] is Resultado.EN_ESPERA
-    assert atender(pedido(), meta=meta, gateway=gateway, entregas=5)[0] is Resultado.DESCARTADO
+    ultima, piezas = atender(pedido(), meta=meta, gateway=gateway, entregas=5)
+    assert ultima is Resultado.DESCARTADO
+    (aviso,) = piezas.bifrost.publicado
+    assert (aviso.evento["reason"], aviso.evento["code"]) == ("gave_up", None)
+
+
+def test_en_la_última_entrega_un_aviso_que_bifröst_no_toma_queda_en_el_log():
+    resultado, _ = atender(pedido(), meta=Meta(EnvioFallido("Meta 130429")), bifrost=Bifrost(rechaza=True),
+                           entregas=5)
+
+    assert resultado is Resultado.DESCARTADO
 
 
 def test_un_token_rechazado_se_pide_otra_vez_al_gateway():
@@ -176,8 +203,11 @@ def test_un_token_rechazado_se_pide_otra_vez_al_gateway():
     assert [envio[0] for envio in piezas.meta.textos] == ["EAAG-viejo", "EAAG-nuevo"]
 
 
-def test_un_bot_que_ya_no_existe_descarta_el_pedido():
-    assert atender(pedido(), gateway=Gateway(NoEncontrado("token")))[0] is Resultado.DESCARTADO
+def test_un_bot_que_ya_no_existe_descarta_el_pedido_y_lo_avisa():
+    resultado, piezas = atender(pedido(), gateway=Gateway(NoEncontrado("token")))
+
+    assert resultado is Resultado.DESCARTADO
+    assert [aviso.evento["reason"] for aviso in piezas.bifrost.publicado] == ["no_token"]
 
 
 def test_sin_saber_qué_salió_ya_no_se_envía():

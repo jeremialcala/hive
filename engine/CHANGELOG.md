@@ -13,6 +13,16 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El notificador avisa de los pedidos del cliente que no envía** (HIG-87 del gateway). Hasta ahora se
+  descartaban dejando solo una línea en el log. Ahora publica un `EnvioFallido` en
+  `engine.reply.failed.{botId}` del stream `RESPUESTAS`, con el pedido, el motivo y, si fue Meta, su código. La API
+  lo muestra como fallido, y la PWA explica por qué. Hay tres motivos:
+  - `rejected`: Meta lo rechaza para siempre;
+  - `no_token`: el bot no tiene token;
+  - `gave_up`: se acabaron las entregas.
+
+  El aviso no lleva el texto ni el número. Si Bifröst no lo toma, el pedido espera. En la última entrega, si
+  tampoco lo toma, el aviso queda en el log. Necesita higerotech/bifrost#8.
 - **El notificador envía lo que el cliente escribe a sus contactos** (HIG-84; ADR-0031 del gateway).
   - **El consumidor:** el tercero del notificador, `SALIENTES/notifier`. Lee cada `PedidoDeEnvio` y envía el texto o
     la plantilla desde el `phoneId` al `to` del pedido, con el token del bot que da el gateway.
