@@ -99,6 +99,11 @@ TAGS_METADATA = [
                        "about it and deleting it."
     },
     {
+        "name": "People",
+        "description": "The people of a client (ADR-0029): invited by their email through Zitadel, with a role in "
+                       "Hive, blocked or removed. Only a cliente-admin, or the machine credential, manages them."
+    },
+    {
         "name": "Templates",
         "description": "The WhatsApp templates of a chatbot, created, edited and deleted in Meta, with the copy "
                        "of each that Hive keeps with its state: only an approved one is sent."

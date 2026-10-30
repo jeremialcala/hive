@@ -38,6 +38,7 @@ SENDING = ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")
 IN_META = {("POST", "/chat/{bot_id}/templates"), ("PUT", "/chat/{bot_id}/templates/{template_id}"),
            ("DELETE", "/chat/{bot_id}/templates/{template_id}")}
 TEMPLATE_ID = "1234567890"
+PEOPLE = [("DELETE", "/people/{person_id}"), ("GET", "/people"), ("POST", "/people"), ("PUT", "/people/{person_id}")]
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
 ROUTES = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
@@ -86,13 +87,14 @@ def test_every_route_of_a_chatbot_is_covered():
     assert len(BOT_ROUTES) == 23 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
-    assert OTHER_ROUTES == [
+    # The people of the client have their own tests in test_invitations, the isolation between clients included.
+    assert sorted(OTHER_ROUTES) == sorted([
         ("DELETE", "/clients/{client_id}"), ("DELETE", "/clients/{client_id}/keys/{kid}"),
         ("DELETE", "/clients/{client_id}/service-keys/{kid}"), ("DELETE", "/keys/{kid}"),
         ("GET", "/clients"), ("GET", "/gateway/keys"), ("GET", "/keys"), ("POST", "/bot"), ("POST", "/clients"),
         ("POST", "/clients/{client_id}/keys"), ("POST", "/clients/{client_id}/service-keys"),
         ("POST", "/contacts/search"), ("POST", "/keys"), ("POST", "/oauth/token"),
-    ]
+    ] + PEOPLE)
 
 
 @pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES if route != SENDING and route not in IN_META])

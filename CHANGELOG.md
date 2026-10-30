@@ -46,6 +46,39 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **El `cliente-admin` invita y gestiona las personas de su cliente** (HIG-94,
+  [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md); RF16, AB24).
+  - **Rutas nuevas:** `POST` y `GET /people`, y `PUT` y `DELETE /people/{person_id}`. Las usa el `cliente-admin` o la
+    credencial de máquina; el `cliente-analista` recibe `403`.
+  - **Invitar por correo**, con un rol. Hive busca a la persona en Zitadel con su cuenta de servicio:
+    - si no existe, la crea con el correo sin verificar y su código devuelto, para que Zitadel solo envíe la
+      invitación (`invite_code`);
+    - si existe, la enlaza, porque una persona puede ser de más de un cliente.
+
+    Después la registra como `pending`, y pasa a `active` cuando entra por primera vez. La misma persona dos veces en
+    un cliente da `409`, sin preguntar a Zitadel.
+  - **Cambiar el rol, bloquear y dejar entrar otra vez:** `PUT /people/{person_id}` con `role`, `status` o los dos.
+    Se nota en el siguiente intercambio, en 10 minutos como mucho.
+  - **Dar de baja:** `DELETE /people/{person_id}`. La persona no consigue más tokens y su correo se borra; queda solo
+    quién era, para la auditoría. Su usuario de Zitadel se queda, porque puede ser de otro cliente. Invitarla otra vez
+    la trae de vuelta.
+  - **El último `cliente-admin` activo** no se degrada, no se bloquea y no se da de baja: `409 LAST_ADMIN`. Un
+    administrador que todavía está invitado no cuenta.
+  - **La auditoría:** cada invitación, cambio y baja deja un `WARNING`, el nivel que guarda producción, con quién lo
+    hizo, a quién y qué. Nunca el correo. Es la auditoría de las personas hasta la del cliente (RF18, HIG-95).
+  - **Cuando Zitadel no responde:**
+    - si no se alcanza, está saturado o rechaza la cuenta de servicio, `503`, con el motivo en el log;
+    - si dice que no, `422 IDP_REFUSED` con su estado HTTP, nunca su mensaje.
+  - **Configuración:** `IDP_ORGANIZATION_ID`, `IDP_TOKEN_FILE` y, si hace falta, `IDP_API_URL`. El compose monta
+    `keys/idp/` en `/run/idp`, solo lectura, y el token se lee en cada invitación. La guía de autenticación (0.5.0)
+    explica cómo crear la cuenta de servicio con `ORG_USER_MANAGER` y cómo guardar su token sin que pase por la
+    pantalla.
+  - **Pruebas:** `tests/unit/test_invitations.py`, con 40 pruebas contra una API de Zitadel falsa. Cubren el
+    aislamiento entre clientes, que una invitación no da nada de otro cliente, el último administrador, el bloqueo, la
+    baja con el correo borrado, la reinvitación y los fallos de Zitadel. El IdP falso de las pruebas pasa a
+    `tests/fake_idp.py`, compartido con `test_people.py`.
+  - **Documentación:** el README, la guía de autenticación, el PRD (0.10.0: RF16 construido), la matriz (1.5.0),
+    `config.env.example` y el contrato OpenAPI.
 - **Las personas de un cliente entran por Zitadel, y Hive decide qué pueden hacer** (HIG-92,
   [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md); RF17, RS22, RS23).
   - **`ClientUser`**, en la colección `client_users`, guarda de cada persona:

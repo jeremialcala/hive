@@ -259,6 +259,17 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 Cómo se atiende con ellos a quien pide sus datos, y qué no alcanza el borrado, está en
 [docs/03-implementation/exportar-y-borrar.md](docs/03-implementation/exportar-y-borrar.md).
 
+### Personas — etiqueta `People`
+
+Las personas de un cliente ([ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md), RF16). Las gestiona el `cliente-admin`, o la credencial de máquina; el `cliente-analista` recibe `403`. Cada cambio se nota en el siguiente intercambio de token de la persona, en 10 minutos como mucho, y deja una línea de auditoría en el log.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/people` | Invita a una persona por su correo, con un rol: `cliente-admin` o `cliente-analista`. Si no es usuaria de Zitadel, Hive la crea con su cuenta de servicio y Zitadel le envía la invitación para configurar su cuenta y la MFA; si ya lo es, se enlaza. Queda `pending` hasta que entra por primera vez. `409` si ya es del cliente. |
+| `GET`  | `/people` | Las personas del cliente, con su rol y su estado. |
+| `PUT`  | `/people/{person_id}` | Otro rol, o la bloquea (`blocked`) o la deja entrar otra vez (`active`). El último `cliente-admin` activo no se degrada ni se bloquea: `409`. |
+| `DELETE` | `/people/{person_id}` | La da de baja: no consigue más tokens y su correo se borra. Su usuario de Zitadel se queda, porque puede ser de otro cliente. Invitarla otra vez la trae de vuelta. |
+
 ### Plantillas — etiqueta `Templates`
 
 Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToken` y su `wabaId`, y guarda una copia de cada una con su estado ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md), RF30). El token necesita el permiso `whatsapp_business_management`. Solo se envía una plantilla cuya copia dice `APPROVED`. Meta avisa de cada cambio de estado por el webhook (`message_template_status_update`), y la copia lo recoge con su motivo (`reason`). Sin `wabaId` la ruta responde `422 NO_WABA`; sin token, `422 NO_TOKEN`. Si Meta no acepta el token, `502`. Si Meta dice que no, `422 META_REFUSED` con su código y su subcódigo (`100/33`: la cuenta no existe para ese token, o al token le falta el permiso). Si Meta no responde, `503`.
@@ -346,6 +357,7 @@ Los ajustes los carga `src/classes/tool_settings.py` (`pydantic-settings`) desde
 |---|---|
 | `GATEWAY_KEYS_FILE` | Ruta del fichero con las claves del gateway: el par al que los clientes cifran sus aserciones y el que firma los tokens de acceso. Fuera del repositorio y de la imagen; la API no arranca sin una de cada. Se crean con `python -m ops.gateway_key generate` y `generate-signing`. |
 | `GATEWAY_AUDIENCE` | Lo que los clientes ponen en el `aud` de sus aserciones: la URL pública de la API, `https://hive-api.higerotech.com`. |
+| `IDP_ORGANIZATION_ID`, `IDP_TOKEN_FILE`, `IDP_API_URL` | La cuenta de servicio de Hive en Zitadel, con la que invita a las personas (HIG-94): la organización de las personas de Hive allí, el fichero de su token (en compose, `keys/idp/zitadel-token`) y su API, por defecto `IDP_ISSUER`. Sin ellos, nadie se invita. |
 | `IDP_ISSUER`, `IDP_AUDIENCE`, `IDP_JWKS_URL` | El IdP de las personas ([ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md)): el `iss` de los ID tokens de Zitadel, el client id del BFF allí y sus claves públicas (por defecto, `<IDP_ISSUER>/oauth/v2/keys`). Sin los dos primeros, nadie cambia un ID token por un token de Hive. |
 | `OPERATOR_CLIENT_ID`, `ENGINE_KEYS_ROLE_ID` | Para `ops.engine_keys`: el cliente del operador y el rol `motor-claves` de Andvari con el que guarda las claves del motor. |
 | `ANDVARI_ADDR`, `ANDVARI_ROLE_ID` | Dirección del servicio de claves (OpenBao) y rol con el que entra el gateway. Fuera de desarrollo la dirección tiene que ser `https`. |

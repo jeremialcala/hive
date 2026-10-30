@@ -26,42 +26,8 @@ from repository import TenantRepository
 from shared.auth.client import dpop_proof, new_signing_key
 from shared.auth.gateway_keys import GatewayKeys
 
-ISSUER, AUDIENCE = "https://idp.test", "bff-client-id"
-SUBJECT = "312345678901234567"
-EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
-ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token"
-ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token"
-TOKEN_URL = f"{TEST_SERVER}/oauth/token"
-# The BFF's own key (ADR-0033, point 2): it binds every token of a person it gets.
-BFF = new_signing_key()
-
-
-class Zitadel:
-    """Stands for the IdP: signs ID tokens with its key, and counts how often its JWKS is read."""
-
-    def __init__(self):
-        self.key = jwk.JWK.generate(kty="RSA", size=2048, kid="idp-1", use="sig")
-        self.reads = 0
-        self.down = False
-
-    def jwks(self, url):
-        self.reads += 1
-        if self.down:
-            raise IdpUnavailable("ConnectionError")
-        keys = jwk.JWKSet()
-        keys.add(jwk.JWK.from_json(self.key.export_public()))
-        return keys
-
-    def id_token(self, key=None, kid="idp-1", alg="RS256", **changes) -> str:
-        now = int(time.time())
-        claims = {"iss": ISSUER, "sub": SUBJECT, "aud": [AUDIENCE], "azp": AUDIENCE, "iat": now, "exp": now + 3600,
-                  "amr": ["pwd", "mfa", "otp"], "auth_time": now}
-        claims.update(changes)
-        claims = {name: value for name, value in claims.items() if value is not None}
-        signed = jws.JWS(json.dumps(claims).encode())
-        signed.add_signature(key or self.key, alg=alg, protected={"alg": alg, "kid": kid, "typ": "JWT"})
-        return signed.serialize(compact=True)
-
+from fake_idp import (ACCESS_TOKEN, AUDIENCE, BFF, ID_TOKEN, ISSUER, SUBJECT, TOKEN_URL, Zitadel, auth,
+                      exchange)
 
 @pytest.fixture
 def zitadel(monkeypatch):
@@ -85,22 +51,12 @@ def person(caller, role=PersonRole.ADMIN, status=PersonStatus.ACTIVE, subject=SU
                                                           status=status)
 
 
-def exchange(http, id_token, key=BFF, proof=True, **form):
-    body = {"grant_type": EXCHANGE, "subject_token": id_token, "subject_token_type": ID_TOKEN, **form}
-    headers = {"DPoP": dpop_proof(key, "POST", TOKEN_URL)} if proof else {"X-Test-Without-DPoP": "1"}
-    return http.post("/oauth/token", data={k: v for k, v in body.items() if v is not None}, headers=headers)
-
-
 def token_of(http, zitadel, **form) -> str:
     response = exchange(http, zitadel.id_token(), **form)
     assert response.status_code == 200, response.text
     token = response.json()["access_token"]
     KEY_OF[token] = BFF
     return token
-
-
-def auth(token) -> dict:
-    return {"Authorization": f"DPoP {token}"}
 
 
 @pytest.fixture
@@ -320,7 +276,7 @@ ROUTES = sorted((method, route.path) for route in app_module.app.routes if isins
                 for method in route.methods if (method, route.path) not in PUBLIC)
 NOT_FOR_THE_ANALYST = [route for route in ROUTES if route not in app_module.ANALYST_ROUTES]
 PLACES = {"bot_id": str(uuid4()), "intent_id": str(uuid4()), "contact_id": str(uuid4()), "client_id": str(uuid4()),
-          "kid": "a-kid", "template_id": "1234567890"}
+          "kid": "a-kid", "template_id": "1234567890", "person_id": str(uuid4())}
 
 
 @pytest.mark.parametrize("method,path", NOT_FOR_THE_ANALYST)

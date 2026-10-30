@@ -436,6 +436,63 @@ components:
       - proof
       title: OwnedKeyRequest
       type: object
+    PersonChangeRequest:
+      additionalProperties: false
+      description: 'Another role, or another state: at least one of the two.'
+      properties:
+        role:
+          anyOf:
+          - enum:
+            - cliente-admin
+            - cliente-analista
+            type: string
+          - type: 'null'
+          title: Role
+        status:
+          anyOf:
+          - enum:
+            - active
+            - blocked
+            type: string
+          - type: 'null'
+          title: Status
+      title: PersonChangeRequest
+      type: object
+    PersonInviteRequest:
+      additionalProperties: false
+      description: 'The email and the role of the person. The names only go to Zitadel, for its invitation: Hive
+        keeps none.'
+      properties:
+        email:
+          maxLength: 254
+          pattern: ^[^@\s]{1,64}@[^@\s]{1,253}\.[^@\s]{2,63}$
+          title: Email
+          type: string
+        familyName:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Familyname
+        givenName:
+          anyOf:
+          - maxLength: 200
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Givenname
+        role:
+          enum:
+          - cliente-admin
+          - cliente-analista
+          title: Role
+          type: string
+      required:
+      - email
+      - role
+      title: PersonInviteRequest
+      type: object
     PhoneButton:
       additionalProperties: false
       properties:
@@ -2168,6 +2225,127 @@ paths:
       summary: An access token, for a client that proves who it is or for a person of a client
       tags:
       - OAuth
+  /people:
+    get:
+      description: 'The people of the client, with their role and state. Of one removed, only who they were: their
+        email is gone.'
+      operationId: list_people_people_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+      security:
+      - OAuth2: []
+      summary: List People
+      tags:
+      - People
+    post:
+      description: 'Invites a person to the client by their email, with a role: cliente-admin or cliente-analista
+        (RF16). Hive
+
+        creates their user in Zitadel, which sends them the invitation to set up their account and the MFA; a person
+
+        who already is a user there is linked. They are invited until their first sign-in. 409 if they already are
+        of
+
+        the client.'
+      operationId: invite_person_people_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonInviteRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Invite Person
+      tags:
+      - People
+  /people/{person_id}:
+    delete:
+      description: 'Removes a person from the client: no more tokens, and their email is erased. Their user in Zitadel
+        stays: they
+
+        may be of another client. Not the last active cliente-admin: 409. Inviting them again brings them back.'
+      operationId: remove_person_people__person_id__delete
+      parameters:
+      - in: path
+        name: person_id
+        required: true
+        schema:
+          title: Person Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Remove Person
+      tags:
+      - People
+    put:
+      description: 'Another role for a person, or blocks them or lets them in again. It is felt at their next exchange
+        of a token,
+
+        within 10 minutes. The last active cliente-admin cannot be demoted nor blocked: 409.'
+      operationId: change_person_people__person_id__put
+      parameters:
+      - in: path
+        name: person_id
+        required: true
+        schema:
+          title: Person Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonChangeRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Change Person
+      tags:
+      - People
 servers:
 - url: https://hive-api.higerotech.com
 tags:
@@ -2183,6 +2361,9 @@ tags:
 - description: 'The people who wrote to a chatbot: listing them, finding one, exporting what is stored about it
     and deleting it.'
   name: Contacts
+- description: 'The people of a client (ADR-0029): invited by their email through Zitadel, with a role in Hive,
+    blocked or removed. Only a cliente-admin, or the machine credential, manages them.'
+  name: People
 - description: 'The WhatsApp templates of a chatbot, created, edited and deleted in Meta, with the copy of each
     that Hive keeps with its state: only an approved one is sent.'
   name: Templates

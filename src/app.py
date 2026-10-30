@@ -25,11 +25,12 @@ from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
-                     ResponseData, RulesRequest, ServiceKeyRequest, SigningKeyRequest, TemplateCreateRequest,
-                     TemplateEditRequest)
+                     PersonChangeRequest, PersonInviteRequest, ResponseData, RulesRequest, ServiceKeyRequest,
+                     SigningKeyRequest, TemplateCreateRequest, TemplateEditRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
 from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_service_key, ctr_add_signing_key,
-                        ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent, ctr_create_template,
+                        ctr_change_person, ctr_create_chatbot, ctr_create_chatbot_rules, ctr_create_intent,
+                        ctr_create_template, ctr_invite_person, ctr_list_people, ctr_remove_person,
                         ctr_delete_chatbot, ctr_delete_client, ctr_delete_contact, ctr_delete_intent,
                         ctr_delete_template, ctr_edit_template, ctr_export_contact, ctr_list_templates,
                         ctr_gateway_keys, ctr_get_bot_tokens, ctr_get_bot_tools, ctr_get_chatbot_from_uuid,
@@ -516,6 +517,41 @@ def set_consent(bot_id: str, contact_id: str, consent: ConsentRequest,
 def withdraw_consent(bot_id: str, contact_id: str, repo: TenantRepository = Depends(get_repository)):
     """The contact withdrew its consent: it is kept with when, and nothing is sent to it outside the window any more."""
     return ctr_withdraw_consent(repo, bot_id, contact_id)
+
+
+@app.post(path="/people", tags=["People"], response_model=ResponseData, status_code=status.HTTP_201_CREATED)
+def invite_person(person: PersonInviteRequest, principal: Principal = Depends(get_principal)):
+    """
+        Invites a person to the client by their email, with a role: cliente-admin or cliente-analista (RF16). Hive
+        creates their user in Zitadel, which sends them the invitation to set up their account and the MFA; a person
+        who already is a user there is linked. They are invited until their first sign-in. 409 if they already are of
+        the client.
+    """
+    return ctr_invite_person(TenantRepository(principal.client_id), person, principal.actor)
+
+
+@app.get(path="/people", tags=["People"], response_model=ResponseData)
+def list_people(principal: Principal = Depends(get_principal)):
+    """The people of the client, with their role and state. Of one removed, only who they were: their email is gone."""
+    return ctr_list_people(TenantRepository(principal.client_id))
+
+
+@app.put(path="/people/{person_id}", tags=["People"], response_model=ResponseData)
+def change_person(person_id: str, change: PersonChangeRequest, principal: Principal = Depends(get_principal)):
+    """
+        Another role for a person, or blocks them or lets them in again. It is felt at their next exchange of a token,
+        within 10 minutes. The last active cliente-admin cannot be demoted nor blocked: 409.
+    """
+    return ctr_change_person(TenantRepository(principal.client_id), person_id, change, principal.actor)
+
+
+@app.delete(path="/people/{person_id}", tags=["People"], response_model=ResponseData)
+def remove_person(person_id: str, principal: Principal = Depends(get_principal)):
+    """
+        Removes a person from the client: no more tokens, and their email is erased. Their user in Zitadel stays: they
+        may be of another client. Not the last active cliente-admin: 409. Inviting them again brings them back.
+    """
+    return ctr_remove_person(TenantRepository(principal.client_id), person_id, principal.actor)
 
 
 @app.post(path="/chat/{bot_id}/templates", tags=["Templates"], response_model=ResponseData,
