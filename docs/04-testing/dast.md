@@ -121,12 +121,13 @@ DAST=1 E2E=1 BIFROST_DIR=../bifrost pytest tests/e2e/test_dast.py
 
 ## El primer resultado
 
-El 2026-10-30, en local con Docker Desktop, sobre `develop` tras la 0.6.0 y con ZAP 2.17 (`stable` del 2026-10-26):
+El 2026-10-30, en local con Docker Desktop, sobre `develop` con los límites de HIG-139 y con ZAP 2.17.0 (`stable`
+del 2026-10-26):
 
 | Objetivo | High | Medium | Low | Informational | URL que vio ZAP |
 |---|---|---|---|---|---|
 | `hive-api` | 0 | 0 | 0 | 1 | 125 |
-| El webhook | 0 | 0 | 0 | 1 | 30 |
+| El webhook | 0 | 0 | 0 | 1 | 31 |
 | `hive-portal` | 0 | 0 | 0 | 3 | 31 |
 
 Las 135 peticiones sin token a las 45 operaciones con token dieron `401`.
@@ -144,8 +145,21 @@ Las informativas, que no piden nada:
 Ninguna regla pasiva de cabeceras saltó: el portal ya mandaba las suyas, y `hive-api` y el webhook las mandan desde la
 0.6.0 (HIG-138).
 
-**Cuánto tarda:** 5 min 38 s en local, con el stack ya construido. Los tres escaneos van a la vez. `hive-api` y el
-webhook acaban en algo más de un minuto, y el portal, con su escaneo activo, en unos cinco.
+**Los límites le cierran el paso a ZAP,** como a cualquiera que pruebe sin credenciales:
+- **`POST /oauth/token`** (ADR-0028): tras unos pocos fallos, el origen de ZAP recibe `429`. `hive-api` rechazó así
+  456 peticiones de token en el escaneo.
+- **El webhook** (HIG-139): tras 20 peticiones sin firma en un minuto, por worker, también `429`. Rechazó 280.
+- **El resto de `hive-api`** no cuenta los `401` de ZAP: solo cuenta por origen lo que llega con la cabecera de
+  Cloudflare.
+
+Así que, en esas dos rutas, el escaneo activo ve sobre todo el límite, que es lo que vería un atacante. Lo que hay
+detrás lo prueban las suites con la aplicación en proceso (`tests/security/test_hostile_input.py`,
+`tests/unit/test_token_limits.py`). Hacer que el stack de la prueba relaje los límites cambiaría la configuración que se
+escanea, y no se hizo.
+
+**Cuánto tarda:** 6 min 44 s en local, construyendo las imágenes, y 5 min 38 s con ellas ya construidas. Los tres
+escaneos van a la vez. `hive-api` y el webhook acaban en algo más de un minuto, y el portal, con su escaneo activo, en
+unos cinco.
 
 ## Lo que se vio al montarlo
 
