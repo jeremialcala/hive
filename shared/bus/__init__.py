@@ -39,6 +39,12 @@ class EventPublisher(Protocol):
             BusUnavailable.
         """
 
+    async def announce(self, subject: str, payload: bytes, headers: dict[str, str] | None = None) -> None:
+        """
+            Sends a notice to whoever listens now, without the bus keeping it (ADR-0035): what is not listening misses
+            it. Raises BusUnavailable.
+        """
+
     async def close(self) -> None:
         """Lets go of the connection, waiting for what is in flight."""
 

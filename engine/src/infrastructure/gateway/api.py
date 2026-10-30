@@ -13,8 +13,10 @@
     log del gateway. Si Meta lo rechaza, el notificador lo olvida y se pide otra vez.
 
     La persona del bot con sus reglas también se recuerda unos minutos (decisión de Jeremi del 2026-10-21): en
-    midgard, las dos lecturas del coordinador al gateway eran lo más lento de un mensaje después del LLM. Un cambio de
-    las reglas tarda eso en llegar a las respuestas. Las vueltas no se recuerdan: cambian con cada mensaje.
+    midgard, las dos lecturas del coordinador al gateway eran lo más lento de un mensaje después del LLM. Cada cambio
+    de la configuración del bot es una versión (RF26 del gateway), y el gateway avisa de ella por Bifröst (ADR-0035
+    del gateway): con el aviso, lo recordado de una versión anterior se olvida y se lee otra vez. Sin el aviso, el
+    cambio tarda esos minutos en llegar. Las vueltas no se recuerdan: cambian con cada mensaje.
 
     La clave privada de cada cliente se lee de Andvari la primera vez que hace falta y se guarda en memoria. Si el
     gateway rechaza la aserción (401), se vuelve a leer una vez: puede haber cambiado. Si rechaza el token de acceso,
@@ -71,8 +73,10 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
         # Por cliente: el token de acceso y hasta cuándo se usa.
         self._accesos: dict[UUID, tuple[str, float]] = {}
         self._tokens: dict[UUID, tuple[str, float]] = {}
-        # Por cliente y bot: la persona de un bot solo vale para el cliente con cuya clave se leyó.
-        self._personas: dict[tuple[UUID, UUID], tuple[Persona, float]] = {}
+        # Por cliente y bot: la persona de un bot solo vale para el cliente con cuya clave se leyó. Con la versión
+        # de la configuración que se leyó, y la última de la que avisó el gateway.
+        self._personas: dict[tuple[UUID, UUID], tuple[Persona, float, int]] = {}
+        self._avisadas: dict[tuple[UUID, UUID], int] = {}
 
     def _clave(self, client_id: UUID, otra_vez: bool = False) -> dict:
         if otra_vez or client_id not in self._claves:
@@ -149,9 +153,21 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
             # Solo el tipo: el texto de estas excepciones lleva la dirección y más.
             raise FuenteNoDisponible(type(e).__name__) from None
 
+    def configuracion_cambiada(self, client_id: UUID, bot_id: UUID, version: int) -> None:
+        """
+            El gateway avisó de que la configuración del bot va por `version`: lo que se recuerda de una anterior ya no
+            vale, y tampoco lo que se lea de una anterior mientras llega el aviso.
+        """
+        clave = (client_id, bot_id)
+        self._avisadas[clave] = max(version, self._avisadas.get(clave, 0))
+        recordada = self._personas.get(clave)
+        if recordada and recordada[2] < self._avisadas[clave]:
+            del self._personas[clave]
+
     async def persona(self, client_id: UUID, bot_id: UUID) -> Persona:
-        recordada = self._personas.get((client_id, bot_id))
-        if recordada and time.monotonic() < recordada[1]:
+        clave = (client_id, bot_id)
+        recordada = self._personas.get(clave)
+        if recordada and time.monotonic() < recordada[1] and recordada[2] >= self._avisadas.get(clave, 0):
             return recordada[0]
         datos = await asyncio.to_thread(self._get, client_id, f"/chat/{bot_id}/rules")
         try:
@@ -160,7 +176,10 @@ class ApiDelGateway(FuenteDelBot, TokensDelBot):
                               reglas=[regla for regla in datos.get("rules") or [] if isinstance(regla, str)])
         except (KeyError, TypeError, AttributeError, ValidationError):
             raise FuenteNoDisponible("reglas inesperadas") from None
-        self._personas[(client_id, bot_id)] = (persona, time.monotonic() + RECORDAR_REGLAS)
+        # Un gateway de antes de las versiones no la dice: cuenta como 0, y cualquier aviso la deja vieja.
+        version = datos.get("version")
+        version = version if isinstance(version, int) and not isinstance(version, bool) else 0
+        self._personas[clave] = (persona, time.monotonic() + RECORDAR_REGLAS, version)
         return persona
 
     async def vueltas(self, client_id: UUID, bot_id: UUID, contact_id: UUID, sin: str,

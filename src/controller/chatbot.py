@@ -13,6 +13,7 @@ from constants import APPLICATION_JSON, CONTENT_TYPE, CONTENT_LENGTH
 from crypto.key_service import KeyServiceUnavailable
 from repository import TenantRepository, NotFound
 from utils import describe
+from .bot_versions import CREATED, RULES_ADDED, record, versioned
 from .events import ctr_notify_action
 from enums import Status
 
@@ -23,7 +24,7 @@ settings = Settings()
 log = logging.getLogger(settings.environment)
 
 
-def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId: str = None) -> Response:
+def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, author: str, eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
     _action = uuid4()
@@ -49,6 +50,8 @@ def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId:
         # Kept before it is stored: once in the repository the document only holds it encrypted.
         _verify_token = _chatbot.verifyToken
         repo.add_bot(_chatbot)
+        # Its first version: the persona it was created with (RF26).
+        record(repo, _chatbot.uuid, author, CREATED)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data={**_chatbot.chatbot_info(), "verifyToken": _verify_token})
 
@@ -290,7 +293,10 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data={"name": _chatbot.name, "role": _chatbot.role, "tone": _chatbot.tone,
                                   "description": _chatbot.description,
-                                  "rules": [rule.rule for rule in repo.list_rules(_uuid)]})
+                                  "rules": [rule.rule for rule in repo.list_rules(_uuid)],
+                                  # The version this is (RF26): the engine keeps it no longer than a notice of a
+                                  # newer one (ADR-0035).
+                                  "version": _chatbot.configVersion})
 
     except (ValueError, NotFound) as e:
         log.error(describe(e))
@@ -318,7 +324,8 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
     return response
 
 
-def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, eventId: str = None) -> Response:
+def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_id: str, author: str,
+                             eventId: str = None) -> Response:
     log.info(f"Starting: {currentframe().f_code.co_name}")
 
     body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="BAD REQUEST", data=None)
@@ -339,7 +346,8 @@ def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_
     )
 
     try:
-        repo.add_rules(bot_id, request.rules)
+        with versioned(repo, bot_id, author, RULES_ADDED):
+            repo.add_rules(bot_id, request.rules)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data=None)
 

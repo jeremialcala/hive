@@ -393,3 +393,65 @@ def test_un_bot_sin_token_de_whatsapp_no_podra_responder_por_whatsapp(servidor, 
 
     with pytest.raises(NoEncontrado):
         asyncio.run(tokens(servidor, Andvari(clave)).token_de_whatsapp(CLIENTE, BOT))
+
+
+# --- Los avisos de configuración (ADR-0035 del gateway) ----------------------------------------------------------
+
+def test_un_aviso_de_una_version_nueva_hace_leer_la_persona_otra_vez(servidor, clave):
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "version": 3}})
+    gateway = api(servidor, Andvari(clave))
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "rules": ["Nueva"], "version": 4}})
+
+    gateway.configuracion_cambiada(CLIENTE, BOT, 4)
+
+    assert asyncio.run(gateway.persona(CLIENTE, BOT)).reglas == ["Nueva"]
+    assert asyncio.run(gateway.persona(CLIENTE, BOT)).reglas == ["Nueva"]
+    assert [ruta for ruta, _ in Gateway.vistas] == [f"/chat/{BOT}/rules"] * 2
+
+
+def test_un_aviso_de_la_version_que_ya_se_tiene_no_hace_leer_nada(servidor, clave):
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "version": 3}})
+    gateway = api(servidor, Andvari(clave))
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    gateway.configuracion_cambiada(CLIENTE, BOT, 3)
+    gateway.configuracion_cambiada(CLIENTE, BOT, 2)
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    assert [ruta for ruta, _ in Gateway.vistas] == [f"/chat/{BOT}/rules"]
+
+
+def test_lo_leido_de_una_version_anterior_al_aviso_no_se_recuerda(servidor, clave):
+    """El aviso llegó mientras se leía: lo leído es de antes, y el mensaje siguiente lo lee otra vez."""
+    gateway = api(servidor, Andvari(clave))
+    gateway.configuracion_cambiada(CLIENTE, BOT, 5)
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "version": 4}})
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "rules": ["Nueva"], "version": 5}})
+
+    assert asyncio.run(gateway.persona(CLIENTE, BOT)).reglas == ["Nueva"]
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+    assert [ruta for ruta, _ in Gateway.vistas] == [f"/chat/{BOT}/rules"] * 2
+
+
+def test_un_aviso_de_otro_bot_o_de_otro_cliente_no_toca_lo_recordado(servidor, clave):
+    Gateway.respuestas[f"/chat/{BOT}/rules"] = (200, {"data": {**PERSONA, "version": 1}})
+    gateway = api(servidor, Andvari(clave))
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    gateway.configuracion_cambiada(CLIENTE, uuid4(), 9)
+    gateway.configuracion_cambiada(uuid4(), BOT, 9)
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    assert [ruta for ruta, _ in Gateway.vistas] == [f"/chat/{BOT}/rules"]
+
+
+def test_un_gateway_que_no_dice_la_version_cuenta_como_la_cero(servidor, clave):
+    gateway = api(servidor, Andvari(clave))
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    gateway.configuracion_cambiada(CLIENTE, BOT, 1)
+    asyncio.run(gateway.persona(CLIENTE, BOT))
+
+    assert [ruta for ruta, _ in Gateway.vistas] == [f"/chat/{BOT}/rules"] * 2

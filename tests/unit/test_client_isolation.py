@@ -41,6 +41,8 @@ TEMPLATE_ID = "1234567890"
 # A request to send that the owner never made: its status is 404 to the owner too, and test_send_status covers it.
 REQUEST_ID = "6f1c7e2a-0d2b-4c1e-9a77-2f3b6a1d9e10"
 SEND_STATUS = ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}")
+# Going back to the version the chatbot already has is a 409: test_bot_versions covers the owner.
+RESTORE = ("POST", "/chat/{bot_id}/versions/{version}/restore")
 PEOPLE = [("DELETE", "/people/{person_id}"), ("GET", "/people"), ("POST", "/people"), ("PUT", "/people/{person_id}"),
           ("GET", "/bots")]
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
@@ -78,17 +80,18 @@ def stored(owner):
     repo.add_rules(bot.uuid, ["Be kind"])
     intent = repo.add_intent(bot.uuid, Intent(name="check_order", description="Order status"))
     contact = repo.add_contact(bot.uuid, Contact(firstName="Ana", waId="12025550143"))
+    repo.add_version(bot.uuid, "test", "what it has")
     return bot, intent, contact
 
 
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
     return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
-                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID),
+                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID, version=1),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 25 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 28 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.
@@ -102,7 +105,7 @@ def test_every_route_of_a_chatbot_is_covered():
 
 
 @pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES
-                                         if route not in IN_META | {SENDING, SEND_STATUS}])
+                                         if route not in IN_META | {SENDING, SEND_STATUS, RESTORE}])
 def test_the_owner_reaches_its_chatbot(http, owner, stored, method, path):
     bot, intent, contact = stored
 

@@ -20,8 +20,11 @@ from repository import NotFound, TenantRepository
 SLOW = 1.5
 # The only coroutines left, each for a reason: the token route reads its form by hand and decrypts in a thread,
 # the deletions await the notice to the engine and delete in a thread, the health check touches nothing, and a send
-# to a contact awaits the bus and reads in a thread.
-COROUTINES = {"oauth_token", "delete_chatbot", "delete_contact", "delete_client", "health", "send_message"}
+# to a contact awaits the bus and reads in a thread. Each change of a chatbot's configuration is made in a thread and
+# then told to the engine on the bus (ADR-0035).
+COROUTINES = {"oauth_token", "delete_chatbot", "delete_contact", "delete_client", "health", "send_message",
+              "add_chatbot_rule", "add_chatbot_intent", "update_chatbot_intent", "delete_chatbot_intent",
+              "restore_version"}
 
 
 def slowly(error: Exception):

@@ -8,6 +8,22 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **Versiones de la configuración de un bot, y volver a una** (HIG-101, RF26;
+  [ADR-0035](docs/00-project/adr/0035-versiones-de-la-configuracion-del-bot.md)).
+  - **Una versión por cambio:** crear el bot, añadir reglas y crear, editar o borrar un intent escriben cada uno una
+    versión con la persona, las reglas y los intents, quién lo hizo y cuándo. Las credenciales de Meta y el
+    `verifyToken` no se versionan.
+  - **Las rutas:**
+    - `GET /chat/{bot_id}/versions` las lista;
+    - `GET /chat/{bot_id}/versions/{version}` dice qué cambió respecto de la anterior, o de `against`;
+    - `POST /chat/{bot_id}/versions/{version}/restore` vuelve a una, como una versión nueva.
+  - **Volver revisa los intents otra vez:** si un destino ya no se permite, la respuesta es `422` y no cambia nada
+    (RS16, AB29).
+  - **Roles:** el `cliente-analista` ve las versiones y no vuelve (`403`).
+  - **Retención:** las versiones se guardan mientras exista el bot y se borran con él.
+  - **Bots de antes:** un bot anterior a las versiones recibe, en su primer cambio, una con lo que tenía.
+  - **El motor se entera enseguida:** la API publica `gateway.bot.configured` en Bifröst con el número de la versión, y
+    el coordinador olvida la persona y las reglas que recordaba (higerotech/bifrost#9). `/rules` dice su `version`.
 - **Hive vuelve solo tras un apagón de midgard, y Thor avisa si algo no vuelve** (HIG-116, RNF06;
   [arranque tras un apagón](docs/05-deployment/arranque-tras-apagon.md)).
   - **Cómo vuelve:** Docker arranca con el sistema y levanta los diez contenedores de Hive, que tienen
@@ -19,7 +35,7 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - **Thor vigila los contenedores de Hive:** desde el 2026-10-30, `THOR_CONTENEDORES` en midgard los incluye, y
     `THOR_UNIDADES` incluye `hive-vigia.timer`. Si falta uno, salta `ServicioDePlataformaCaido`.
   - **Probado con un reinicio real de midgard** el 2026-10-30: los 13 contenedores (10 de Hive y la infraestructura)
-    quedaron sanos en 8 minutos, con 0 reinicios, y Andvari se desselló solo. RNF06 pasa a «Construido y probado».
+    quedaron sanos en 8 minutos, con 0 reinicios, y Andvari se deselló solo. RNF06 pasa a «Construido y probado».
 
 ## [0.7.0] - 2026-10-30
 

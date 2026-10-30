@@ -6,6 +6,8 @@
 # construye el código. El resto de los eventos sigue siendo diseño. Mientras el motor lea la cola `llm` de Hermod,
 # el gateway publica también la versión 1 (asyncapi.yaml). test_bus_contract.py comprueba además que el fichero es
 # coherente: cada referencia existe y cada esquema es un JSON Schema válido.
+#
+# Desde HIG-101 (ADR-0035), la API de gestión publica también BotConfigurado, un aviso sin JetStream.
 asyncapi: 3.0.0
 info:
   title: Bus de eventos del gateway BaaS
@@ -113,6 +115,15 @@ channels:
     messages:
       supresion:
         $ref: '#/components/messages/Supresion'
+  botConfigurado:
+    address: 'gateway.bot.configured'
+    description: >-
+      NATS sin JetStream: un aviso que nadie guarda (ADR-0035). La API de gestión dice que cambió la configuración de
+      un bot y por qué versión va (RF26), y el coordinador olvida lo que recordaba de él. Quien no escucha en ese
+      momento no se entera, y lee el bot otra vez cuando caduca lo que recuerda, a los 5 minutos.
+    messages:
+      botConfigurado:
+        $ref: '#/components/messages/BotConfigurado'
 operations:
   publicarEventoWebhook:
     action: send
@@ -213,6 +224,20 @@ operations:
     summary: La API de gestión avisa de cada supresión, después de hacerla.
     messages:
       - $ref: '#/channels/supresion/messages/supresion'
+  publicarBotConfigurado:
+    action: send
+    channel:
+      $ref: '#/channels/botConfigurado'
+    summary: La API de gestión avisa de cada cambio de la configuración de un bot, una vez hecho y versionado.
+    messages:
+      - $ref: '#/channels/botConfigurado/messages/botConfigurado'
+  oirBotConfigurado:
+    action: receive
+    channel:
+      $ref: '#/channels/botConfigurado'
+    summary: El coordinador olvida la persona y las reglas que recordaba del bot, si son de una versión anterior.
+    messages:
+      - $ref: '#/channels/botConfigurado/messages/botConfigurado'
 components:
   securitySchemes:
     usuarioPorServicio:
@@ -292,6 +317,14 @@ components:
         $ref: '#/components/schemas/Cabeceras'
       payload:
         $ref: '#/components/schemas/Supresion'
+    BotConfigurado:
+      name: BotConfigurado
+      title: Aviso de configuración de un bot
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/CabecerasDeAviso'
+      payload:
+        $ref: '#/components/schemas/BotConfigurado'
   schemas:
     Cabeceras:
       type: object
@@ -309,6 +342,42 @@ components:
           type: string
           pattern: '^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
           description: Contexto de traza W3C del mensaje (RNF09).
+    CabecerasDeAviso:
+      type: object
+      required: [traceparent]
+      description: Un aviso sin JetStream no lleva `Nats-Msg-Id`, porque nadie lo guarda ni lo deduplica.
+      properties:
+        traceparent:
+          type: string
+          pattern: '^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+          description: Contexto de traza W3C del cambio (RNF09).
+    BotConfigurado:
+      type: object
+      required: [schemaVersion, uuid, clientId, botId, version, configuredAt]
+      additionalProperties: false
+      description: Sin datos de la configuración, solo identificadores y el número de la versión.
+      properties:
+        schemaVersion:
+          const: 2
+        uuid:
+          type: string
+          format: uuid
+          description: Identificador del aviso.
+        clientId:
+          type: string
+          format: uuid
+        botId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+          description: >-
+            La versión de la configuración que tiene el bot desde este cambio. Lo que se recordaba de una anterior ya
+            no vale.
+        configuredAt:
+          type: string
+          format: date-time
     Base:
       type: object
       required: [schemaVersion, botId, clientId]

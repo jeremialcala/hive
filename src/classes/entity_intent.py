@@ -133,6 +133,15 @@ class Intent(Document):
             } if action.apiCall is not None else None
         }
 
+    @staticmethod
+    def action_from(info: dict) -> Action:
+        """The action `action_info` described: what a version of the chatbot keeps, made a document again."""
+        call = info.get("apiCall")
+        return Action(name=info["name"], description=info["description"], type=info["type"],
+                      status=Status[info["status"]].value,
+                      parameters=[ActionParameter(**parameter) for parameter in info["parameters"]],
+                      apiCall=ApiCall(**call) if call is not None else None)
+
     def tool_definitions(self) -> list:
         """
             All active actions of this intent as LLM tool definitions. An action whose call goes where no call may

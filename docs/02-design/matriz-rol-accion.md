@@ -1,10 +1,10 @@
 # Matriz rol × acción de Hive
 
 * **Estado:** accepted
-* **Fecha:** 2026-10-26
+* **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.6.0
+* **Versión:** 1.7.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -110,7 +110,7 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Editar la persona del bot (nombre, rol, tono, descripción) | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF23 (D9) | ⚠️ |
 | Ver el estado del bot (REG, ACT, ERR) | ⛔ | ✅ nuevo | ✅ nuevo | ⛔ | ADR-0027 (HIG-74) | ❌ |
 | Publicar o despublicar un bot | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | D4, ADR-0027 (HIG-75) | ❌ |
-| Ver el historial de versiones y volver a una | ⛔ | ✅ nuevo | ✅ ver / ⛔ volver, nuevo | ⛔ | RF26 (D9) | ⚠️ |
+| Ver el historial de versiones y volver a una | ⛔ | ✅ nuevo | ✅ ver / ⛔ volver, nuevo | ⛔ | RF26 (D9), [ADR-0035](../00-project/adr/0035-versiones-de-la-configuracion-del-bot.md) | ✅ `GET /chat/{bot_id}/versions`, `…/{version}`; volver, `POST …/{version}/restore` |
 
 ### 4. Reglas, intents y herramientas
 
@@ -240,6 +240,9 @@ Lo que hoy aplica el código, ruta por ruta (HIG-92). Una tabla para cada ruta d
 | `PUT /chat/{bot_id}/templates/{template_id}` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/tokens` | ⛔ | ⛔ | ✅ | ⛔ |
 | `GET /chat/{bot_id}/tools` | ✅ | ✅ | ✅ | ⛔ |
+| `GET /chat/{bot_id}/versions` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/versions/{version}` | ✅ | ✅ | ⛔ | ⛔ |
+| `POST /chat/{bot_id}/versions/{version}/restore` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /clients` | ⛔ | ⛔ | ⛔ | ✅ |
 | `POST /clients` | ⛔ | ⛔ | ⛔ | ✅ |
 | `DELETE /clients/{client_id}` | ⛔ | ⛔ | ⛔ | ✅ |

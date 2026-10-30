@@ -2,10 +2,10 @@
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18; personas, decisiones de Jeremi del 2026-10-28). Las
   capacidades de la D9, los mensajes salientes (D10), las integraciones (D7, D8) y DPoP, en review desde el 2026-10-29
-* **Fecha:** 2026-10-29
+* **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 01-requirements
-* **Versión:** 0.11.1
+* **Versión:** 0.12.0
 * **Gate:** 0
 * **Feature ID:** BAAS-001
 * **Nivel ASVS objetivo:** L2
@@ -207,7 +207,7 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | AB26 | Una persona dada de baja o bloqueada sigue entrando con la sesión que tenía | RS23 | Cubierto en la API (HIG-92): el siguiente intercambio da `invalid_grant`, así que como mucho 10 minutos. Que el BFF cierre la sesión, HIG-93 |
 | AB27 | Una cuenta de Zitadel sin persona en Hive, o con la contraseña robada pero sin el segundo factor, intenta conseguir un token | RS22, RS23 | Cubierto (HIG-92): sin persona activa en Hive, o sin `mfa` en el `amr`, `invalid_grant` |
 | AB28 | Un cliente suspendido sigue operando con un token emitido antes de la suspensión, o sus bots siguen respondiendo | RF19, RS23 | Pendiente: como mucho 10 minutos, lo que dura un token |
-| AB29 | Alguien con la sesión de un `cliente-admin` vuelve a una versión antigua para recuperar un intent con un destino ya prohibido, o borra reglas para dejar el bot sin límites | RS16, RS25, RS26 | Pendiente: al volver se validan otra vez los destinos, la base de guardrails no cambia y todo queda en la auditoría |
+| AB29 | Alguien con la sesión de un `cliente-admin` vuelve a una versión antigua para recuperar un intent con un destino ya prohibido, o borra reglas para dejar el bot sin límites | RS16, RS25, RS26 | Parcial (HIG-101): al volver, los intents pasan otra vez la validación de hoy y un destino que ya no se permite responde `422` sin cambiar nada, y cada vuelta queda en el log con quién la hizo. Faltan la base de guardrails (RF27) y la auditoría del cliente (RF18) |
 | AB30 | Un `cliente-analista`, o una sesión robada, lee el `verifyToken` o lo rota para cortar la suscripción del bot a Meta | RS23 | Pendiente |
 | AB31 | Quien entra en la superficie del operador lee el contenido de los mensajes de un cliente en las trazas, en los eventos del bus o en lo que espera reproceso | RS01, RS19 | Pendiente |
 | AB32 | Un reproceso o una purga, por error o con la sesión robada del operador, borra mensajes de varios clientes o hace que un bot responda dos veces | RS24, RNF04 | Pendiente |
@@ -260,7 +260,7 @@ los tokens se cargan a mano en la base, el motor clasifica el mensaje pero nadie
 | RF23 | El `cliente-admin` edita la persona de un bot: nombre, rol, tono y descripción, con los mismos límites que al crearlo (RS11). El `cliente-analista` la ve y no la cambia. Cada cambio crea una versión (RF26) | Pendiente: hoy solo se fija al crear el bot | — |
 | RF24 | El `cliente-admin` edita o borra una regla de un bot. Cada cambio crea una versión (RF26) | Pendiente: hoy las reglas solo se añaden | — |
 | RF25 | El `cliente-admin` rota el `verifyToken` de un bot. Hive genera uno nuevo y aleatorio, y el anterior deja de valer en el momento. Meta solo lo usa al verificar la suscripción: lo ya suscrito sigue recibiendo, y el valor nuevo se pone en la app de Meta la próxima vez que se verifique. Solo lo ve el `cliente-admin` (D6), y la rotación queda en la auditoría | Pendiente | — |
-| RF26 | Cada cambio de la configuración de un bot (persona, reglas, intents y guardrails) crea una versión, con quién la hizo y cuándo. El `cliente-admin` vuelve a una versión anterior, y volver crea una versión nueva, así que nada se reescribe. Al volver, los destinos de los intents se validan otra vez (RS16). El `cliente-analista` ve las versiones y en qué se diferencian, pero no vuelve. Las credenciales de Meta y el `verifyToken` no se versionan. Las versiones se borran con el bot (RF10) | Pendiente | — |
+| RF26 | Cada cambio de la configuración de un bot (persona, reglas, intents y guardrails) crea una versión, con quién la hizo y cuándo. El `cliente-admin` vuelve a una versión anterior, y volver crea una versión nueva, así que nada se reescribe. Al volver, los destinos de los intents se validan otra vez (RS16). El `cliente-analista` ve las versiones y en qué se diferencian, pero no vuelve. Las credenciales de Meta y el `verifyToken` no se versionan. Las versiones se borran con el bot (RF10) | Construido el 2026-10-30 (HIG-101, [ADR-0035](../00-project/adr/0035-versiones-de-la-configuracion-del-bot.md)): `GET /chat/{bot_id}/versions`, `GET …/{version}` con lo que cambió y `POST …/{version}/restore`. Versionan hoy crear el bot, añadir reglas y crear, editar o borrar intents; los guardrails, cuando existan (RF27). El motor se entera por el aviso `gateway.bot.configured` de Bifröst | `tests/unit/test_bot_versions.py` |
 | RF27 | Cada bot lleva una base de guardrails de la plataforma que nadie desactiva: la inyección de instrucciones, los intentos de sacar datos de otros contactos o de la plataforma, y el fallo cerrado si el filtro no responde (RS26). Sobre esa base, el `cliente-admin` añade sus propios temas y elige para cada uno qué pasa ante una violación: bloquear con una respuesta fija, o solo registrar. Cada violación queda registrada con el bot, el tema y la acción, sin el texto del mensaje (RS07) | Parcial: el clasificador del motor ya filtra la entrada con un rail fijo y falla cerrado (ADR-0005 del motor); falta la configuración por bot | — |
 | RF28 | El `cliente-admin` y el `cliente-analista` califican las respuestas de los bots de su cliente. Para eso leen el historial completo de la conversación del contacto (RF14), sin su número. Cada calificación dice quién la hizo, y cada vez que se abre una conversación para calificar queda en la auditoría del cliente (RF18). Los dos ven las métricas de cumplimiento de cada bot: las respuestas que el evaluador aprobó o rechazó (ADR-0008 del motor), los mensajes bloqueados por los guardrails y las calificaciones de las personas. Las calificaciones se borran con el contacto (RF09) | Pendiente | — |
 | RF29 | El `cliente-admin`, o la credencial de máquina, envía a un contacto que ya existe un texto, dentro de la ventana de 24 horas desde su último mensaje, o una plantilla aprobada, dentro o fuera de ella. El `cliente-analista` solo envía plantillas aprobadas. En la v1, solo por WhatsApp, y nunca a un número que no sea un contacto del cliente. Envía el notificador: la API responde `202` con el id del pedido, y la misma `Idempotency-Key` no envía dos veces. Lo enviado queda en el historial, cifrado y con su autor (RF14), y en la auditoría del cliente (D10, [ADR-0031](../00-project/adr/0031-mensajes-salientes.md)) | Parcial: `POST /chat/{bot_id}/contacts/{contact_id}/messages` comprueba y publica en `SALIENTES` (HIG-83), y el notificador envía el texto o la plantilla y lo deja en el historial con su origen y su autor (HIG-84). La copia de las plantillas la llenan las rutas de RF30 (HIG-85), y los avisos de Meta la mantienen al día (HIG-86). La PWA envía desde la conversación del contacto, con la ventana y el consentimiento a la vista, y dice qué salió y, si Meta lo rechazó, por qué (HIG-87) | `tests/unit/test_outbound.py` |
@@ -668,6 +668,13 @@ control construido y una prueba que lo verifica.
 | Qué ve quien califica una respuesta | La conversación completa del contacto, sin su número, y cada apertura queda en la auditoría del cliente | RF28 |
 | Hasta dónde configura el cliente los guardrails | Sobre una base de la plataforma que no se desactiva, añade sus temas, cada uno con su acción: bloquear con una respuesta fija, o solo registrar | RF27, RS26 |
 
+### Tomadas el 2026-10-30 para las versiones de un bot (Jeremi Alcala)
+
+| Decisión | Resultado | Dónde queda |
+|---|---|---|
+| Cuánto se guardan las versiones de un bot | Mientras exista el bot: se borran con él (RF10) | RF26, [ADR-0035](../00-project/adr/0035-versiones-de-la-configuracion-del-bot.md) |
+| Cómo se entera el motor de un cambio sin esperar su caché | Por un aviso de Bifröst, `gateway.bot.configured`, con el número de la versión: el coordinador olvida lo que recordaba | RF26, [ADR-0035](../00-project/adr/0035-versiones-de-la-configuracion-del-bot.md) |
+
 ### Tomadas el 2026-10-29 para los mensajes salientes (Jeremi Alcala)
 
 | Decisión | Resultado | Dónde queda |
@@ -695,7 +702,6 @@ control construido y una prueba que lo verifica.
 
 - **La retención de la auditoría,** de la plataforma y de cada cliente. Propuesta: 12 meses, como un contacto sin
   actividad (RNF05).
-- **La retención de las versiones de un bot.** Propuesta: mientras exista el bot.
 - **Cómo pide Hive a Zitadel una MFA de los últimos 5 minutos** para RS24: con `max_age` en la petición y
   comprobando `auth_time` y `amr` en el ID token. Va en una ADR.
 - **Dónde se guardan las calificaciones y las métricas:** en Hive, o en el evaluador del motor.
