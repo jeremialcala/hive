@@ -694,6 +694,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **El portal ya no escribe cada petición en su log** (HIG-93). `uvicorn` dejaba la línea de cada
+  petición, y la de `/auth/callback` llevaba en la consulta el código del inicio de sesión. Ahora arranca con
+  `--no-access-log`, como el gateway. Se vio en el primer arranque en midgard, antes de que nadie iniciara sesión.
 - **A la cuenta de servicio de Zitadel sin su rol se la reconoce como tal** (HIG-94). En la primera invitación real
   (2026-10-30), Zitadel respondió `404 membership not found (AUTHZ-cdgFk)`: el rol `ORG_USER_MANAGER` se había creado
   como rol del proyecto, no en *Administrator Roles*. Hive lo daba como `422 IDP_REFUSED (404)`, como si Zitadel

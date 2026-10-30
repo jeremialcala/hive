@@ -29,6 +29,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
 
-# One worker: the portal's DPoP key lives in its memory, and so would a second one's (ADR-0033).
+# One worker: the portal's DPoP key lives in its memory, and so would a second one's (ADR-0033). Without uvicorn's
+# access log, as the gateway: the line of /auth/callback would carry the code of the login in its query.
 CMD ["uvicorn", "--factory", "src.app:create_app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", \
-     "--proxy-headers", "--forwarded-allow-ips", "*"]
+     "--proxy-headers", "--forwarded-allow-ips", "*", "--no-access-log"]
