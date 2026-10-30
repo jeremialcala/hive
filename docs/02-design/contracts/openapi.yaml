@@ -776,27 +776,29 @@ info:
     \ `ath`. A proof is good\n  once and for 60 seconds.\n* The access token lasts 10 minutes and is good for every\
     \ request in them. Ask for a new one shortly before it\n  expires, not for every request: each key gets a bounded\
     \ number of tokens an hour, and an address that asks too\n  often, or keeps sending assertions that are not\
-    \ good, gets a 429 with `Retry-After`.\n\n### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n\
-    * /bot/{bot_id}: @DELETE deletes it with everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored\
-    \ of the chatbot, and which Meta credentials are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates\
-    \ its Meta credentials. They are never returned.\n* /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET\
-    \ lists them. `?environment=` gives the last one of it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the\
-    \ persona of the chatbot and its rules, as data.\n* /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id}\
-    \ takes @GET, @PUT and @DELETE.\n* /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions\
-    \ for the model.\n* /chat/{bot_id}/contacts: @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id}\
-    \ exports\n  one with @GET and deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot\
-    \ of the client, by number or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate;\
-    \ /keys/{kid} removes one with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own\
-    \ key for each client, and the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator,\
-    \ the rules, the tools and the last turns of a conversation; the\nclassifier, the responder and the evaluator,\
-    \ the rules; the link, the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta\
-    \ tokens of a chatbot. Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n\
-    * /chat/{bot_id}/contacts/{contact_id}/turns: @GET the last 10 turns of a conversation, for the coordinator.\n\
-    \n### The operator\n\n* /clients: @POST registers a client, @GET lists them; /clients/{client_id} takes one\
-    \ off with @DELETE.\n* /clients/{client_id}/keys: the keys a client signs with; /clients/{client_id}/service-keys,\
-    \ the keys each\n  worker of the response engine signs with for that client, with the worker that signs with\
-    \ each.\n\n### Any caller\n\n* /gateway/keys: @GET the audience and the public keys tokens are encrypted to.\n\
-    * /health: @GET liveness, without a token.\n"
+    \ good, gets a 429 with `Retry-After`.\n* Every other route but the health check counts the requests of each\
+    \ credential, a key or a person: 300 a minute,\n  and more get the same 429 with `Retry-After`. An address that\
+    \ got a 401 or a 403 30 times in ten minutes gets it\n  too, until the first of them is ten minutes old.\n\n\
+    ### A client and its chatbots\n\n* /bot: @POST creates a chatbot.\n* /bot/{bot_id}: @DELETE deletes it with\
+    \ everything stored for it.\n* /chat/{bot_id}/info: @GET what is stored of the chatbot, and which Meta credentials\
+    \ are loaded.\n* /chat/{bot_id}/credentials: @PUT loads or rotates its Meta credentials. They are never returned.\n\
+    * /chat/{bot_id}/phones: @POST adds a WhatsApp number, @GET lists them. `?environment=` gives the last one of\
+    \ it.\n* /chat/{bot_id}/rules: @POST adds rules, @GET the persona of the chatbot and its rules, as data.\n*\
+    \ /chat/{bot_id}/intents: @POST and @GET; /chat/{bot_id}/intents/{intent_id} takes @GET, @PUT and @DELETE.\n\
+    * /chat/{bot_id}/tools: @GET the actions of its intents as tool definitions for the model.\n* /chat/{bot_id}/contacts:\
+    \ @GET who wrote to it, a page at a time; /chat/{bot_id}/contacts/{contact_id} exports\n  one with @GET and\
+    \ deletes it with @DELETE.\n* /contacts/search: @POST finds a person in every chatbot of the client, by number\
+    \ or by Messenger id.\n* /keys: @GET the keys of the caller, @POST adds one to rotate; /keys/{kid} removes one\
+    \ with @DELETE.\n\n### The response engine\n\nEach worker of the engine holds its own key for each client, and\
+    \ the key says which routes it reaches: the\nnotifier, the Meta tokens; the coordinator, the rules, the tools\
+    \ and the last turns of a conversation; the\nclassifier, the responder and the evaluator, the rules; the link,\
+    \ the tools. All of them read /gateway/keys.\n\n* /chat/{bot_id}/tokens: @GET the Meta tokens of a chatbot.\
+    \ Only for the notifier, with the key it holds for the\n  client that owns the chatbot.\n* /chat/{bot_id}/contacts/{contact_id}/turns:\
+    \ @GET the last 10 turns of a conversation, for the coordinator.\n\n### The operator\n\n* /clients: @POST registers\
+    \ a client, @GET lists them; /clients/{client_id} takes one off with @DELETE.\n* /clients/{client_id}/keys:\
+    \ the keys a client signs with; /clients/{client_id}/service-keys, the keys each\n  worker of the response engine\
+    \ signs with for that client, with the worker that signs with each.\n\n### Any caller\n\n* /gateway/keys: @GET\
+    \ the audience and the public keys tokens are encrypted to.\n* /health: @GET liveness, without a token.\n"
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html

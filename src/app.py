@@ -20,7 +20,7 @@ from fastapi.security.utils import get_authorization_scheme_param
 from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE
 from shared.auth.gateway_keys import GatewayKeys
 from auth.principal import ClientNotChosen, Principal, authenticate, exchange, exchange_id_token
-from auth import dpop, token_limits
+from auth import dpop, request_limits, token_limits
 from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
@@ -151,6 +151,12 @@ def get_principal(request: Request,
         challenge = DPOP_CHALLENGE if not authorization else f'{DPOP_CHALLENGE}, error="{error}"'
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="HTTP_401_UNAUTHORIZED",
                             headers={"WWW-Authenticate": challenge}) from None
+    # HIG-139: a credential that already made its requests this minute waits, whatever it asks for.
+    refusal = request_limits.LIMITS.admit(principal.client_id, principal.limited_as)
+    if refusal is not None:
+        log.warning(f"Turned away a request of client {principal.client_id}, {principal.actor}: too many requests "
+                    f"this minute")
+        raise request_limits.TooManyRequests(refusal.retry_after)
     route = (METHODS.get(request.method), getattr(request.scope.get("route"), "path", None))
     if principal.is_analyst and route not in ANALYST_ROUTES:
         log.warning(f"A cliente-analista was denied a route: client {principal.client_id}, {principal.actor}")
@@ -198,7 +204,9 @@ async def require_operator(principal: Principal = Depends(get_principal)) -> Pri
     return principal
 
 
-app = build(title=TITLE, summary=SUMMARY, description=DESCRIPTION, openapi_tags=TAGS_METADATA)
+# An origin that keeps getting 401 or 403 waits, before its body is read (HIG-139).
+app = build(limit=request_limits.API, title=TITLE, summary=SUMMARY, description=DESCRIPTION,
+            openapi_tags=TAGS_METADATA)
 
 
 def _oauth_error(code: int, error: str) -> JSONResponse:
@@ -209,8 +217,14 @@ def _oauth_error(code: int, error: str) -> JSONResponse:
 
 def _too_many(retry_after: int) -> JSONResponse:
     """RFC 6585: 429, and when to ask again."""
-    return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"error": "temporarily_unavailable"},
-                        headers={**NO_STORE, "Retry-After": str(retry_after)})
+    return request_limits.too_many(retry_after)
+
+
+async def _credential_refused(_request: Request, refused: request_limits.TooManyRequests) -> JSONResponse:
+    return _too_many(refused.retry_after)
+
+
+app.add_exception_handler(request_limits.TooManyRequests, _credential_refused)
 
 
 def _form(body: bytes) -> dict | None:

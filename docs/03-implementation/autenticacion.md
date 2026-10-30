@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.6.0
+* **Versión:** 0.6.1
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -100,6 +100,13 @@ Se pasa de tres maneras:
 - con más de 30 tokens en una hora para una misma clave.
 
 Un cliente que reutiliza su token durante sus 10 minutos pide unos 6 por hora y no llega a ninguno de los tres.
+
+El resto de rutas, salvo `/health`, también tiene límite (HIG-139, enmienda de la ADR-0028), con el mismo `429`:
+
+- más de 300 peticiones por minuto con una misma credencial, sea una clave o una persona;
+- 30 respuestas `401` o `403` en 10 minutos desde una dirección, que espera hasta que la primera cumple los 10
+  minutos. Cuenta la dirección que vio Cloudflare. El portal y el motor, que llaman desde midgard, solo cuentan por
+  credencial.
 
 ### Con el cliente de referencia
 

@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.3.0
+* **Versión:** 1.4.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -24,13 +24,13 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 
 | ID | Riesgo | Estado | Lo que más lo sostiene | Lo que falta |
 |---|---|---|---|---|
-| A01 | Control de acceso | Cubierto en la API | Aislamiento por cliente y matriz rol × acción, probados ruta por ruta | DAST con varios roles (HIG-90); RS20, RS24 |
+| A01 | Control de acceso | Cubierto en la API | Aislamiento por cliente y matriz rol × acción, probados ruta por ruta | DAST con una sesión de cada rol: `dast · zap` va sin token; RS20, RS24 |
 | A02 | Configuración insegura | Parcial | Contenedores sin root, endurecidos; documentación solo en desarrollo; cabeceras en el portal, `hive-api` y el webhook | Escaneo de imagen y de compose (HIG-20) |
 | A03 | Cadena de suministro | Parcial | Locks con hashes, imágenes por digest, `pip-audit`, gitleaks, CodeQL con umbral | SBOM, Actions por SHA, Dependabot (HIG-20) |
 | A04 | Fallos criptográficos | Cubierto, con una salvedad | Clave de datos por cliente en Andvari, AES-GCM con el cliente autenticado, sesiones selladas | Cifrado de lo que viaja por el bus (RS08); RS28 |
-| A05 | Inyección | Parcial | Solo ODM por el repositorio; ids, operadores y anidamiento hostiles en cada ruta; 422 sin eco | DAST (HIG-90); RS11 |
-| A06 | Diseño inseguro | Parcial | Threat model, límites de `/oauth/token` y de envíos, `Idempotency-Key`, ventana y consentimiento | Límites en el resto de rutas (HIG-139) |
-| A07 | Identificación y autenticación | Cubierto | Aserción firmada y cifrada de un solo uso, DPoP, MFA en el `amr`, BFF con PKCE | DAST del login (HIG-90) |
+| A05 | Inyección | Parcial | Solo ODM por el repositorio; ids, operadores y anidamiento hostiles en cada ruta; 422 sin eco | Fuzzing de los cuerpos con token: `dast · zap` no pasa del `401`; RS11 |
+| A06 | Diseño inseguro | Cubierto, con una salvedad | Threat model; límites de `/oauth/token`, del resto de rutas, del webhook y de envíos; `Idempotency-Key`, ventana y consentimiento | Los contadores del webhook son por proceso, aproximados |
+| A07 | Identificación y autenticación | Cubierto | Aserción firmada y cifrada de un solo uso, DPoP, MFA en el `amr`, BFF con PKCE | DAST con la sesión abierta: `dast · zap` escanea el login sin ella |
 | A08 | Integridad de software y datos | Parcial | Firma de Meta sobre el cuerpo crudo, contratos versionados, imágenes solo tras las pruebas | Firma de imágenes y procedencia (HIG-20) |
 | A09 | Registro y monitorización | Parcial | Logs sin datos personales, `WARNING` de auditoría, trazas sin PII, vigía | Alertas, tablero y runbook (HIG-140); RS14, RS19, RS25 |
 | A10 | Condiciones excepcionales | Cubierto | 503 para que Meta reintente, fallo cerrado, 500 genérico, bus que reentrega | Mutation testing (HIG-137); RD-19 aceptado |
@@ -65,7 +65,9 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Decidido en:** `docs/03-implementation/destinos-de-los-intents.md`; RS16.
 
 **Huecos:**
-- no hay DAST con cuentas de distinto rol (HIG-90);
+- el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90) va sin token: no prueba cuentas de distinto rol, solo que
+  cada ruta con token responde `401` sin él
+  (`tests/e2e/test_dast.py::test_every_route_that_asks_for_a_token_answers_401_without_one`);
 - RS20, credenciales por worker en el bus del gateway, sigue pendiente en el PRD;
 - RS24, acciones destructivas del operador con MFA y motivo, también; es el backoffice de HIG-100.
 
@@ -182,7 +184,8 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **Los destinos de los intents:** ver A01.
 
 **Huecos:**
-- no hay fuzzing de los cuerpos ni DAST (HIG-90);
+- no hay fuzzing de los cuerpos de las rutas con token: el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90)
+  solo llega hasta su `401`;
 - los modelos de gestión no acotan todos sus campos (RS11);
 - el catálogo de herramientas MCP sigue pendiente (RS29).
 
@@ -194,6 +197,25 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
     borde hay además un límite en Cloudflare.
   - **Prueba:** `tu/test_token_limits.py::test_an_origin_that_keeps_failing_is_turned_away_for_ten_minutes`.
   - **Decidido en:** ADR-0028; RS10.
+- **Límites del resto de rutas de `hive-api`** (`src/auth/request_limits.py`, HIG-139):
+  - **Qué limita:** 300 peticiones por minuto por credencial (una clave o una persona), y 30 respuestas `401` o `403`
+    en 10 minutos por origen. El origen es la IP de Cloudflare; los que llaman desde midgard (el portal, el motor) solo
+    cuentan por credencial. Responde el mismo `429` con `Retry-After` que `/oauth/token`, sin leer el cuerpo de un
+    origen que se pasó. Ni `/health` ni `/oauth/token`, que tiene sus límites, cuentan aquí.
+  - **Prueba:** `tests/security/test_route_limits.py` (`test_a_credential_gets_its_requests_a_minute_and_then_a_429_with_retry_after`,
+    `test_a_credential_over_its_limit_does_not_hold_another_up`,
+    `test_an_origin_that_keeps_getting_401_or_403_is_turned_away_before_its_body_is_read`,
+    `test_the_health_check_of_the_api_is_never_limited`) y
+    `tu/test_request_limits.py::test_many_credentials_and_many_origins_cost_memory_up_to_a_bound`.
+  - **Decidido en:** ADR-0028, enmienda del 2026-10-30; RS10.
+- **Límite del webhook:**
+  - **Qué limita:** un origen que manda 20 peticiones en un minuto sin la firma de Meta, con una firma mala o con un
+    verify token malo recibe `429` antes de que se lea su cuerpo. Lo que trae una firma con la forma de la de Meta
+    pasa siempre: Meta reintenta, y cortarlo perdería mensajes.
+  - **Prueba:** `tests/security/test_route_limits.py` (`test_what_is_not_signed_past_the_cap_gets_a_429_without_its_body_read`,
+    `test_what_meta_signed_always_goes_in_even_past_the_cap`,
+    `test_a_verification_with_the_wrong_token_counts_as_a_failure`).
+  - **Decidido en:** ADR-0028, enmienda del 2026-10-30; RS10.
 - **Límites de envío:**
   - **Qué limita:** 60 por minuto por bot y 1 000 al día por cliente, con los contadores en Bifröst
     (`src/controller/send_limits.py`). La `Idempotency-Key` es obligatoria.
@@ -212,7 +234,8 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Prueba:** `tu/test_export_and_delete.py`, `tu/test_erasure_register.py`.
   - **Decidido en:** ADR-0014; `docs/03-implementation/exportar-y-borrar.md`.
 
-**Huecos:** el resto de rutas de gestión y el webhook no tienen límite en la aplicación (RS10, «Parcial»; HIG-139).
+**Huecos:** el webhook corre dos procesos, cada uno con sus contadores, así que corta entre 20 y 40 fallos por minuto.
+Una firma con la forma de la de Meta se lee y se comprueba siempre, también desde un origen que se pasó.
 
 ## A07 — Identificación y autenticación
 
@@ -245,7 +268,8 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Prueba:** `tu/test_webhook_security.py::test_verification_never_passes_for_a_bot_without_verify_token`.
   - **Decidido en:** RS04.
 
-**Huecos:** no hay DAST de los flujos de login y sesión (HIG-90).
+**Huecos:** el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90) recorre el login, su callback, la sesión y el
+logout sin una sesión abierta; con ella, no.
 
 ## A08 — Integridad de software y datos
 

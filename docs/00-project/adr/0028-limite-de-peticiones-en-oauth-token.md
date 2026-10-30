@@ -4,11 +4,11 @@
 * **Fecha:** 2026-10-28
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **ID:** ADR-0028
 * **Supersede:** —
 * **Controles OWASP afectados:** A04 (diseño: un endpoint caro sin límite), A07 (fallos de autenticación: la fuerza
-  bruta y el consumo); cubre en parte RS10
+  bruta y el consumo); cubre en parte RS10, y entero con la enmienda del 2026-10-30 (A06)
 
 Decisiones de Jeremi del 2026-10-28: el límite va en los dos sitios, en Cloudflare y en `hive-api`, y DPoP se
 separa en su propia tarea.
@@ -78,12 +78,54 @@ Hay dos hechos que condicionan el diseño:
   previsto, de unas pocas peticiones por hora, sobra.
 - **Si `hive-api` pasa a más de un worker,** cada uno lleva sus contadores y el límite efectivo se multiplica. Entonces
   hay que mover los contadores a Bifröst.
-- **El resto de rutas sigue sin límite propio.** RS10 queda parcial: con un token de 10 minutos, el abuso de las demás
+- **El resto de rutas sigue sin límite propio** (hasta la enmienda del 2026-10-30). RS10 queda parcial: con un token de 10 minutos, el abuso de las demás
   rutas está acotado por quién puede tener un token. El webhook sigue en el borde y con el tope del contenedor (T9).
 - **DPoP**, atar el token a la clave del cliente, sigue pendiente en su propia tarea.
+
+## Enmienda del 2026-10-30: el resto de rutas y el webhook (HIG-139)
+
+Decisiones de Jeremi del 2026-10-30. El mecanismo es el mismo: ventanas deslizantes en memoria, en el proceso, con el
+mismo tope de 10 000 claves por ventana. Está en `src/auth/request_limits.py`. `/oauth/token` conserva sus tres
+límites y no cuenta en estos. `/health` no tiene límite en ninguno de los dos servicios.
+
+1. **`hive-api`, por credencial: 300 peticiones por minuto.** Cuenta por `(cliente, clave)` o `(cliente, persona)`,
+   lo mismo que `limited_as` de los tokens, y se comprueba en `get_principal`, en cuanto el token es bueno. Una página
+   de la PWA pide unas pocas, el motor unas cuantas por mensaje y un cliente que recorre sus contactos los pide de 500
+   en 500: solo un bucle que se fue de las manos o un token robado se mantiene por encima.
+2. **`hive-api`, fallos por origen: 30 respuestas `401` o `403` en 10 minutos.** Quien se pasa espera hasta que el
+   más viejo sale de la ventana. Es el triple que en `/oauth/token`, porque un cliente que aprende la API se equivoca
+   de ruta o deja caducar un token de vez en cuando.
+3. **Los que llaman desde midgard no cuentan por origen.** Una petición sin `CF-Connecting-IP` llegó por las redes
+   privadas: es el portal o el motor. Detrás de la dirección del portal van todas las personas. Si contara por
+   origen, una persona que pide a propósito rutas que su rol no alcanza dejaría fuera a todas las demás, de todos los
+   clientes. Cada una de esas credenciales tiene ya su límite propio.
+4. **El webhook: 20 peticiones por minuto y origen sin firma buena.** Cuenta lo que llega sin la firma de Meta o con
+   una mala, el `GET` de verificación con un verify token malo y lo que no va firmado y pide un bot que no existe.
+   Pasado el tope, el origen recibe `429` **sin que se lea su cuerpo**: el límite va en un middleware por fuera de
+   `BodySizeLimit`, que es quien lo lee.
+5. **Lo que trae una firma con la forma de la de Meta pasa siempre.** Meta reintenta lo que no recibe `200`, y
+   cortarlo perdería mensajes. Saber si esa firma es buena obliga a leer el cuerpo, así que se lee y se comprueba
+   también desde un origen que se pasó. Si resulta mala, cuenta como otro fallo.
+6. **La respuesta es la de `/oauth/token`:** `429`, `Retry-After`, `Cache-Control: no-store` y
+   `{"error": "temporarily_unavailable"}`. El log dice qué límite saltó y, en el de credencial, el cliente y la clave o
+   la persona, nunca la IP.
+7. **El webhook corre dos workers** (`WEB_CONCURRENCY=2`) y cada uno lleva sus contadores. El núcleo reparte las
+   conexiones de un origen entre los dos, así que el corte real cae entre 20 y 40 fallos por minuto. Se acepta: el
+   tope está para cortar barridos y ráfagas, no para contar exacto. `hive-api` sigue con un solo worker y sus números
+   son exactos.
+
+**Consecuencias de la enmienda:**
+
+- **Un origen que se pasa en el webhook no corta a Meta,** que firma todo lo que manda. Lo que sí queda fuera durante
+  ese minuto es la verificación de un webhook desde ese origen.
+- **Una firma falsa con la forma correcta sigue costando una lectura del cuerpo** y la apertura de los secretos del
+  bot. La acotan el límite del borde, el tope de 3 MiB y el contenedor (T9).
+- **RS10 pasa a «Construido sin desplegar».**
+- **La API documenta el límite por credencial y el de fallos** en su descripción del contrato OpenAPI.
 
 ## Condiciones de revisión
 
 - `hive-api` corre con más de un worker o en más de una máquina.
+- El webhook corre con más de dos workers, o un barrido se cuela entre los dos: sus contadores pasan a Bifröst.
 - Un cliente legítimo choca con un límite: se ajusta el número, no se quita.
 - El plan de Cloudflare cambia: con más reglas, se puede limitar en el borde también por ruta y por método.

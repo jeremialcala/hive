@@ -1,6 +1,7 @@
 # The end-to-end test (HIG-135, Gate 3): a person writes to a chatbot and gets its answer through every piece of
 # production, the images of the gateway, the engine and the portal built from this commit, with Bifröst as it is
 # configured; and a person of the client signs in to the PWA, in Chromium, and sends a template (HIG-141).
+# And the DAST (HIG-90): OWASP ZAP against the same stack, its own, in a job of its own, at the same time.
 # On the pull requests to main, which are the releases (docs/05-deployment/releases.md); on those to develop that
 # change the test itself, the portal or how production is deployed; and by hand.
 #
@@ -21,16 +22,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e:
-    name: e2e · del webhook a la respuesta
+  # Toward develop, only when the test, the portal or the deployment changes; toward main and by hand, always. The two
+  # jobs below always run, and do nothing when this says no: so they never stay pending as required checks.
+  scope:
+    name: e2e · alcance
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.needed.outputs.run }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # Toward develop, only when the test, the portal or the deployment changes; toward main and by hand, always.
       - name: Whether this change needs it
         id: needed
         env:
@@ -45,8 +49,19 @@ jobs:
             echo "Nothing of the end-to-end test or of the deployment changes: it does not run."
           fi
 
+  e2e:
+    name: e2e · del webhook a la respuesta
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN: ${{ needs.scope.outputs.run }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@v7
+
       - name: Bifröst, as it is configured
-        if: steps.needed.outputs.run == 'true'
+        if: env.RUN == 'true'
         uses: actions/checkout@v7
         with:
           repository: higerotech/bifrost
@@ -55,7 +70,7 @@ jobs:
           path: .e2e/bifrost
           persist-credentials: false
 
-      - if: steps.needed.outputs.run == 'true'
+      - if: env.RUN == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -64,13 +79,65 @@ jobs:
 
       # The driver signs as a client would, with shared/, and drives Chromium with Playwright: its own lock, which
       # takes in the gateway's development dependencies. Chromium, with what it needs of the system.
-      - if: steps.needed.outputs.run == 'true'
+      - if: env.RUN == 'true'
         run: |
           pip install --require-hashes -r tests/e2e/requirements.lock
           python -m playwright install --with-deps chromium
 
-      - if: steps.needed.outputs.run == 'true'
+      - if: env.RUN == 'true'
         run: pytest tests/e2e -p no:cacheprovider -v
         env:
           E2E: "1"
           BIFROST_DIR: .e2e/bifrost
+
+  # ZAP, pinned by digest in tests/e2e/test_dast.py, on a network of the stack's own with no way out: hive-api with
+  # its OpenAPI contract, the webhook with its own, and the whole portal. A High fails; Medium, Low and
+  # Informational stay in the report, which is attached to the run, and in the job's summary.
+  dast:
+    name: dast · zap
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN: ${{ needs.scope.outputs.run }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@v7
+
+      - name: Bifröst, as it is configured
+        if: env.RUN == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: higerotech/bifrost
+          ref: develop
+          ssh-key: ${{ secrets.BIFROST_DEPLOY_KEY }}
+          path: .e2e/bifrost
+          persist-credentials: false
+
+      - if: env.RUN == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/e2e/requirements.lock
+
+      # The same lock as the end-to-end test, for its fixtures; no browser: ZAP brings what it needs.
+      - if: env.RUN == 'true'
+        run: pip install --require-hashes -r tests/e2e/requirements.lock
+
+      - if: env.RUN == 'true'
+        run: pytest tests/e2e/test_dast.py -p no:cacheprovider -v
+        env:
+          E2E: "1"
+          DAST: "1"
+          BIFROST_DIR: .e2e/bifrost
+          DAST_REPORTS: .e2e/dast
+
+      - name: ZAP's reports
+        if: always() && env.RUN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-zap
+          path: .e2e/dast/
+          if-no-files-found: warn
+          retention-days: 30

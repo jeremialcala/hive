@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from shared import bus
 from shared import tracing
 from shared.bus.nats_jetstream import NatsPublisher
+from auth.request_limits import OriginFailures
 from classes import ResponseData, Settings
 from constants import APPLICATION_JSON, CONTENT_TYPE, PROCESSING_TIME
 from crypto.key_service import OpenBaoKeyService
@@ -158,8 +159,11 @@ async def health():
     return {"status": "ok"}
 
 
-def build(**metadata) -> FastAPI:
-    """One of the two services, with what both have: limits, error answers, the request log line and /health."""
+def build(limit=None, **metadata) -> FastAPI:
+    """
+        One of the two services, with what both have: limits, error answers, the request log line and /health.
+        `limit` is the rule of request_limits that says which origins of this service fail too often (HIG-139).
+    """
     service = FastAPI(
         **documentation(settings.environment),
         on_startup=[configure_logging],
@@ -170,6 +174,10 @@ def build(**metadata) -> FastAPI:
     )
     # Added before the interceptor, so that the interceptor is outside it and logs what is turned away.
     service.add_middleware(BodySizeLimit, limit=MAX_BODY_BYTES)
+    # Outside BodySizeLimit, so that an origin turned away is answered before its body is read; inside the
+    # interceptor, so that the 429 is logged and carries the headers of every answer.
+    if limit is not None:
+        service.add_middleware(OriginFailures, rule=limit, log=log)
     service.add_exception_handler(RequestValidationError, invalid_request)
     service.middleware("http")(interceptor)
     service.get(path="/health", tags=["Health"])(health)
