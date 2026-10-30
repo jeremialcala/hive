@@ -8,6 +8,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **El objetivo de latencia de punta a punta, RNF10** (HIG-136, Gate 3;
+  [medición](docs/04-testing/medicion-punta-a-punta.md)). Desde que el webhook recibe el mensaje hasta que Meta acepta
+  la respuesta.
+  - **El objetivo**, decidido por Jeremi el 2026-10-30: mediana de 10 s o menos y p95 de 20 s o menos, sobre todos los
+    mensajes respondidos. Cuenta con 20 respuestas o más.
+  - **`tests/performance/measure_end_to_end.py`:** el script que vivía suelto en midgard, ahora en el repositorio.
+    Lee de Bifröst las últimas 24 horas de tráfico real y da la mediana y el p95 de la espera y de cada paso, con su
+    veredicto. Imprime solo tiempos, y lo prueba `tests/unit/test_measure_end_to_end.py`.
+  - **La primera medición** (2026-10-30, con 3 respuestas, que no cuentan todavía): mediana 9,5 s y p95 10,0 s. La
+    ingesta tarda 1,8 s y el redactor 3,1 s.
 - **La prueba de punta a punta del webhook a la respuesta** (HIG-135, Gate 3;
   [e2e](docs/04-testing/e2e.md)). Una persona escribe a un bot y recibe su respuesta, pasando por cada pieza de
   producción.

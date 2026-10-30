@@ -32,7 +32,10 @@ lo que está y lo que falta. Lo que falta es HIG-125.
 - [ ] Rendimiento dentro de SLOs
   - **Está:** el webhook, 8,3 ms de mediana frente a los 250 ms de RNF01
     ([medición](../../docs/04-testing/medicion-webhook-i1.md)).
-  - **Falta:** la latencia de punta a punta (unos 9 s el 2026-10-21) no tiene objetivo ni una medición que se pueda
-    repetir.
+  - **Está:** el objetivo de punta a punta, RNF10: mediana de 10 s o menos y p95 de 20 s o menos, decidido por Jeremi el
+    2026-10-30. Se mide pasivamente con `tests/performance/measure_end_to_end.py`, según
+    [medicion-punta-a-punta.md](../../docs/04-testing/medicion-punta-a-punta.md).
+  - **Falta:** una medición que cuente, con 20 respuestas o más. La del 2026-10-30 cumple (mediana 9,5 s, p95
+    10,0 s), pero con 3.
 - [ ] Mutation testing ≥ 60% (objetivo)
   - **Falta:** no está configurado.
