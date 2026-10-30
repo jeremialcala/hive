@@ -58,6 +58,10 @@ def error(codigo, http=400):
                              "fbtrace_id": "A1"}})
 
 
+# Lo que queda de error() en el motivo: el código no se repite, y el número se tapa.
+EXPLICADO = " (algo con … · para … · fbtrace_id A1)"
+
+
 def enviar(url, texto="Sí, tenemos zapatos rojos."):
     return asyncio.run(WhatsAppCloud(url, "v26.0", 2).enviar_texto(TOKEN, CUENTA, NUMERO, texto))
 
@@ -81,7 +85,7 @@ def test_lo_que_meta_dice_que_se_arregla_esperando_se_reintenta(servidor, codigo
     with pytest.raises(EnvioFallido) as fallo:
         enviar(servidor)
 
-    assert not isinstance(fallo.value, TokenRechazado) and str(fallo.value) == f"Meta {codigo}"
+    assert not isinstance(fallo.value, TokenRechazado) and str(fallo.value) == f"Meta {codigo}{EXPLICADO}"
 
 
 @pytest.mark.parametrize("codigo", [0, 190])
@@ -121,6 +125,31 @@ def test_ni_el_numero_ni_el_texto_ni_el_token_quedan_en_el_error(servidor):
 
     for prohibido in (NUMERO, "zapatos", TOKEN):
         assert prohibido not in str(fallo.value)
+
+
+@pytest.mark.parametrize("cuerpo, motivo", [
+    ({"message": "(#131058) Lo que Meta explique", "error_data": {"details": f"to {NUMERO}"}, "fbtrace_id": "AXyZ-12_q"},
+     "Meta 131058 (Lo que Meta explique · to … · fbtrace_id AXyZ-12_q)"),
+    ({"message": "(#131009) Parameter value is not valid", "error_user_title": "Valor no válido"},
+     "Meta 131009 (Valor no válido)"),
+    ({"message": "Message wamid.HBgLMTIwMjU1NTAxNDMVAgARGBI5QTNDQTVCM0M0Q0Q2RTY3NkUA not found for ana@example.com"},
+     "Meta 131009 (Message wamid.… not found for …@…)"),
+    ({"message": "token EAAGm0PX4ZCpsBAKZCZBnxyzABCDEFGHIJKLMNOPQRST1234 rejected\r\nFake: line"},
+     "Meta 131009 (token … rejected Fake: line)"),
+    ({"message": "abcd " * 80}, "Meta 131009 (" + ("abcd " * 60).strip() + ")"),
+    ({"message": "", "fbtrace_id": "A1 ) inyectado"}, "Meta 131009"),
+    ({"message": ["no es texto"], "error_data": "tampoco"}, "Meta 131009"),
+], ids=["131058, sin documentar", "su título", "wamid y correo", "token y saltos de línea", "largo", "traza rara",
+        "tipos raros"])
+def test_lo_que_meta_explica_va_detras_del_codigo_y_tapado(servidor, cuerpo, motivo):
+    codigo = 131058 if "131058" in str(cuerpo) else 131009
+    Meta.respuesta = (400, {"error": {"code": codigo, "type": "OAuthException", **cuerpo}})
+
+    with pytest.raises(EnvioRechazado) as rechazo:
+        plantilla(servidor)
+
+    assert str(rechazo.value) == motivo
+    assert NUMERO not in str(rechazo.value) and "\n" not in str(rechazo.value)
 
 
 def test_meta_inalcanzable_dice_solo_el_tipo_de_fallo():
@@ -192,5 +221,5 @@ def test_lo_que_meta_rechaza_de_un_envio_del_cliente_no_se_reintenta(servidor, c
 
     with pytest.raises(EnvioRechazado) as rechazo:
         plantilla(servidor)
-    assert str(rechazo.value) == f"Meta {codigo}"
+    assert str(rechazo.value) == f"Meta {codigo}{EXPLICADO}"
     assert NUMERO not in str(rechazo.value)

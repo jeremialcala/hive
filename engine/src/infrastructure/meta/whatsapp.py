@@ -29,10 +29,14 @@
         {"messaging_product": "whatsapp", "status": "read", "message_id": <wamid>,
          "typing_indicator": {"type": "text"}}
 
-    Ni el log ni las excepciones llevan el texto, el número ni el token. Del error de Meta solo se guarda el código:
-    su `message` y sus `details` pueden llevar el número.
+    Ni el log ni las excepciones llevan el texto, el número ni el token. Del error de Meta se guarda el código y,
+    detrás, lo que Meta explica: su título o su `message`, sus `details` y el `fbtrace_id`, que pide su soporte. Su
+    `message` y sus `details` pueden llevar el número, así que antes se tapan las cifras de cinco o más, los `wamid`
+    (llevan el número dentro), los correos y las cadenas largas que podrían ser un token. Va en una línea y con 300
+    caracteres como mucho. Un código que Meta no documenta, como el 131058 del 2026-10-30, se entiende así por el log.
 """
 import asyncio
+import re
 
 import requests
 
@@ -48,6 +52,13 @@ REINTENTABLES = {1, 2, 4, 130429, 131000, 131016, 131056, 80007}
 # pero dan tiempo a que el operador lo vea mientras Bifröst reintenta.
 DEL_TOKEN = {0, 190}
 PERMISOS = {10, 131005}
+
+# Lo que se tapa de la explicación de Meta, en este orden: el código que ya va delante, los wamid, los correos, lo que
+# podría ser un token y las cifras de cinco o más, que podrían ser el número.
+TAPAR = [(re.compile(r"^\(#\d+\)\s*"), ""), (re.compile(r"wamid\.[\w=+/-]+"), "wamid.…"),
+         (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "…@…"), (re.compile(r"[A-Za-z0-9_-]{32,}"), "…"),
+         (re.compile(r"\d{5,}"), "…"), (re.compile(r"[\s\x00-\x1f\x7f]+"), " ")]
+EXPLICACION = 300  # caracteres
 
 
 class WhatsAppCloud(CanalDeMeta):
@@ -103,9 +114,10 @@ class WhatsAppCloud(CanalDeMeta):
     def _fallo(self, respuesta: requests.Response) -> Exception:
         """Qué es un no de Meta, por su código."""
         codigo = self._codigo(respuesta)
+        explicacion = self._explicacion(respuesta)
         if codigo in DEL_TOKEN:
-            return TokenRechazado(f"Meta {codigo}")
-        motivo = f"Meta {codigo if codigo is not None else respuesta.status_code}"
+            return TokenRechazado(f"Meta {codigo}{explicacion}")
+        motivo = f"Meta {codigo if codigo is not None else respuesta.status_code}{explicacion}"
         if self._se_reintenta(codigo, respuesta.status_code):
             return EnvioFallido(motivo)
         return EnvioRechazado(motivo)
@@ -124,6 +136,25 @@ class WhatsAppCloud(CanalDeMeta):
         except (ValueError, KeyError, TypeError):
             return None
         return codigo if isinstance(codigo, int) and not isinstance(codigo, bool) else None
+
+    @staticmethod
+    def _explicacion(respuesta: requests.Response) -> str:
+        """Lo que Meta explica de su error, tapado (ver el docstring del módulo), o nada."""
+        try:
+            error = respuesta.json()["error"]
+            datos = error.get("error_data") or {}
+            piezas = [error.get("error_user_title") or error.get("message"),
+                      datos.get("details") if isinstance(datos, dict) else None]
+            traza = error.get("fbtrace_id")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return ""
+        texto = " · ".join(str(pieza) for pieza in piezas if isinstance(pieza, str) and pieza.strip())
+        for patron, en_su_lugar in TAPAR:
+            texto = patron.sub(en_su_lugar, texto)
+        texto = texto.strip()[:EXPLICACION].rstrip()
+        if isinstance(traza, str) and re.fullmatch(r"[\w-]{1,64}", traza):
+            texto = f"{texto} · fbtrace_id {traza}" if texto else f"fbtrace_id {traza}"
+        return f" ({texto})" if texto else ""
 
     async def enviar_texto(self, token: str, cuenta: str, destinatario: str, texto: str) -> str:
         return await asyncio.to_thread(self._enviar, token, cuenta, destinatario, texto)

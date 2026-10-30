@@ -632,6 +632,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   Instagram se conecta con Facebook Login a través de la página del cliente.
 
 ### Cambiado
+- **El motor deja en el log lo que Meta explica de un error, no solo su código**
+  (`engine/src/infrastructure/meta/whatsapp.py`). El 131058 del 2026-10-30, que Meta no documenta, solo se pudo
+  interpretar a ojo.
+  - **Qué se añade:** detrás de `Meta <código>` van el título o el `message`, los `details` y el `fbtrace_id`, que es
+    lo que pide el soporte de Meta. Así sale en los `WARNING` del notificador, por ejemplo «Meta no acepta el pedido
+    de envío…».
+  - **Qué se tapa,** porque Meta puede repetir el número: las cifras de cinco o más, los `wamid` (que llevan el número
+    dentro), los correos y las cadenas largas que podrían ser un token.
+  - **Formato:** una sola línea, de 300 caracteres como mucho. El notificador sigue leyendo el código igual.
+  - **Pruebas:** `tests/unit/test_whatsapp_cloud.py`, con el número, un `wamid`, un correo, un token, saltos de
+    línea, un texto largo y tipos que no son texto.
 - **Runbook de Zitadel (`deploy/idp/README.md`) 0.3.0: el proyecto `Hive` y la aplicación `hive-portal`, tal como se
   crearon el 2026-10-29** (HIG-91, HIG-93). Es un cliente confidencial con secreto, solo Authorization Code y sin
   refresh token. No lleva roles ni datos del usuario en los tokens, y sus rutas están en `hive-app.higerotech.com`.
