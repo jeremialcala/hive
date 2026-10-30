@@ -110,6 +110,30 @@ def test_many_origins_cost_memory_up_to_a_bound(monkeypatch):
     assert limits.admit("origin-499") is None
 
 
+def test_making_room_drops_what_expired_before_an_origin_that_is_still_failing(monkeypatch):
+    """
+        A burst from many origins must not make the limits forget an origin that is turned away: the room is made by
+        dropping the windows that are over first (HIG-137, a surviving mutant).
+    """
+    monkeypatch.setattr(token_limits, "MAX_KEYS", 50)
+    clock = Clock()
+    limits = TokenLimits(clock)
+    # The attacker is the oldest of the 50 origins the limits can hold.
+    limits.failed(ATTACKER)
+    for i in range(49):
+        limits.failed(f"old-{i}")
+    clock.now += token_limits.FAILURES_WINDOW / 2
+    for _ in range(token_limits.FAILURES):
+        limits.failed(ATTACKER)
+    # Now the windows of the others are over; the attacker's last failures are not.
+    clock.now += token_limits.FAILURES_WINDOW / 2 + 1
+
+    limits.failed("a-new-one")
+
+    assert len(limits.failures) == 2
+    assert limits.admit(ATTACKER).reason == "failures"
+
+
 @pytest.mark.parametrize("header,peer,origin", [
     ("203.0.113.7", "172.18.0.5", "203.0.113.7"),
     (None, "172.18.0.5", "172.18.0.5"),
@@ -118,7 +142,7 @@ def test_many_origins_cost_memory_up_to_a_bound(monkeypatch):
     ("2001:db8:1:2:ffff::1", None, "2001:db8:1:2::/64"),
     ("::ffff:203.0.113.7", None, "203.0.113.7"),
     (None, "testclient", "unknown"),
-])
+], ids=["what cloudflare saw", "the peer", "a bad header", "ipv6", "ipv6 with zeros", "ipv4 mapped", "no address"])
 def test_the_origin_is_the_address_cloudflare_saw_and_an_ipv6_counts_by_its_64(header, peer, origin):
     headers = {} if header is None else {"cf-connecting-ip": header}
 

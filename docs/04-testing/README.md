@@ -13,6 +13,10 @@ Pruebas de punta a punta:
 
 - [Del webhook a la respuesta](e2e.md), con las imágenes de producción (HIG-135).
 
+Mutation testing:
+
+- [De los módulos de seguridad](mutation-testing.md): qué se muta, cómo corre y la puntuación por módulo (HIG-137).
+
 Mediciones:
 
 - [I1: cuánto tarda hoy el webhook en responder a Meta](medicion-webhook-i1.md), la línea base de RNF01.

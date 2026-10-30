@@ -8,6 +8,22 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **Mutation testing de los módulos de seguridad** (HIG-137, Gate 3;
+  [mutation testing](docs/04-testing/mutation-testing.md)). Dice si las pruebas se enteran cuando cambia el código
+  donde un fallo es un fallo de seguridad: `src/auth/`, la firma del webhook, el estado de un chatbot y el cifrado por
+  cliente.
+  - **La herramienta:** mutmut 3.8.0, configurado en `setup.cfg` y fijado en su propio lock,
+    `requirements-mutation.lock`, que el workflow `Seguridad` audita como los demás.
+  - **Dónde corre:** el workflow `mutation`, cada lunes sobre `main`, a mano, y en los pull requests que tocan esos
+    módulos. Informa y no bloquea: deja la puntuación por módulo en el resumen del job
+    (`.ai-dlc/scripts/mutation_score.py`).
+  - **La puntuación:** PENDIENTE
+  - **Pruebas nuevas,** cada una por mutantes que sobrevivían: los bordes de la vida de un token de acceso, que el
+    token de una persona no dice ser de una clave ni del motor, las razones de cada rechazo en el log, que el índice
+    ciego distingue campos y no cambia entre versiones, y que hacer sitio en los límites de `/oauth/token` no olvida a
+    quien sigue fallando.
+  - **Pruebas arregladas:** siete parametrizaciones tenían ids al azar (`uuid4()`) o que pytest no sabe volver a leer
+    (una IPv6). Ahora llevan `ids=`.
 - **El objetivo de latencia de punta a punta, RNF10** (HIG-136, Gate 3;
   [medición](docs/04-testing/medicion-punta-a-punta.md)). Desde que el webhook recibe el mensaje hasta que Meta acepta
   la respuesta.

@@ -38,6 +38,10 @@ pytest.ini
 requirements.txt
 requirements-dev.txt
 requirements-dev.lock
+requirements-mutation.txt
+requirements-mutation.lock
+setup.cfg
+mutants/
 Dockerfile
 .dockerignore
 *.md

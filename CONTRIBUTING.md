@@ -41,6 +41,15 @@ framework. El CI falla si un lock no fija los mismos paquetes que se declaran.
 El CI compila desde cero, así que un lock regenerado encima del anterior puede fijar paquetes distintos y romper esa
 comprobación.
 
+El de mutation testing, `requirements-mutation.lock`, solo lo instala el workflow `mutation`
+([mutation testing](docs/04-testing/mutation-testing.md)). Toma sus versiones de `requirements-dev.lock`, así que se
+regenera después de ese:
+
+```bash
+rm -f requirements-mutation.lock
+uv pip compile --universal --python-version 3.12 --generate-hashes requirements-mutation.txt -o requirements-mutation.lock
+```
+
 El motor de respuestas, en `engine/` (ADR-0023), tiene sus propios `requirements` y locks. Se regeneran igual, desde
 `engine/`. La imagen del motor instala solo ruedas: una dependencia que pida compilarse rompe su construcción.
 

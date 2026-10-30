@@ -21,12 +21,12 @@ from jwcrypto import jwe, jwk, jws
 from jwcrypto.common import base64url_decode
 
 import app as app_module
-from auth import access_tokens, dpop
+from auth import access_tokens, dpop, principal
 from shared.auth import gateway_keys, tokens
-from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE, new_signing_key, token_request
+from shared.auth.client import ASSERTION_TYPE, GRANT_TYPE, dpop_proof, new_signing_key, token_request
 from classes import Client, SeenToken
-from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, KEY_OF
-from enums import Role, Status
+from conftest import GATEWAY_AUDIENCE, GATEWAY_KEYS_FILE, KEY_OF, TEST_SERVER
+from enums import PersonRole, Role, Status
 from repository import find_signer
 
 GATEWAY = gateway_keys.GatewayKeys.load(GATEWAY_KEYS_FILE)
@@ -611,6 +611,113 @@ def test_an_access_token_is_rejected_for_the_reason_it_should_be(caller):
         with pytest.raises(tokens.InvalidToken) as rejection:
             access_tokens.read(token, GATEWAY, GATEWAY_AUDIENCE, now)
         assert str(rejection.value) == reason
+
+
+def test_the_lifetime_of_an_access_token_is_checked_to_the_second(caller):
+    """Each edge on its right side (HIG-137: mutation testing found every one of them unchecked)."""
+    issued = int(time.time())
+
+    def read(iat, exp, now):
+        return access_tokens.read(forge_access(caller, iat=iat, exp=exp), GATEWAY, GATEWAY_AUDIENCE, now)
+
+    assert read(issued, issued + 1, issued).client_id == caller.client_id
+    assert read(issued, issued + 600, issued + 599).client_id == caller.client_id
+    # Issued by a clock ahead of this one, by as much as is tolerated.
+    assert read(issued + 30, issued + 630, issued).client_id == caller.client_id
+    for iat, exp, now, reason in [(issued, issued, issued - 1, "lifetime other than allowed"),
+                                  (issued, issued + 601, issued, "lifetime other than allowed"),
+                                  (issued + 31, issued + 631, issued, "issued in the future"),
+                                  (issued, issued + 600, issued + 600, "expired")]:
+        with pytest.raises(tokens.InvalidToken) as rejection:
+            read(iat, exp, now)
+        assert str(rejection.value) == reason
+
+
+def test_a_token_of_a_person_claims_no_key_no_worker_and_not_the_engine(caller):
+    """
+        A token of a person is of the BFF's key, never of a key of the client nor of the response engine. One that
+        says otherwise was not issued by this gateway, and is not taken (HIG-137, surviving mutants).
+    """
+    now = time.time()
+    of_a_person = {"hive_user": str(uuid4()), "hive_user_role": "cliente-admin", "hive_key": None}
+    assert access_tokens.read(forge_access(caller, **of_a_person), GATEWAY, GATEWAY_AUDIENCE, now).user_role \
+        is PersonRole.ADMIN
+
+    for claims in ({"hive_key": caller.kid}, {"hive_worker": "notifier"}, {"hive_role": "service"},
+                   {"hive_user": "not-a-uuid"}, {"hive_user_role": "owner"}, {"hive_user_role": "drop"}):
+        with pytest.raises(tokens.InvalidToken) as rejection:
+            access_tokens.read(forge_access(caller, **{**of_a_person, **claims}), GATEWAY, GATEWAY_AUDIENCE, now)
+        assert str(rejection.value) == "no person or role", claims
+
+
+def test_an_access_token_of_another_client_than_its_subject_is_rejected_for_that(caller):
+    with pytest.raises(tokens.InvalidToken) as rejection:
+        access_tokens.read(forge_access(caller, client_id=str(uuid4())), GATEWAY, GATEWAY_AUDIENCE, time.time())
+
+    assert str(rejection.value) == "no client, role or worker"
+
+
+def test_an_access_token_is_rejected_for_the_reason_it_should_be_before_and_after_its_claims(caller):
+    """
+        The reasons the log gets that the test of the claims does not reach (HIG-137, surviving mutants). Some are a
+        second line of defense: a token signed with HS256 would not verify either, but it is turned away before.
+    """
+    public = json.loads(GATEWAY.signer()[1].export_public())
+    secret = jwk.JWK(kty="oct", k=jws.base64url_encode(json.dumps(public)))
+    signer_kid, key = GATEWAY.signer()
+    not_an_object = jws.JWS(b'["a", "list"]')
+    not_an_object.add_signature(key, alg="ES256", protected={"alg": "ES256", "typ": "at+jwt", "kid": signer_kid})
+    cases = {
+        "not an access token": [None, 7, forge_access(caller, padding="x" * tokens.MAX_TOKEN_SIZE),
+                                forge_access(caller, sign_with=secret, alg="HS256")],
+        "malformed access token": ["a.b.c"],
+        "bad signature": [not_an_object.serialize(compact=True)],
+        "no key or jti": [forge_access(caller, jti=7), forge_access(caller, jti="")],
+        "not bound to a key": [forge_access(caller, cnf="a-thumbprint"), forge_access(caller, cnf={"jkt": 7}),
+                               forge_access(caller, cnf="drop")],
+    }
+    for reason, forged in cases.items():
+        for token in forged:
+            with pytest.raises(tokens.InvalidToken) as rejection:
+                access_tokens.read(token, GATEWAY, GATEWAY_AUDIENCE, time.time())
+            assert str(rejection.value) == reason, (reason, token)
+
+
+def test_a_token_is_issued_for_a_key_or_for_a_person_with_their_role_and_at_the_time_it_is_told(caller):
+    """What issue() refuses to sign, and the clock it signs with (HIG-137, surviving mutants)."""
+    for kid, user_id, user_role in [(None, None, None), (caller.kid, uuid4(), PersonRole.ADMIN),
+                                    (caller.kid, None, PersonRole.ADMIN), (None, uuid4(), None)]:
+        with pytest.raises(ValueError) as refused:
+            access_tokens.issue(GATEWAY, GATEWAY_AUDIENCE, caller.client_id, Role.CLIENT, None, kid, "a-thumbprint",
+                                user_id=user_id, user_role=user_role)
+        assert str(refused.value) == "a token is either of a key or of a person with their role"
+
+    token, lifetime = access_tokens.issue(GATEWAY, GATEWAY_AUDIENCE, caller.client_id, Role.CLIENT, None,
+                                          caller.kid, "a-thumbprint", now=1_000_000.7)
+
+    assert (payload(token)["iat"], payload(token)["exp"], lifetime) == (1_000_000, 1_000_600, 600)
+
+
+def test_the_log_says_why_a_token_or_a_request_was_turned_away(http, caller, caplog):
+    """The reasons are fixed texts, for the log; the answers say none of them (HIG-137, surviving mutants)."""
+    token_url, keys_url = f"{TEST_SERVER}/oauth/token", f"{TEST_SERVER}/keys"
+    http.post("/oauth/token", data=token_request(caller.assertion()),
+              headers={"DPoP": dpop_proof(new_signing_key(), "POST", token_url)})
+    used = caller.assertion()
+    status_of(http, used)
+    status_of(http, used)
+    token = caller.access_token()
+    http.get("/keys", headers={"Authorization": f"DPoP {token}",
+                               "DPoP": dpop_proof(new_signing_key(), "GET", keys_url, token)})
+
+    rejected = [record.getMessage() for record in caplog.records if record.getMessage().startswith("Rejected a")]
+    assert rejected == ["Rejected a request for an access token: signed with a key other than the assertion's",
+                        "Rejected a request for an access token: assertion already used",
+                        "Rejected a request: signed with a key other than the token's"]
+    with pytest.raises(tokens.InvalidToken, match="^no assertion$"):
+        principal.exchange(None, GATEWAY, GATEWAY_AUDIENCE, "a-thumbprint")
+    with pytest.raises(tokens.InvalidToken, match="^no token$"):
+        principal.authenticate(None, [], "GET", {keys_url}, GATEWAY, GATEWAY_AUDIENCE)
 
 
 def test_the_old_signing_key_checks_the_tokens_it_signed_while_it_is_in_the_file(caller):

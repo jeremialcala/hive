@@ -277,7 +277,7 @@ def test_a_contact_from_messenger_is_exported_with_its_profile(http, caller, peo
         "Carla", "Diaz", PROFILE["profile_pic"], PSID, None)
 
 
-@pytest.mark.parametrize("contact_id", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("contact_id", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_a_contact_that_does_not_exist_is_not_found(http, caller, people, contact_id):
     for method in ("GET", "DELETE"):
         response = http.request(method, f"/chat/{people}/contacts/{contact_id}", headers=caller.auth)
@@ -421,7 +421,7 @@ def test_a_deleted_chatbot_is_not_found_by_anybody(http, caller, people, queue):
     assert search(http, caller, waId=ANA_NUMBER).json()["data"] == []
 
 
-@pytest.mark.parametrize("bot", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("bot", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_a_chatbot_that_does_not_exist_cannot_be_deleted(http, caller, people, bot):
     response = erase(http, caller, f"/bot/{bot}")
 
@@ -607,7 +607,7 @@ def test_the_operator_cannot_be_deleted(http, operator, leaving):
     assert http.get("/clients", headers=operator.auth).status_code == 200
 
 
-@pytest.mark.parametrize("client_id", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("client_id", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_a_client_that_does_not_exist_cannot_be_deleted(http, operator, leaving, client_id):
     assert erase(http, operator, f"/clients/{client_id}").status_code == 404
     assert Client.objects.count() == 2
