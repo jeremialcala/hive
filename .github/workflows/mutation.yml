@@ -35,7 +35,7 @@ jobs:
     name: gateway · mutation
     runs-on: ubuntu-latest
     # About 1 000 mutants, and each one of the authentication that survives runs the 1 600 tests that go through it:
-    # it takes hours, not minutes (docs/04-testing/mutation-testing.md has how long it took).
+    # with 8 processes it took some 80 minutes (docs/04-testing/mutation-testing.md), and this runner has 4.
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v7
