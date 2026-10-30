@@ -7,27 +7,25 @@
     The abuse scenarios of the PRD: AB23, an analyst who tries to configure; AB24, a person who tries another client;
     AB26, a person blocked or removed; AB27, an account of the IdP with no person in Hive, or without a second factor.
 """
-import json
 import time
 from uuid import uuid4
 
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from jwcrypto import jwk, jws
+from jwcrypto import jwk
 
 import app as app_module
 from auth import access_tokens, token_limits
-from auth.idp import IdentityProvider, IdpUnavailable
+from auth.idp import IdentityProvider
 from classes import ChatBot, Client, ClientUser, Contact
-from conftest import GATEWAY_AUDIENCE, KEY_OF, TEST_SERVER
+from conftest import GATEWAY_AUDIENCE, KEY_OF
 from enums import PersonRole, PersonStatus, Role, Status
 from repository import TenantRepository
-from shared.auth.client import dpop_proof, new_signing_key
+from shared.auth.client import new_signing_key
 from shared.auth.gateway_keys import GatewayKeys
 
-from fake_idp import (ACCESS_TOKEN, AUDIENCE, BFF, ID_TOKEN, ISSUER, SUBJECT, TOKEN_URL, Zitadel, auth,
-                      exchange)
+from fake_idp import ACCESS_TOKEN, AUDIENCE, BFF, ID_TOKEN, ISSUER, SUBJECT, Zitadel, auth, exchange
 
 @pytest.fixture
 def zitadel(monkeypatch):

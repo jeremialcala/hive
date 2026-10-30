@@ -352,7 +352,9 @@ def test_an_admin_still_invited_does_not_count_as_the_other_one(http, acme):
     only = a_person(acme)
     a_person(acme, status=PersonStatus.PENDING)
 
-    assert http.delete(f"/people/{only.uuid}", headers=acme.auth).status_code == 409
+    response = http.delete(f"/people/{only.uuid}", headers=acme.auth)
+
+    assert response.status_code == 409
 
 
 def test_a_removed_person_gets_no_token_and_their_email_is_erased(http, acme, idp, logged):
