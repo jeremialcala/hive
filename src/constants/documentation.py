@@ -115,5 +115,10 @@ TAGS_METADATA = [
         "name": "Intents",
         "description": "Configure intents and their actions (API calls) as LLM tool definitions, "
                        "stored per chatbot and consumed by the downstream worker."
+    },
+    {
+        "name": "Versions",
+        "description": "Every change of a chatbot's persona, rules or intents is a version, with who made it and "
+                       "when. See what changed between two, and go back to one."
     }
 ]

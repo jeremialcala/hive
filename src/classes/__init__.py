@@ -14,6 +14,7 @@ from .entity_event_action import EventAction
 from .entity_jwk import Jwk
 from .entity_chatbot_rules import Rule
 from .entity_intent import Intent, Action, ApiCall, ActionParameter
+from .entity_bot_version import BotVersion
 
 from .dto_client_request import ClientRequest, OwnedKeyRequest, ServiceKeyRequest, SigningKeyRequest
 from .dto_bot_credentials import BotCredentialsRequest

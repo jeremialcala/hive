@@ -32,6 +32,8 @@ class ChatBot(Document):
     createdAt = DateTimeField(required=True, default=utc_now)
     status = IntField(required=True, default=Status.REG.value)
     statusDate = DateTimeField(required=True, default=utc_now)
+    # The number of the last version of its configuration (RF26, ADR-0035): 0 until the first one is written.
+    configVersion = IntField(default=0)
 
     def chatbot_info(self) -> dict:
         log.info(f"Executing: {currentframe().f_code.co_name}")

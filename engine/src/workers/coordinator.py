@@ -8,7 +8,8 @@
 
     - **Un mensaje que sigue** se pide al modelo: el coordinador pregunta al gateway la persona del bot con sus
       reglas y las últimas vueltas de la conversación, con su clave para el cliente dueño del bot, y las pone en el
-      sobre. La persona la recuerda 5 minutos: un cambio de las reglas tarda eso en llegar a las respuestas.
+      sobre. La persona la recuerda 5 minutos, salvo que el gateway avise de que el bot cambió (ADR-0035 del
+      gateway, `gateway.bot.configured`): entonces la lee otra vez en el mensaje siguiente.
     - **Un mensaje que no sigue** se pide con un texto fijo según su motivo, sin preguntar nada (decisión de Jeremi
       del 2026-10-20): la persona siempre recibe algo.
     - **Si el gateway no responde**, el mensaje queda en espera y Bifröst lo entrega otra vez. En la última entrega
@@ -21,7 +22,10 @@
 import asyncio
 import logging
 
+from pydantic import ValidationError
+
 from shared import bus, tracing
+from shared.contract import CONFIGURED_SUBJECT, BotConfigured
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
 from src.domain.models.sobre import RESPUESTA_POR_MOTIVO, MensajeClasificado, MensajePedido, Pedido, subject_pedido
@@ -102,10 +106,30 @@ class Coordinar:
         return Resultado.CONFIRMADO
 
 
-async def preparar(settings: CoordinatorSettings, max_deliver: int, store: EngineKeyStore | None = None):
+def al_configurar(fuente: ApiDelGateway):
+    """
+        Lo que hace el coordinador con cada aviso de que cambió la configuración de un bot: olvida lo que recordaba de
+        una versión anterior. Un aviso roto se ignora, y lo recordado caduca solo.
+    """
+    async def oir(mensaje) -> None:
+        try:
+            aviso = BotConfigured.model_validate_json(mensaje.data)
+        except ValidationError as e:
+            # Sus errores llevan los valores: solo se dice cuántos.
+            log.warning("Un aviso de %s se ignora: no cumple el contrato (%d errores)", CONFIGURED_SUBJECT,
+                        e.error_count())
+            return
+        fuente.configuracion_cambiada(aviso.clientId, aviso.botId, aviso.version)
+        log.info("El bot %s va por la versión %d: se leerá otra vez", aviso.botId, aviso.version)
+    return oir
+
+
+async def preparar(settings: CoordinatorSettings, max_deliver: int, store: EngineKeyStore | None = None,
+                   conexion=None):
     """
         Lo que el worker abre al arrancar: la API del gateway, con la clave pública del gateway del fichero y el
-        almacén de claves de Andvari, y el publicador. Devuelve cómo atender cada mensaje y cómo cerrar lo abierto.
+        almacén de claves de Andvari, el publicador y, con la conexión con Bifröst, la escucha de los avisos de
+        configuración. Devuelve cómo atender cada mensaje y cómo cerrar lo abierto.
     """
     store = store or EngineKeyStore(settings.andvari_addr, settings.engine_role_id, settings.engine_secret_id_file,
                                     settings.andvari_ca_file)
@@ -113,8 +137,11 @@ async def preparar(settings: CoordinatorSettings, max_deliver: int, store: Engin
                            clave_publica_del_gateway(settings.gateway_public_keys_file), store, NOMBRE,
                            ca_file=settings.gateway_ca_file, timeout=settings.coordinator_timeout)
     publisher = publicador(settings, NOMBRE)
+    avisos = await conexion.subscribe(CONFIGURED_SUBJECT, cb=al_configurar(fuente)) if conexion is not None else None
 
     async def cerrar() -> None:
+        if avisos is not None:
+            await avisos.unsubscribe()
         await publisher.close()
 
     return Coordinar(fuente, publisher, max_deliver), cerrar
@@ -124,7 +151,7 @@ def main() -> None:
     """El worker: su configuración y su bucle sobre MOTOR."""
     settings = CoordinatorSettings()
     asyncio.run(ejecutar(NOMBRE, settings, STREAM, CONSUMIDOR,
-                         lambda max_deliver, _conexion: preparar(settings, max_deliver)))
+                         lambda max_deliver, conexion: preparar(settings, max_deliver, conexion=conexion)))
 
 
 if __name__ == "__main__":

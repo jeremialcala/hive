@@ -804,7 +804,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.7.0
+  version: 0.8.0
 openapi: 3.1.0
 paths:
   /bot:
@@ -1823,6 +1823,141 @@ paths:
       summary: Get Chatbot Tools
       tags:
       - Intents
+  /chat/{bot_id}/versions:
+    get:
+      description: 'The versions of the chatbot''s configuration, the newest first (RF26): who changed it, how and
+        when. Each
+
+        change of its persona, rules or intents writes one, and they are kept for as long as the chatbot is.'
+      operationId: list_versions_chat__bot_id__versions_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: offset
+        required: false
+        schema:
+          minimum: 0
+          title: Offset
+          type: integer
+      - in: query
+        name: limit
+        required: false
+        schema:
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: List Versions
+      tags:
+      - Versions
+  /chat/{bot_id}/versions/{version}:
+    get:
+      description: 'A version: the persona, rules and intents it holds, and what changed from the version `against`,
+        by default
+
+        the one before it. Never the Meta credentials nor the verifyToken: they are not versioned.'
+      operationId: get_version_chat__bot_id__versions__version__get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+      - in: query
+        name: against
+        required: false
+        schema:
+          anyOf:
+          - minimum: 0
+            type: integer
+          - type: 'null'
+          title: Against
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Version
+      tags:
+      - Versions
+  /chat/{bot_id}/versions/{version}/restore:
+    post:
+      description: 'Goes back to a version: the chatbot gets its persona, rules and intents, and that is written
+        as a new version,
+
+        so nothing is lost. Its intents are checked again: 422, and nothing changes, if one of them is not allowed
+        any
+
+        more (RS16). 409 if the chatbot already has that configuration. Only a cliente-admin or the machine credential.'
+      operationId: restore_version_chat__bot_id__versions__version__restore_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Restore Version
+      tags:
+      - Versions
   /clients:
     get:
       operationId: list_clients_clients_get
@@ -2473,3 +2608,6 @@ tags:
 - description: Configure intents and their actions (API calls) as LLM tool definitions, stored per chatbot and consumed
     by the downstream worker.
   name: Intents
+- description: Every change of a chatbot's persona, rules or intents is a version, with who made it and when. See
+    what changed between two, and go back to one.
+  name: Versions

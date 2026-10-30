@@ -287,7 +287,8 @@ ROUTES = sorted((method, route.path) for route in app_module.app.routes if isins
                 for method in route.methods if (method, route.path) not in PUBLIC)
 NOT_FOR_THE_ANALYST = [route for route in ROUTES if route not in app_module.ANALYST_ROUTES]
 PLACES = {"bot_id": str(uuid4()), "intent_id": str(uuid4()), "contact_id": str(uuid4()), "client_id": str(uuid4()),
-          "kid": "a-kid", "template_id": "1234567890", "person_id": str(uuid4()), "request_id": str(uuid4())}
+          "kid": "a-kid", "template_id": "1234567890", "person_id": str(uuid4()), "request_id": str(uuid4()),
+          "version": "1"}
 
 
 @pytest.mark.parametrize("method,path", NOT_FOR_THE_ANALYST)

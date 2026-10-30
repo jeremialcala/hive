@@ -11,7 +11,7 @@ from uuid import UUID
 from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import (ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
+from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
                      MessageTemplate, OutboundRequest, Rule)
 from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING
@@ -39,7 +39,8 @@ HISTORY_RETENTION = timedelta(days=365)
 # What is stored for a chatbot, and the field that says which one: all of it goes when the chatbot does.
 OF_A_BOT = (("contacts", Contact, "botId"), ("phones", ChatbotPhone, "bot_id"), ("rules", Rule, "botId"),
             ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"),
-            ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"))
+            ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"),
+            ("versions", BotVersion, "botId"))
 
 
 @dataclass(frozen=True)
@@ -336,6 +337,81 @@ class TenantRepository:
 
     def save_intent(self, intent: Intent) -> Intent:
         return self._save_own(intent)
+
+    # --- Versions of the configuration (RF26, ADR-0035) -------------------------------------------------------------
+
+    def bot_config(self, bot_id) -> dict:
+        """What a version keeps: the persona, the rules and the intents of the chatbot as they are now."""
+        bot = self.get_bot(bot_id)
+        intents = [intent for intent in self._own(Intent, botId=bot.uuid).order_by("createdAt")
+                   if intent.status != Status.DIS.value]
+        return {"persona": {"name": bot.name, "role": bot.role, "tone": bot.tone, "description": bot.description},
+                "rules": [{"uuid": str(rule.uuid), "rule": rule.rule} for rule in self.list_rules(bot.uuid)],
+                "intents": [{key: value for key, value in intent.intent_info().items() if key != "botId"}
+                            for intent in intents]}
+
+    def add_version(self, bot_id, author: str, change: str, restored_from: int | None = None) -> BotVersion:
+        """
+            Writes the configuration the chatbot has now as its next version. The number comes from the chatbot, in one
+            update: two changes at once get two numbers.
+        """
+        bot_uuid = self.get_bot(bot_id).uuid
+        config = self.bot_config(bot_uuid)
+        bot = self._own(ChatBot, uuid=bot_uuid).modify(inc__configVersion=1, new=True)
+        if bot is None:
+            raise NotFound(bot_id)
+        version = BotVersion(id=f"{bot_uuid}:{bot.configVersion}", clientId=self.client_id, botId=bot_uuid,
+                             version=bot.configVersion, author=author, change=change, restoredFrom=restored_from,
+                             config=config)
+        version.save(force_insert=True)
+        if not self._own(ChatBot, uuid=bot_uuid).count():
+            # The chatbot was deleted in the meantime: its versions go with it.
+            version.delete()
+            raise NotFound(bot_id)
+        return version
+
+    def list_versions(self, bot_id, offset: int = 0, limit: int = 100) -> tuple:
+        """How many versions the chatbot has, and a page of them, the newest first."""
+        found = self._own(BotVersion, botId=self.get_bot(bot_id).uuid)
+        return found.count(), list(found.order_by("-version").skip(offset).limit(limit))
+
+    def get_version(self, bot_id, number: int) -> BotVersion:
+        version = self._own(BotVersion, botId=self.get_bot(bot_id).uuid, version=number).first()
+        if version is None:
+            raise NotFound(number)
+        return version
+
+    def apply_config(self, bot_id, config: dict) -> None:
+        """
+            Gives the chatbot the persona, rules and intents of `config`, a version's. Not in one transaction: what a
+            call that failed halfway left is put right by calling again. An intent left out is deleted, as DELETE does.
+        """
+        bot_uuid = self.get_bot(bot_id).uuid
+        persona = config["persona"]
+        self._own(ChatBot, uuid=bot_uuid).update(set__name=persona["name"], set__role=persona["role"],
+                                                 set__tone=persona["tone"], set__description=persona["description"])
+        self._own(Rule, botId=bot_uuid).delete()
+        for rule in config["rules"]:
+            Rule(uuid=UUID(rule["uuid"]), clientId=self.client_id, botId=bot_uuid, rule=rule["rule"]).save(
+                force_insert=True)
+        kept = {UUID(intent["uuid"]) for intent in config["intents"]}
+        now = datetime.now(timezone.utc)
+        for intent in self._own(Intent, botId=bot_uuid, status__ne=Status.DIS.value):
+            if intent.uuid not in kept:
+                self._own(Intent, uuid=intent.uuid).update(set__status=Status.DIS.value, set__statusDate=now)
+        for kept_intent in config["intents"]:
+            intent_uuid = UUID(kept_intent["uuid"])
+            intent = (self._own(Intent, botId=bot_uuid, uuid=intent_uuid).first()
+                      or Intent(uuid=intent_uuid, clientId=self.client_id, botId=bot_uuid))
+            intent.name, intent.description = kept_intent["name"], kept_intent["description"]
+            intent.samplePhrases = list(kept_intent["samplePhrases"])
+            intent.actions = [Intent.action_from(action) for action in kept_intent["actions"]]
+            intent.status, intent.statusDate = Status[kept_intent["status"]].value, now
+            intent.save()
+        if not self._own(ChatBot, uuid=bot_uuid).count():
+            # Deleted while this was written: nothing is left behind out of reach.
+            self.erase_bot(bot_uuid)
+            raise NotFound(bot_id)
 
     # --- Contacts ---------------------------------------------------------------------------------------------------
 

@@ -38,7 +38,8 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_get_intents, ctr_last_turns, ctr_list_bots, ctr_list_clients, ctr_list_contacts,
                         ctr_register_client, ctr_send_status,
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
-                        ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent)
+                        ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
+                        announce, ctr_get_version, ctr_list_versions, ctr_restore_version)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -124,6 +125,8 @@ ANALYST_ROUTES = {
     # What the PWA reads (HIG-87): the chatbots, a contact's conversation without its number, and what came of a send.
     ("GET", "/bots"), ("GET", "/chat/{bot_id}/contacts/{contact_id}/conversation"),
     ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}"),
+    # The versions of a chatbot and what changed in each (RF26): seen, never gone back to.
+    ("GET", "/chat/{bot_id}/versions"), ("GET", "/chat/{bot_id}/versions/{version}"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -405,10 +408,11 @@ async def _exchange_answer(request: Request, form: dict) -> JSONResponse:
 
 @app.post(path="/bot", tags=["Bot"], response_model=BotResponse)
 def create_chatbot(chatbot: ChatbotRequest, request: Request,
-                         repo: TenantRepository = Depends(get_repository)):
+                         repo: TenantRepository = Depends(get_repository),
+                         principal: Principal = Depends(get_principal)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_create_chatbot(repo, request=chatbot, eventId=request.state.event_id)
+        response = ctr_create_chatbot(repo, request=chatbot, author=principal.actor, eventId=request.state.event_id)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -681,11 +685,14 @@ def get_chatbot_rules(bot_id, req: Request, repo: TenantRepository = Depends(get
 
 
 @app.post(path="/chat/{bot_id}/rules", tags=["Chat"])
-def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
-                           repo: TenantRepository = Depends(get_repository)):
+async def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
+                           repo: TenantRepository = Depends(get_repository),
+                           principal: Principal = Depends(get_principal)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_create_chatbot_rules(repo, request=rules, bot_id=bot_id, eventId=req.state.event_id)
+        response = await run_in_threadpool(ctr_create_chatbot_rules, repo, request=rules, bot_id=bot_id,
+                                           author=principal.actor, eventId=req.state.event_id)
+        await _configured(repo, bot_id, response)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -693,11 +700,14 @@ def add_chatbot_rule(bot_id, req: Request, rules: RulesRequest,
 
 
 @app.post(path="/chat/{bot_id}/intents", tags=["Intents"])
-def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
-                             repo: TenantRepository = Depends(get_repository)):
+async def add_chatbot_intent(bot_id, req: Request, intent: IntentRequest,
+                             repo: TenantRepository = Depends(get_repository),
+                             principal: Principal = Depends(get_principal)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_create_intent(repo, request=intent, bot_id=bot_id, eventId=req.state.event_id)
+        response = await run_in_threadpool(ctr_create_intent, repo, request=intent, bot_id=bot_id,
+                                           author=principal.actor, eventId=req.state.event_id)
+        await _configured(repo, bot_id, response)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -727,12 +737,14 @@ def get_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository =
 
 
 @app.put(path="/chat/{bot_id}/intents/{intent_id}", tags=["Intents"])
-def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentRequest,
-                                repo: TenantRepository = Depends(get_repository)):
+async def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentRequest,
+                                repo: TenantRepository = Depends(get_repository),
+                                principal: Principal = Depends(get_principal)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_update_intent(repo, request=intent, bot_id=bot_id, intent_id=intent_id,
-                                           eventId=req.state.event_id)
+        response = await run_in_threadpool(ctr_update_intent, repo, request=intent, bot_id=bot_id,
+                                           intent_id=intent_id, author=principal.actor, eventId=req.state.event_id)
+        await _configured(repo, bot_id, response)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
@@ -740,14 +752,56 @@ def update_chatbot_intent(bot_id, intent_id, req: Request, intent: IntentRequest
 
 
 @app.delete(path="/chat/{bot_id}/intents/{intent_id}", tags=["Intents"])
-def delete_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository)):
+async def delete_chatbot_intent(bot_id, intent_id, req: Request, repo: TenantRepository = Depends(get_repository),
+                                principal: Principal = Depends(get_principal)):
     log.info(f"Starting: {currentframe().f_code.co_name}")
     try:
-        response = ctr_delete_intent(repo, bot_id=bot_id, intent_id=intent_id, eventId=req.state.event_id)
+        response = await run_in_threadpool(ctr_delete_intent, repo, bot_id=bot_id, intent_id=intent_id,
+                                           author=principal.actor, eventId=req.state.event_id)
+        await _configured(repo, bot_id, response)
         log.info(f"Ending: {currentframe().f_code.co_name}")
         return response
     except Exception as e:
         raise Exception(e.args)
+
+
+@app.get(path="/chat/{bot_id}/versions", tags=["Versions"], response_model=ResponseData)
+def list_versions(bot_id: str, offset: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=100),
+                  repo: TenantRepository = Depends(get_repository)):
+    """
+        The versions of the chatbot's configuration, the newest first (RF26): who changed it, how and when. Each
+        change of its persona, rules or intents writes one, and they are kept for as long as the chatbot is.
+    """
+    return ctr_list_versions(repo, bot_id, offset, limit)
+
+
+@app.get(path="/chat/{bot_id}/versions/{version}", tags=["Versions"], response_model=ResponseData)
+def get_version(bot_id: str, version: str, against: int | None = Query(default=None, ge=0),
+                repo: TenantRepository = Depends(get_repository)):
+    """
+        A version: the persona, rules and intents it holds, and what changed from the version `against`, by default
+        the one before it. Never the Meta credentials nor the verifyToken: they are not versioned.
+    """
+    return ctr_get_version(repo, bot_id, version, against)
+
+
+@app.post(path="/chat/{bot_id}/versions/{version}/restore", tags=["Versions"], response_model=ResponseData)
+async def restore_version(bot_id: str, version: str, repo: TenantRepository = Depends(get_repository),
+                          principal: Principal = Depends(get_principal)):
+    """
+        Goes back to a version: the chatbot gets its persona, rules and intents, and that is written as a new version,
+        so nothing is lost. Its intents are checked again: 422, and nothing changes, if one of them is not allowed any
+        more (RS16). 409 if the chatbot already has that configuration. Only a cliente-admin or the machine credential.
+    """
+    response = await run_in_threadpool(ctr_restore_version, repo, bot_id, version, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+async def _configured(repo: TenantRepository, bot_id, response) -> None:
+    """A change of the configuration that went through is told to the engine, so that it reads it again (ADR-0035)."""
+    if response.status_code == status.HTTP_200_OK:
+        await announce(repo, bot_id)
 
 
 @app.get(path="/chat/{bot_id}/tools", tags=["Intents"])
