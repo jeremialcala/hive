@@ -7,6 +7,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Cambiado
+- **La matriz OWASP describe lo que Hive hace de verdad** (`.ai-dlc/owasp-mapping.md` 1.0.0, HIG-133, Gate 3). Era la
+  copia de la plantilla, «sin adaptar todavía».
+  - **Qué trae:** A01–A10, cada uno con sus controles, la prueba que los verifica y la ADR o el RS que los decide. Al
+    principio va un resumen con el estado de cada riesgo.
+  - **Lo que falta** queda como hueco con su tarea: DAST, payloads hostiles, cabeceras en `hive-api`, límites en el
+    resto de rutas, el pipeline del Gate 4 y las alertas.
+  - **`tests/unit/test_owasp_mapping.py`** falla si una prueba, un fichero o una ADR citados dejan de existir, si falta
+    uno de los diez riesgos o si vuelve la plantilla.
+
 ## [0.4.0] - 2026-10-30
 
 ### Seguridad
