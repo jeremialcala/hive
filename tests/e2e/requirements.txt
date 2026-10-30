@@ -1,0 +1,8 @@
+# What the end-to-end test's driver needs (HIG-135, HIG-141): the gateway's development dependencies, because it signs
+# as a client would with shared/, and Playwright, the browser of the PWA's journey. Pinned with hashes in
+# requirements.lock, from this directory:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock
+# Its Chromium is installed apart: python -m playwright install --with-deps chromium
+-r ../../requirements-dev.txt
+
+playwright==1.64.1

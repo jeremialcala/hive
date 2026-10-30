@@ -24,6 +24,31 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     quien sigue fallando.
   - **Pruebas arregladas:** siete parametrizaciones tenían ids al azar (`uuid4()`) o que pytest no sabe volver a leer
     (una IPv6). Ahora llevan `ids=`.
+
+## [0.6.0] - 2026-10-30
+
+### Seguridad
+- **`hive-api` y el webhook mandan las cabeceras de una API JSON** (HIG-138, A02 de la matriz OWASP). Antes no
+  mandaban ninguna; el portal y la documentación sí.
+  - **Qué cabeceras:** HSTS (un año, con subdominios), `nosniff`, `Referrer-Policy: no-referrer`,
+    `X-Frame-Options: DENY` y `Cache-Control: no-store`. Fuera de desarrollo, además
+    `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
+  - **Dónde:** en toda respuesta, también en un `404`, un `413` o un `500`. Las pone el interceptor de
+    `src/service.py` sin pisar las que ya trae una ruta.
+  - **Pruebas:** `tests/security/test_security_headers.py`. La matriz OWASP pasa a la 1.3.0.
+
+### Añadido
+- **El recorrido de la PWA, de punta a punta** (HIG-141, Gate 3; [e2e](docs/04-testing/e2e.md#el-recorrido-de-la-pwa)).
+  Chromium, con Playwright, contra `hive-portal` construido del mismo commit, junto al gateway y al motor de la prueba
+  de punta a punta.
+  - **El login:** con un Zitadel falso, en `tests/e2e/fakes.py`, que da un ID token con `amr` `mfa`. Las personas
+    entran por el camino real: `POST /people` las crea en Zitadel y su primer login las deja activas.
+  - **El recorrido:** los bots, una plantilla con su vista previa, su aprobación al sincronizar con Meta y su envío a
+    un contacto, seguido hasta que Meta lo acepta.
+  - **Lo que comprueba además:** la cookie `__Host-hive-session` `HttpOnly`, la sesión sellada en Bifröst, el logout,
+    ninguna violación de la CSP y que el `cliente-analista` no ve los botones de admin.
+  - **Sus dependencias:** van en su propio lock, `tests/e2e/requirements.lock`, que `Seguridad` audita.
+  - **Cuándo corre:** el workflow `e2e` instala Chromium, y en los PR a `develop` también corre si cambia el portal.
 - **El objetivo de latencia de punta a punta, RNF10** (HIG-136, Gate 3;
   [medición](docs/04-testing/medicion-punta-a-punta.md)). Desde que el webhook recibe el mensaje hasta que Meta acepta
   la respuesta.
@@ -1235,7 +1260,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jeremialcala/hive/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jeremialcala/hive/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.2.0...v0.3.0

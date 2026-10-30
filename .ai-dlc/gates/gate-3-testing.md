@@ -16,14 +16,15 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     las pruebas unitarias de la matriz OWASP, que `tests/conftest.py` marca.
   - **e2e** (HIG-135): [del webhook a la respuesta](../../docs/04-testing/e2e.md), con las imágenes de producción,
     Bifröst tal como está configurado, OpenBao con TLS, y Meta y el LLM falsos. Corre en los PR a `main`.
-  - **Falta:** el recorrido de la PWA (HIG-141), y el motor no tiene suite de seguridad propia.
+  - **PWA** (HIG-141): [su recorrido](../../docs/04-testing/e2e.md#el-recorrido-de-la-pwa) en Chromium, del login con
+    un Zitadel falso al envío de una plantilla, con la CSP sin violaciones y el `cliente-analista` sin botones de
+    admin. **Falta:** el motor no tiene suite de seguridad propia.
 - [ ] Matriz OWASP Top 10 ejecutada
   - **Está** (2026-10-30, HIG-133): [`owasp-mapping.md`](../owasp-mapping.md) traza A01–A10 a los controles reales, con
     la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o
     una ADR citados dejan de existir.
   - **Falta:** sus huecos, cada uno con su tarea:
     - DAST (HIG-90);
-    - cabeceras en `hive-api` (HIG-138);
     - límites en el resto de rutas (HIG-139);
     - el pipeline del Gate 4 (HIG-20);
     - las alertas y el runbook (HIG-140).

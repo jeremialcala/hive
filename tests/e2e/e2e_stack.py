@@ -3,11 +3,13 @@
     The stack of the end-to-end test (HIG-135), brought up as an operator would on midgard, and taken down after:
 
     1. the secrets, born in a temporary directory: a CA and the certificate of NATS and OpenBao, a password per
-       Bifröst user, the gateway's keys, the operator's key;
+       Bifröst user, the gateway's keys, the operator's key; the portal's client secret in Zitadel and its sessions'
+       key, Zitadel's signing key and the token of hive-api's service account there (HIG-141);
     2. OpenBao, initialized and unsealed, with what Andvari has: transit `clientes` and the AppRole `gateway`, the KV
        `motor` and the AppRoles `motor-claves`, `motor-coordinator` and `motor-notifier`;
     3. Bifröst with its own configuration and its own provisioning (higerotech/bifrost, in $BIFROST_DIR);
-    4. the gateway; the operator's key; a client, its chatbot and its credentials; the engine's keys for the client;
+    4. the gateway and the portal; the operator's key; a client, its chatbot and its credentials; the engine's keys
+       for the client;
     5. the engine.
 
         E2E=1 BIFROST_DIR=../bifrost pytest tests/e2e         # E2E_KEEP=1 leaves it up; E2E_NO_BUILD=1 skips building
@@ -15,7 +17,10 @@
     Without E2E=1 nothing of this runs: the unit suite collects tests/ and has no Docker. The fixtures are in
     conftest.py. tests/e2e is a package, so that its conftest is not the `conftest` that tests/unit imports.
 """
+import base64
 import datetime
+import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -32,6 +37,11 @@ NATS_BOX = "natsio/nats-box:0.20.0-nonroot@sha256:be25666441c3aee65193aba33d60ff
 API, WEBHOOK, BAO, NATS_MONITOR, FAKES = ("http://127.0.0.1:15002", "http://127.0.0.1:15003", "https://127.0.0.1:18200",
                                           "http://127.0.0.1:18222", "http://127.0.0.1:18080")
 AUDIENCE = "https://hive-api.e2e.test"
+# The portal, where the browser reaches it: http://localhost is a secure context for its __Host- cookies. And Zitadel,
+# by the name the containers know it by, which the browser maps to 127.0.0.1 (compose.yaml, x-zitadel).
+PORTAL, ZITADEL = "http://localhost:15004", "http://zitadel.e2e.test:18090"
+ZITADEL_HOST = "zitadel.e2e.test"
+PHONE_ID = "100000000000001"
 BIFROST_USERS = ["admin", "webhook", "ingesta", "portal", "gestion", "classifier", "coordinator", "responder",
                  "notifier"]
 ENGINE_ROLES = {"motor-claves": 'path "motor/data/clientes/+/+" { capabilities = ["create", "read"] }',
@@ -58,6 +68,29 @@ def until(what: str, check, timeout: float = 120, every: float = 1.0):
             last = e
         time.sleep(every)
     raise AssertionError(f"Waited {timeout:.0f} s for {what}" + (f" (last: {type(last).__name__})" if last else ""))
+
+
+def notification(number: str, name: str, message_id: str, text: str) -> bytes:
+    """What Meta sends the webhook when a person writes to the chatbot's number."""
+    return json.dumps({"object": "whatsapp_business_account", "entry": [{"id": "1", "changes": [{
+        "field": "messages", "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {"display_phone_number": "12025550101", "phone_number_id": PHONE_ID},
+            "contacts": [{"profile": {"name": name}, "wa_id": number}],
+            "messages": [{"from": number, "id": message_id, "timestamp": str(int(time.time())), "type": "text",
+                          "text": {"body": text}}]}}]}]}).encode()
+
+
+def deliver(bot: str, app_secret: str, raw: bytes) -> requests.Response:
+    """A notification to the webhook of the chatbot, signed as Meta signs it."""
+    signature = "sha256=" + hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
+    return requests.post(f"{WEBHOOK}/chat/{bot}", data=raw, timeout=10,
+                         headers={"Content-Type": "application/json", "X-Hub-Signature-256": signature})
+
+
+def seen() -> dict:
+    """What Meta, the LLM and Zitadel were asked (fakes.py)."""
+    return requests.get(f"{FAKES}/_seen", timeout=5).json()
 
 
 class Stack:
@@ -172,6 +205,18 @@ class Stack:
         self.operator_key = new_signing_key()
         self.write("operador.json", json.dumps(self.operator_key))
         self.write("operador-publica.json", json.dumps(public_part(self.operator_key)))
+        self.zitadel_secrets()
+
+    def zitadel_secrets(self) -> None:
+        """The portal's client secret in Zitadel and its sessions' key; Zitadel's key; hive-api's service account."""
+        from cryptography.hazmat.primitives.asymmetric import rsa  # pylint: disable=import-outside-toplevel
+
+        self.write("oidc-client-secret", secrets.token_urlsafe(32))
+        self.write("session-key", base64.b64encode(secrets.token_bytes(32)).decode())
+        self.write("zitadel-token", secrets.token_urlsafe(32))
+        numbers = rsa.generate_private_key(public_exponent=65537, key_size=2048).private_numbers()
+        self.write("zitadel-key.json", json.dumps({"kid": "zitadel-e2e-1", "n": f"{numbers.public_numbers.n:x}",
+                                                   "e": f"{numbers.public_numbers.e:x}", "d": f"{numbers.d:x}"}))
 
     def gateway_env(self, gateway_role: str, engine_keys_role: str) -> None:
         self.env_file("gateway.env", {
@@ -246,6 +291,17 @@ class Stack:
             capture_output=True, text=True, check=False, env={**os.environ, "MSYS_NO_PATHCONV": "1"})
         if done.returncode != 0:
             raise AssertionError(f"Bifröst's provisioning failed:\n{done.stdout[-2000:]}\n{done.stderr[-2000:]}")
+
+    def nats(self, *args: str) -> str:
+        """A command of the nats CLI against Bifröst, as its admin, and what it printed."""
+        done = subprocess.run(
+            ["docker", "run", "--rm", "--network", "hive-e2e_e2e", "-e", "NATS_URL=tls://nats:4222",
+             "-e", "NATS_USER=admin", "-e", f"NATS_PASSWORD={self.passwords['admin']}", "-e", "NATS_CA=/ca.crt",
+             "-v", f"{self.dir / 'tls' / 'ca.crt'}:/ca.crt:ro", NATS_BOX, "nats", *args],
+            capture_output=True, check=False, env={**os.environ, "MSYS_NO_PATHCONV": "1"})
+        if done.returncode != 0:
+            raise AssertionError(f"nats {' '.join(args)} failed: {done.stderr[-1000:]!r}")
+        return done.stdout.decode("latin-1")
 
 
 class Hive:
