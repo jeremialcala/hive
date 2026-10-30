@@ -414,3 +414,14 @@ def test_a_machine_credential_is_neither_a_person_nor_an_analyst():
     machine = Principal(client_id=uuid4(), role=Role.CLIENT, kid="k", jti="j")
 
     assert (machine.is_person, machine.is_analyst, machine.actor) == (False, False, "key k")
+
+
+def test_a_person_reads_whose_area_it_is_and_nothing_of_its_keys(http, acme, zitadel):
+    """The card of the client in the PWA (HIG-126): its id and its name, for the analyst too."""
+    person(acme, role=PersonRole.ANALYST)
+    token = exchange(http, zitadel.id_token()).json()["access_token"]
+    KEY_OF[token] = BFF
+
+    answer = http.get("/client", headers=auth(token))
+
+    assert answer.status_code == 200 and answer.json()["data"] == {"uuid": str(acme.client_id), "name": "acme"}

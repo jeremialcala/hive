@@ -33,9 +33,25 @@ El área del cliente (HIG-87), en `src/static/`. No hay paso de build: React 18 
 van como ficheros UMD y la aplicación son módulos ES. Todo sale del propio portal, así que la CSP sigue siendo
 `'self'` ([ADR-0027](../docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md)).
 
+Todas las pantallas comparten el esqueleto del diseño (HIG-126, `src/static/shell.js`):
+
+- **La barra lateral, de 240 px,** con ocho secciones: Visión general, Bots, Contactos, Plantillas, Personas,
+  Credenciales, Integraciones y Auditoría. Abajo va la tarjeta del cliente, con su nombre (`GET /client`), su
+  `client_id`, el rol, «Salir» y el tema.
+- **En un teléfono** (48 rem o menos), la barra lateral deja paso a una barra arriba y a la `TabBar` del sistema de
+  diseño abajo: Inicio, Bots, Contactos y Más. «Más» (`#/mas`) tiene el resto de secciones, el tema y la salida.
+- **La cabecera de cada página** lleva la ruta (breadcrumb), el cliente como eyebrow, el título y como mucho una acción
+  primaria en ámbar. Al pie va el cURL de su llamada.
+- **El tema** es oscuro por defecto. El claro se elige en la tarjeta del cliente, va en `data-theme` de `<html>` y este
+  navegador lo recuerda (`localStorage`, `hive-theme`).
+- **Las secciones que darían `403`** al `cliente-analista` (Personas, Credenciales y Auditoría) no se le muestran, y su
+  dirección escrita a mano le lleva a Bots. Quien decide sigue siendo `hive-api`.
+- **Las secciones que la PWA aún no tiene** lo dicen, con la llamada a la API que las sustituye mientras tanto, si existe.
+
 | Pantalla | Ruta | Qué hace |
 |---|---|---|
-| Bots | `#/` | Los bots del cliente (`GET /bots`). |
+| Bots | `#/`, `#/bots` | Los bots del cliente (`GET /bots`). |
+| Más | `#/mas` | En el teléfono: las secciones que no caben en la `TabBar`. |
 | Plantillas | `#/bots/<bot>/plantillas` | Las plantillas del bot, con su estado de Meta y el motivo de un rechazo. «Sincronizar con Meta» trae la lista de Meta (`?sync=true`). El `cliente-admin` crea, edita y borra. El editor tiene vista previa con los ejemplos y comprueba lo que Meta comprobaría. |
 | Contactos | `#/bots/<bot>/contactos` | Los contactos del bot, sin su número. |
 | Contacto | `#/bots/<bot>/contactos/<contacto>` | La conversación, la ventana de 24 horas con lo que le queda y el consentimiento. Desde aquí se envía. |

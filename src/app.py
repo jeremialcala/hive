@@ -41,7 +41,7 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
-                        ctr_delete_rule, ctr_set_persona)
+                        ctr_delete_rule, ctr_set_persona, ctr_own_client)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -129,6 +129,8 @@ ANALYST_ROUTES = {
     ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}"),
     # The versions of a chatbot and what changed in each (RF26): seen, never gone back to.
     ("GET", "/chat/{bot_id}/versions"), ("GET", "/chat/{bot_id}/versions/{version}"),
+    # Whose area it is, for the card of the client (HIG-126).
+    ("GET", "/client"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -861,6 +863,12 @@ def gateway_keys(_principal: Principal = Depends(get_principal)):
         for the new key when the gateway rotates its own.
     """
     return ctr_gateway_keys(GATEWAY_KEYS)
+
+
+@app.get(path="/client", tags=["Clients"], response_model=ResponseData)
+def own_client(principal: Principal = Depends(get_principal)):
+    """The client of whoever calls: its id and its name, for the PWA to say whose area it is. No keys."""
+    return ctr_own_client(principal.client_id)
 
 
 @app.get(path="/keys", tags=["Clients"], response_model=ResponseData)

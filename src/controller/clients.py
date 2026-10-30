@@ -26,7 +26,7 @@ from .erasure_notices import CLIENT, announce
 
 __all__ = ["ctr_register_client", "ctr_list_clients", "ctr_get_client", "ctr_add_signing_key",
            "ctr_add_own_signing_key", "ctr_remove_signing_key", "ctr_gateway_keys", "ctr_delete_client", "ctr_add_service_key",
-           "ctr_remove_service_key"]
+           "ctr_remove_service_key", "ctr_own_client"]
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -94,6 +94,18 @@ def ctr_get_client(client_id) -> ResponseData:
         return ResponseData(data=client_info(get_client(client_id)))
     except NotFound:
         raise _not_found() from None
+
+
+def ctr_own_client(client_id) -> ResponseData:
+    """
+        Whose area this is, for the PWA's card of the client (HIG-126): its id and its name, nothing of its keys. A
+        cliente-analista reads it too.
+    """
+    try:
+        client = get_client(client_id)
+    except NotFound:
+        raise _not_found() from None
+    return ResponseData(data={"uuid": str(client.uuid), "name": client.name})
 
 
 def ctr_add_own_signing_key(principal: Principal, request: OwnedKeyRequest) -> ResponseData:

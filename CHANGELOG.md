@@ -8,6 +8,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **El esqueleto de la PWA: barra lateral, cabecera de página, `TabBar` en el teléfono y tema** (HIG-126; el canvas
+  «Pantallas de Hive»).
+  - **La barra lateral:** 240 px y ocho secciones, con la tarjeta del cliente abajo (nombre, `client_id`, rol, «Salir»
+    y el tema).
+  - **En un teléfono:** la `TabBar` sustituye a la barra lateral (Inicio, Bots, Contactos, Más), y «Más» tiene el
+    resto. A 390 px no hay desplazamiento horizontal.
+  - **Cada página:** la ruta, el cliente como eyebrow, el título, una sola acción primaria y su cURL al pie.
+  - **El tema:** oscuro por defecto. El claro se elige en la tarjeta, va en `data-theme` de la raíz y el navegador lo
+    recuerda; los acentos son los mismos y el contraste del texto pasa de 4,5:1.
+  - **El `cliente-analista`** no ve Personas, Credenciales ni Auditoría.
+  - **`GET /client`:** el id y el nombre del cliente de quien llama, sin sus claves, para la tarjeta. El
+    `cliente-analista` también lo lee.
 - **Editar la persona y las reglas de un bot** (HIG-105 y HIG-106; RF23, RF24).
   - **La persona:** `PUT /chat/{bot_id}/persona` cambia el nombre, el rol, el tono y la descripción, los cuatro a la
     vez. `409` si es la que ya tiene.

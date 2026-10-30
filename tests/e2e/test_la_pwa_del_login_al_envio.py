@@ -75,8 +75,8 @@ def bea(client):
 class Watched:
     """A browser context of one person, and what went wrong in its pages."""
 
-    def __init__(self, browser):
-        self.context = browser.new_context(locale="es-ES")
+    def __init__(self, browser, **context):
+        self.context = browser.new_context(locale="es-ES", **context)
         self.context.add_init_script(CSP_WATCH)
         self.problems: list[str] = []
         self.page = self.context.new_page()
@@ -138,7 +138,7 @@ def test_a_cliente_admin_signs_in_creates_a_template_and_sends_it_to_a_contact(s
 
     # 1. The login, with Zitadel: a session of the portal, and only its cookie in the browser.
     admin.sign_in(ADMIN)
-    expect(page.get_by_text("Administrador")).to_be_visible()
+    expect(page.locator(".pwa-sidebar").get_by_text("cliente-admin", exact=True)).to_be_visible()
     (cookie,) = [each for each in admin.context.cookies() if each["name"] == "__Host-hive-session"]
     assert cookie["httpOnly"] and cookie["secure"] and cookie["sameSite"] == "Lax" and cookie["path"] == "/"
     assert page.evaluate("document.cookie") == ""
@@ -191,7 +191,7 @@ def test_a_cliente_admin_signs_in_creates_a_template_and_sends_it_to_a_contact(s
     expect(page.get_by_role("log", name="Conversación")).to_contain_text("Enviado por ti", timeout=SLOW)
 
     # And out: the session ends here and in Zitadel, and the PWA asks to sign in again.
-    page.get_by_role("button", name="Cerrar sesión").click()
+    page.get_by_role("button", name="Salir").click()
     page.wait_for_url(f"{PORTAL}/")
     expect(page.get_by_role("button", name="Entrar")).to_be_visible()
     assert not [each for each in admin.context.cookies() if each["name"] == "__Host-hive-session"]
@@ -205,7 +205,9 @@ def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(
     page = analyst.page
 
     analyst.sign_in(ANALYST)
-    expect(page.get_by_text("Analista", exact=True)).to_be_visible()
+    expect(page.locator(".pwa-sidebar").get_by_text("cliente-analista", exact=True)).to_be_visible()
+    # The sections whose routes would answer 403 to them are not in the side bar (HIG-126).
+    assert sections(page) == ["Visión general", "Bots", "Contactos", "Plantillas", "Integraciones"]
     analyst.open_bot()
 
     # The templates, without creating, editing or deleting any.
@@ -224,4 +226,80 @@ def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(
     assert len(templates_to(NUMBER)) == before + 1
 
     problems = analyst.close()
+    assert problems == []
+
+
+# --- The skeleton every screen shares (HIG-126) ----------------------------------------------------------------------
+
+RGB = "(color) => color.match(/\\d+/g).map(Number).slice(0, 3)"
+
+
+def sections(page) -> list[str]:
+    nav = page.get_by_role("navigation", name="Área del cliente")
+    return [link.inner_text().strip() for link in nav.get_by_role("link").all()]
+
+
+def contrast(first, second) -> float:
+    def luminance(rgb):
+        def channel(value):
+            value = value / 255
+            return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+        red, green, blue = (channel(value) for value in rgb)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_the_side_bar_has_the_eight_sections_and_the_light_theme_keeps_the_accent_and_the_contrast(client, people,
+                                                                                                  browser):
+    admin = Watched(browser)
+    page = admin.page
+    admin.sign_in(ADMIN)
+
+    assert sections(page) == ["Visión general", "Bots", "Contactos", "Plantillas", "Personas", "Credenciales",
+                              "Integraciones", "Auditoría"]
+    # Whose area it is: the name of the client, from GET /client.
+    expect(page.locator(".pwa-sidebar").get_by_text("acme-e2e", exact=True)).to_be_visible()
+    expect(page.locator(".pwa-tabbar")).to_be_hidden()
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+    amber = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--hive-amber').trim()")
+
+    page.locator(".pwa-sidebar").get_by_role("button", name="Tema claro").click()
+    page.wait_for_timeout(400)  # the colours of the components change in 120 ms
+
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+    assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--hive-amber').trim()") == amber
+    for selector, ground in (("body", "body"), (".pwa-nav-item.on", ".pwa-nav-item.on"),
+                             (".pwa-sidebar .hv-btn--ghost", ".pwa-sidebar")):
+        ink = page.evaluate(f"({RGB})(getComputedStyle(document.querySelector('{selector}')).color)")
+        under = page.evaluate(f"({RGB})(getComputedStyle(document.querySelector('{ground}')).backgroundColor)")
+        assert contrast(ink, under) >= 4.5, selector
+    # The theme is the person's, in this browser: it is still light after a reload.
+    page.reload()
+    expect(page.get_by_role("heading", name="Bots")).to_be_visible()
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+
+    problems = admin.close()
+    assert problems == []
+
+
+def test_on_a_phone_the_tab_bar_takes_the_place_of_the_side_bar_without_sideways_scroll(client, people, browser):
+    phone = Watched(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page = phone.page
+    phone.sign_in(ADMIN)
+
+    expect(page.locator(".pwa-tabbar")).to_be_visible()
+    expect(page.locator(".pwa-sidebar")).to_be_hidden()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.get_by_role("button", name="Más").click()
+    expect(page.get_by_role("heading", name="Más")).to_be_visible()
+    more = page.get_by_role("navigation", name="Más secciones")
+    assert [link.inner_text().strip() for link in more.get_by_role("link").all()] == [
+        "Plantillas", "Personas", "Credenciales", "Integraciones", "Auditoría"]
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.get_by_role("button", name="Bots").click()
+    phone.open_bot()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+
+    problems = phone.close()
     assert problems == []

@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.8.0
+* **Versión:** 1.9.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -79,6 +79,7 @@ que no la tienen, todavía no.
 |---|---|---|---|---|---|---|
 | Pedir un token de acceso con una aserción firmada | ✅ | ✅ | — (entra por el IdP, D1) | ✅ | ADR-0025 | ✅ `POST /oauth/token` |
 | Leer la audiencia y las claves públicas del gateway | ✅ | ✅ | — | ✅ todos los workers | ADR-0025 | ✅ `GET /gateway/keys` |
+| Ver de qué cliente es (su id y su nombre, sin claves) | ✅ | ✅ | ✅ nuevo | ⛔ | HIG-126 | ✅ `GET /client` |
 | Ver sus claves de firma | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `GET /keys` |
 | Añadir una clave propia (con prueba de posesión) | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `POST /keys` |
 | Revocar una clave propia (nunca la última) | ✅ | ✅ | ⛔ nuevo | ⛔ | RF01 | ✅ `DELETE /keys/{kid}` |
@@ -246,6 +247,7 @@ Lo que hoy aplica el código, ruta por ruta (HIG-92). Una tabla para cada ruta d
 | `GET /chat/{bot_id}/versions` | ✅ | ✅ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/versions/{version}` | ✅ | ✅ | ⛔ | ⛔ |
 | `POST /chat/{bot_id}/versions/{version}/restore` | ✅ | ⛔ | ⛔ | ⛔ |
+| `GET /client` | ✅ | ✅ | ⛔ | ⛔ |
 | `GET /clients` | ⛔ | ⛔ | ⛔ | ✅ |
 | `POST /clients` | ⛔ | ⛔ | ⛔ | ✅ |
 | `DELETE /clients/{client_id}` | ⛔ | ⛔ | ⛔ | ✅ |
