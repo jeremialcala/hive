@@ -7,6 +7,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Una respuesta ya no devuelve el id ni el nombre que le llegaron** (HIG-134). Trece respuestas los interpolaban
+  en su `message`, por ejemplo «This intent ' OR '1'='1 was not found»: diez `404` y tres `400` de bots e intents
+  (`src/controller/chatbot.py`, `src/controller/intents.py`). Ahora el texto es fijo.
+- **La suite de seguridad** (HIG-134, Gate 3), con 654 casos en `tests/security/test_hostile_input.py`:
+  - **Qué prueba:** un id hostil en cada parámetro de la dirección de cada ruta del cliente, operadores de MongoDB
+    donde se espera texto, una `Idempotency-Key` de 10 000 caracteres y una notificación firmada con 200 000
+    niveles de anidamiento.
+  - **Qué exige:** siempre un 4xx, nada que coincida y nada repetido.
+  - **El marcador `security`:** `pytest -m security` corre esa suite junto a las pruebas unitarias de la matriz
+    OWASP, 1 752 casos en total. La matriz pasa a la 1.1.0.
+
 ### Cambiado
 - **La matriz OWASP describe lo que Hive hace de verdad** (`.ai-dlc/owasp-mapping.md` 1.0.0, HIG-133, Gate 3). Era la
   copia de la plantilla, «sin adaptar todavía».

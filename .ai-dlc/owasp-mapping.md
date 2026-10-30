@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.0.0
+* **Versión:** 1.1.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -15,8 +15,10 @@ Cómo se lee:
   trae su columna OWASP.
 - **Cada hueco lleva su tarea.** Lo que el PRD da por pendiente se cita por su RS.
 
-Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine · test` y `portal · test`. Hoy son
-unitarias, de integración o de contrato. `tests/security/` y `tests/e2e/` están vacíos (HIG-134, HIG-135).
+Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine · test` y `portal · test`.
+- **La suite de seguridad del gateway** se corre sola con `pytest -m security`: son `tests/security/` y las
+  pruebas unitarias de esta matriz, que `tests/conftest.py` marca.
+- **`tests/e2e/`** sigue vacío (HIG-135).
 
 ## Resumen
 
@@ -26,7 +28,7 @@ unitarias, de integración o de contrato. `tests/security/` y `tests/e2e/` está
 | A02 | Configuración insegura | Parcial | Contenedores sin root, endurecidos; documentación solo en desarrollo; cabeceras en el portal | Cabeceras en `hive-api` (HIG-138); escaneo de imagen y de compose (HIG-20) |
 | A03 | Cadena de suministro | Parcial | Locks con hashes, imágenes por digest, `pip-audit`, gitleaks, CodeQL con umbral | SBOM, Actions por SHA, Dependabot (HIG-20) |
 | A04 | Fallos criptográficos | Cubierto, con una salvedad | Clave de datos por cliente en Andvari, AES-GCM con el cliente autenticado, sesiones selladas | Cifrado de lo que viaja por el bus (RS08); RS28 |
-| A05 | Inyección | Parcial | Solo ODM por el repositorio; 422 sin eco; logs de una línea; SSRF de destinos | Payloads hostiles y DAST (HIG-134, HIG-90); RS11 |
+| A05 | Inyección | Parcial | Solo ODM por el repositorio; ids, operadores y anidamiento hostiles en cada ruta; 422 sin eco | DAST (HIG-90); RS11 |
 | A06 | Diseño inseguro | Parcial | Threat model, límites de `/oauth/token` y de envíos, `Idempotency-Key`, ventana y consentimiento | Límites en el resto de rutas (HIG-139) |
 | A07 | Identificación y autenticación | Cubierto | Aserción firmada y cifrada de un solo uso, DPoP, MFA en el `amr`, BFF con PKCE | DAST del login (HIG-90) |
 | A08 | Integridad de software y datos | Parcial | Firma de Meta sobre el cuerpo crudo, contratos versionados, imágenes solo tras las pruebas | Firma de imágenes y procedencia (HIG-20) |
@@ -63,7 +65,7 @@ unitarias, de integración o de contrato. `tests/security/` y `tests/e2e/` está
   - **Decidido en:** `docs/03-implementation/destinos-de-los-intents.md`; RS16.
 
 **Huecos:**
-- no hay DAST con cuentas de distinto rol (HIG-90), ni suite de seguridad propia (HIG-134);
+- no hay DAST con cuentas de distinto rol (HIG-90);
 - RS20, credenciales por worker en el bus del gateway, sigue pendiente en el PRD;
 - RS24, acciones destructivas del operador con MFA y motivo, también; es el backoffice de HIG-100.
 
@@ -163,10 +165,18 @@ unitarias, de integración o de contrato. `tests/security/` y `tests/e2e/` está
 - **Lo que dice el LLM no es de fiar:** el clasificador falla cerrado.
   - **Prueba:** `engine/tests/unit/test_clasificador_llm.py::test_una_respuesta_que_no_valida_no_es_un_veredicto`.
   - **Decidido en:** ADR-0004 y ADR-0005 del motor; RS16, RS26.
+- **Lo hostil, en cada ruta** (`tests/security/test_hostile_input.py`, HIG-134).
+  - **Qué cubre:** un id hostil en cada parámetro de la dirección de cada ruta del cliente, uno por llamada, con
+    inyección SQL y NoSQL, rutas relativas, `NUL`, HTML y 5 000 caracteres. Operadores de MongoDB donde se espera
+    texto, una `Idempotency-Key` desmedida y una notificación firmada con 200 000 niveles de anidamiento.
+  - **Qué exige:** siempre un 4xx, nada que coincida y nada repetido en la respuesta. Lo primero que encontró fueron
+    trece `404` y `400` que devolvían el id o el nombre recibidos, ya corregidos.
+  - **Prueba:** `tests/security/test_hostile_input.py` (`test_a_hostile_id_in_the_address_is_a_4xx_that_matches_nothing`,
+    `test_a_mongodb_operator_where_text_is_expected_is_refused`).
 - **Los destinos de los intents:** ver A01.
 
 **Huecos:**
-- no hay pruebas con payloads hostiles ni fuzzing (HIG-134), ni DAST (HIG-90);
+- no hay fuzzing de los cuerpos ni DAST (HIG-90);
 - los modelos de gestión no acotan todos sus campos (RS11);
 - el catálogo de herramientas MCP sigue pendiente (RS29).
 

@@ -59,7 +59,7 @@ def ctr_create_chatbot(repo: TenantRepository, request: ChatbotRequest, eventId:
 
     except OperationError as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message=f"This chatbot already exists {request.name}",
+        body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="This chatbot already exists",
                             data=None)
 
     except Exception as e:
@@ -120,7 +120,7 @@ def ctr_get_chatbot_from_uuid(repo: TenantRepository, _uuid: str, eventId: str =
                             data=None)
     except (ValueError, NotFound) as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {_uuid} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
     except Exception as e:
         log.error(describe(e))
@@ -176,7 +176,7 @@ def ctr_add_phone_chatbot(repo: TenantRepository, bot_uuid, req: ChatbotPhoneReq
                             data=None)
     except NotFound as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {bot_uuid} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
     except Exception as e:
         log.error(describe(e))
@@ -294,7 +294,7 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
 
     except (ValueError, NotFound) as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {_uuid} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
     except Exception as e:
         log.error(describe(e))
@@ -345,12 +345,12 @@ def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_
 
     except NotFound as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {bot_id} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
 
     except OperationError as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message=f"This chatbot already exists {request.name}",
+        body = ResponseData(code=status.HTTP_400_BAD_REQUEST, message="This chatbot already exists",
                             data=None)
 
     except Exception as e:
