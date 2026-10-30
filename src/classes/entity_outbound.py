@@ -16,6 +16,8 @@ from .tool_clock import utc_now
 MARKETING, UTILITY = "MARKETING", "UTILITY"
 CATEGORIES = (MARKETING, UTILITY)
 APPROVED = "APPROVED"
+# What came of a request to send (HIG-87).
+ACCEPTED, SENT, FAILED = "accepted", "sent", "failed"
 # How long a request is remembered by its idempotency key (ADR-0031): the same key within this time is the same send.
 IDEMPOTENCY_WINDOW = timedelta(hours=24)
 
@@ -67,6 +69,13 @@ class OutboundRequest(Document):
     template = StringField()
     # Who asked: the key of the machine credential, or the person, when there are persons (ADR-0029).
     sentBy = StringField(required=True)
+    # What came of it (HIG-87): accepted by the bus, sent by Meta, or failed, with Meta's code and why.
+    status = StringField(required=True, choices=(ACCEPTED, SENT, FAILED), default=ACCEPTED)
+    messageId = StringField(max_length=200)
+    sentAt = DateTimeField()
+    failedAt = DateTimeField()
+    failureCode = IntField()
+    failureReason = StringField(max_length=40)
     createdAt = DateTimeField(required=True, default=utc_now)
     expiresAt = DateTimeField(required=True)
 

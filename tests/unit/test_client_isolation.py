@@ -38,7 +38,11 @@ SENDING = ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")
 IN_META = {("POST", "/chat/{bot_id}/templates"), ("PUT", "/chat/{bot_id}/templates/{template_id}"),
            ("DELETE", "/chat/{bot_id}/templates/{template_id}")}
 TEMPLATE_ID = "1234567890"
-PEOPLE = [("DELETE", "/people/{person_id}"), ("GET", "/people"), ("POST", "/people"), ("PUT", "/people/{person_id}")]
+# A request to send that the owner never made: its status is 404 to the owner too, and test_send_status covers it.
+REQUEST_ID = "6f1c7e2a-0d2b-4c1e-9a77-2f3b6a1d9e10"
+SEND_STATUS = ("GET", "/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}")
+PEOPLE = [("DELETE", "/people/{person_id}"), ("GET", "/people"), ("POST", "/people"), ("PUT", "/people/{person_id}"),
+          ("GET", "/bots")]
 BOT = {"name": "Mine", "role": "Sales Assistant", "description": "A test chatbot", "tone": "helpful"}
 PUBLIC = {("GET", "/chat/{bot_id}"), ("POST", "/chat/{bot_id}"), ("GET", "/health")}
 ROUTES = sorted((method, route.path) for route in app_module.app.routes if isinstance(route, APIRoute)
@@ -79,12 +83,12 @@ def stored(owner):
 
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
     return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
-                                            template_id=TEMPLATE_ID),
+                                            template_id=TEMPLATE_ID, request_id=REQUEST_ID),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 23 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 25 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.
@@ -97,7 +101,8 @@ def test_every_route_of_a_chatbot_is_covered():
     ] + PEOPLE)
 
 
-@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES if route != SENDING and route not in IN_META])
+@pytest.mark.parametrize("method,path", [route for route in BOT_ROUTES
+                                         if route not in IN_META | {SENDING, SEND_STATUS}])
 def test_the_owner_reaches_its_chatbot(http, owner, stored, method, path):
     bot, intent, contact = stored
 

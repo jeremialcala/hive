@@ -91,6 +91,17 @@ channels:
     messages:
       respuestaEnviada:
         $ref: '#/components/messages/RespuestaEnviada'
+  envioFallido:
+    address: 'engine.reply.failed.{botId}'
+    description: >-
+      Stream `RESPUESTAS`, el mismo consumidor `historial`. Un pedido de envío del cliente que el notificador no envió
+      ni enviará (HIG-87): la API lo marca como fallido, y la PWA explica por qué. Caduca a las 24 horas.
+    parameters:
+      botId:
+        $ref: '#/components/parameters/botId'
+    messages:
+      envioFallido:
+        $ref: '#/components/messages/EnvioFallido'
   supresion:
     address: 'gateway.{entidad}.erased'
     description: >-
@@ -177,6 +188,24 @@ operations:
     summary: El notificador del motor publica lo que Meta aceptó enviar.
     messages:
       - $ref: '#/channels/respuestaEnviada/messages/respuestaEnviada'
+  publicarEnvioFallido:
+    action: send
+    channel:
+      $ref: '#/channels/envioFallido'
+    summary: El notificador publica un pedido del cliente que no envió, con el código de Meta si fue Meta.
+    description: >-
+      Cuando Meta lo rechaza para siempre (`rejected`, con su código: 131047 la ventana cerrada, 132015 la plantilla en
+      pausa, 132016 desactivada, 132000 otros valores, 131049 el límite de marketing), cuando el bot no tiene token
+      (`no_token`) y cuando se acabaron las entregas (`gave_up`). Lo que se reintenta no se publica.
+    messages:
+      - $ref: '#/channels/envioFallido/messages/envioFallido'
+  consumirEnvioFallido:
+    action: receive
+    channel:
+      $ref: '#/channels/envioFallido'
+    summary: La ingesta marca el pedido como fallido, si no estaba ya enviado.
+    messages:
+      - $ref: '#/channels/envioFallido/messages/envioFallido'
   publicarSupresion:
     action: send
     channel:
@@ -247,6 +276,14 @@ components:
         $ref: '#/components/schemas/Cabeceras'
       payload:
         $ref: '#/components/schemas/RespuestaEnviada'
+    EnvioFallido:
+      name: EnvioFallido
+      title: Pedido del cliente que no se envió
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/Cabeceras'
+      payload:
+        $ref: '#/components/schemas/EnvioFallido'
     Supresion:
       name: Supresion
       title: Aviso de supresión
@@ -470,6 +507,32 @@ components:
                   items:
                     type: string
                     maxLength: 1024
+    EnvioFallido:
+      description: >-
+        Lo que publica el notificador cuando un pedido de envío del cliente no sale y no saldrá. No lleva el texto ni el
+        número: solo el pedido, por qué y, si fue Meta, su código.
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [contactId, channel, requestId, reason, failedAt]
+          properties:
+            contactId:
+              type: string
+              format: uuid
+            channel:
+              enum: [whatsapp, messenger, instagram]
+            requestId:
+              type: string
+              format: uuid
+              description: El `uuid` del PedidoDeEnvio.
+            code:
+              type: [integer, 'null']
+              description: El código de error de Meta, cuando fue Meta quien dijo que no.
+            reason:
+              enum: [rejected, no_token, gave_up]
+            failedAt:
+              type: string
+              format: date-time
     RespuestaEnviada:
       description: Lo que publica el notificador del motor cuando Meta acepta un envío.
       allOf:
