@@ -46,6 +46,26 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **La PWA del cliente** (HIG-87, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md),
+  [ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md); RF29, RF30). Va en `portal/src/static/`,
+  sin paso de build: React 18 y htm como UMD, módulos ES y los componentes del sistema de diseño. Todo sale del
+  portal, con la CSP en `'self'`.
+  - **Las pantallas:** los bots del cliente; las plantillas de cada bot, con su estado y el motivo de un rechazo;
+    sus contactos, sin el número; y la conversación de cada uno, con la ventana de 24 horas y el consentimiento.
+  - **Las plantillas:** el `cliente-admin` las crea, edita y borra. El editor tiene vista previa y comprueba antes
+    de enviar a Meta el nombre, los valores sin huecos, un ejemplo por valor y los botones.
+  - **El envío:** texto con la ventana abierta, solo el `cliente-admin`. Una plantilla aprobada, cualquiera de los
+    dos roles. Cada envío lleva una `Idempotency-Key` nueva. La PWA sigue el pedido hasta que Meta lo acepta o lo
+    rechaza, y el rechazo sale en palabras, con el código de Meta.
+  - **El rol** sale de la sesión: un `cliente-analista` no ve los botones que le darían `403`.
+  - **Cada pantalla** lleva el cURL de su llamada a `hive-api`.
+  - **Lo que no es nuestro**, con sus licencias: React, ReactDOM y htm, del registro de npm con su `integrity`
+    comprobado; las fuentes Geist y JetBrains Mono, bajo la OFL; y la copia del sistema de diseño.
+  - **El portal** declara `text/javascript` para `.js` y `font/woff2` para `.woff2`. Python 3.12 no conoce el
+    segundo, y con `nosniff` un módulo que llegara como `text/plain` no se ejecutaría.
+  - **Pruebas:** todo lo que piden la página, sus módulos y sus estilos sale del portal con su tipo. La copia del
+    sistema de diseño es la de `assets/design-system/`.
+  - **Usa la primera parte (#130) y la segunda (#131)**: `GET /bots`, la conversación y el estado de un envío.
 - **Lo que la PWA lee de un cliente** (HIG-87, primera parte).
   - **`GET /bots`:** los bots del cliente y qué credenciales de Meta tiene cargadas cada uno, nunca su valor.
   - **`GET /chat/{bot_id}/contacts/{contact_id}/conversation`:** los últimos 50 mensajes del contacto, cada uno con su

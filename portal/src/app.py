@@ -17,6 +17,7 @@
         uvicorn --factory src.app:create_app
 """
 import logging
+import mimetypes
 import secrets
 import time
 from pathlib import Path
@@ -48,6 +49,10 @@ SAFE = ("GET", "HEAD")
 MAX_BODY = 1024 * 1024
 RENEW_BEFORE = 60  # seconds before a token of Hive expires that a new one is asked for
 STATIC = Path(__file__).resolve().parent / "static"
+# What StaticFiles says each file is: Python 3.12 does not know .woff2, and on Windows the registry can make a .js
+# text/plain, which the browser, with nosniff, would not run as a module.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("font/woff2", ".woff2")
 NO_STORE = {"Cache-Control": "no-store"}
 # Nothing from outside (ADR-0026, ADR-0027): the PWA's own scripts, styles and fonts, and its own API.
 SECURITY = {
