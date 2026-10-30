@@ -405,6 +405,21 @@ def test_the_pwa_loads_only_its_own_files_and_each_as_what_it_is(http):
         assert answer.headers["x-content-type-options"] == "nosniff"
 
 
+@pytest.mark.parametrize("path", ["/", "/app.js", "/api.js", "/ds/bundle.js", "/vendor/htm.umd.js", "/app.css",
+                                  "/fonts/Geist-Variable.woff2"])
+def test_the_pwa_s_files_are_asked_again_after_a_deploy(http, path):
+    """
+        Cloudflare and the browser revalidate them each time: the same file comes back as a 304 without its body, a
+        new one at once. What carries a session is still never kept.
+    """
+    first = http.get(path)
+    assert first.status_code == 200 and first.headers["cache-control"] == "no-cache"
+
+    again = http.get(path, headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304 and again.content == b""
+    assert http.get("/auth/session").headers["cache-control"] == "no-store"
+
+
 def test_the_design_system_is_the_one_of_the_repository():
     """The PWA's copy of assets/design-system (ADR-0027) is that one, byte for byte: a change goes to both."""
     source = Path(__file__).resolve().parents[3] / "assets" / "design-system"

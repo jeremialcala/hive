@@ -752,6 +752,13 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   fusionar.
 
 ### Corregido
+- **Un despliegue de la PWA llega al navegador enseguida** (HIG-87). El portal no decía nada del caché de sus ficheros,
+  así que Cloudflare y el navegador los guardaban 4 horas (`max-age=14400`). El 2026-10-30, el texto de
+  `sample_template` (#134) no llegaba, y tras un despliegue podía correr un `app.js` nuevo con un `api.js` viejo.
+  - Ahora todo lo que no lleva ya `Cache-Control` sale con `no-cache`: la página, los módulos, el sistema de diseño
+    y las fuentes. Se revalida por `etag`, y lo que no cambió vuelve como `304`. Lo que lleva sesión sigue con
+    `no-store`.
+  - Prueba: `test_the_pwa_s_files_are_asked_again_after_a_deploy`.
 - **El portal ya no escribe cada petición en su log** (HIG-93). `uvicorn` dejaba la línea de cada
   petición, y la de `/auth/callback` llevaba en la consulta el código del inicio de sesión. Ahora arranca con
   `--no-access-log`, como el gateway. Se vio en el primer arranque en midgard, antes de que nadie iniciara sesión.
