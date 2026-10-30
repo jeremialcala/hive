@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from e2e_stack import API, ROOT, WEBHOOK, Hive, Stack, until, wanted
+from .e2e_stack import API, ROOT, WEBHOOK, Hive, Stack, until, wanted
 
 # The stack that is up, so that a failing test carries the log of every service in its report.
 UP: list = []

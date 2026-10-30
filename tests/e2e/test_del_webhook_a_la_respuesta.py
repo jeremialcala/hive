@@ -16,7 +16,7 @@ import time
 import pytest
 import requests
 
-from e2e_stack import FAKES, WEBHOOK, until, wanted
+from .e2e_stack import FAKES, WEBHOOK, until, wanted
 
 if not wanted():
     pytest.skip("The end-to-end test needs Docker and Bifröst: E2E=1 BIFROST_DIR=<higerotech/bifrost>",

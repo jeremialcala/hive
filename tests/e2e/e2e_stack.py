@@ -13,7 +13,7 @@
         E2E=1 BIFROST_DIR=../bifrost pytest tests/e2e         # E2E_KEEP=1 leaves it up; E2E_NO_BUILD=1 skips building
 
     Without E2E=1 nothing of this runs: the unit suite collects tests/ and has no Docker. The fixtures are in
-    conftest.py; this module has a name of its own, as tests/conftest.py is another `conftest`.
+    conftest.py. tests/e2e is a package, so that its conftest is not the `conftest` that tests/unit imports.
 """
 import datetime
 import json
