@@ -56,7 +56,7 @@ def bifrost(url):
                 # No quedó de una ejecución anterior: nada que borrar.
                 pass
         await js.add_stream(StreamConfig(name="MOTOR", subjects=["motor.>"], max_age=24 * 3600, duplicate_window=120))
-        await js.add_stream(StreamConfig(name="RESPUESTAS", subjects=["engine.reply.sent.>"],
+        await js.add_stream(StreamConfig(name="RESPUESTAS", subjects=["engine.reply.sent.>", "engine.reply.failed.>"],
                                          retention=RetentionPolicy.WORK_QUEUE, max_age=24 * 3600,
                                          duplicate_window=120))
         await js.add_consumer("MOTOR", ConsumerConfig(

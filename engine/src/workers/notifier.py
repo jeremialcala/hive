@@ -27,12 +27,13 @@
 """
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
 from shared import bus, tracing
-from shared.contract import SCHEMA_VERSION, OutboundRequest, SentReply, reply_subject
+from shared.contract import SCHEMA_VERSION, FailedSend, OutboundRequest, SentReply, failure_subject, reply_subject
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
 from src.domain.models.sobre import MensajeRespondido
@@ -49,6 +50,9 @@ from src.workers.runtime import Descartado, Resultado, ejecutar, entregas, leer_
 from src.workers.settings import NotifierSettings
 
 log = logging.getLogger(__name__)
+
+# El código de Meta en el texto de un rechazo: «Meta 131047».
+CODIGO = re.compile(r"Meta (\d+)")
 
 NOMBRE = Worker.NOTIFIER.value
 STREAM, CONSUMIDOR = "MOTOR", NOMBRE
@@ -192,6 +196,7 @@ class Salientes:
                 if 0 < self._max_deliver <= entregas(mensaje):
                     log.error("El pedido de envío %s del bot %s no se pudo enviar en la última entrega: %s",
                               pedido.uuid, pedido.botId, e)
+                    await self._avisar_sin_esperar(pedido, "gave_up")
                     resultado = Resultado.DESCARTADO
                 else:
                     log.warning("El pedido de envío %s del bot %s se intentará otra vez: %s", pedido.uuid,
@@ -244,14 +249,39 @@ class Salientes:
                                              pedido)
         except NoEncontrado as e:
             log.warning("El pedido de envío %s del bot %s se descarta: sin %s", pedido.uuid, pedido.botId, e)
+            await self._avisar(pedido, "no_token")
             return Resultado.DESCARTADO
         except EnvioRechazado as e:
             # La ventana se cerró, la plantilla está en pausa o desactivada... no irá nunca así.
             log.warning("Meta no acepta el pedido de envío %s del bot %s: %s", pedido.uuid, pedido.botId, e)
+            await self._avisar(pedido, "rejected", _codigo_de(e))
             return Resultado.DESCARTADO
         except (FuenteNoDisponible, EnvioFallido) as e:
             raise _Esperar(str(e)) from None
         return Envio(message_id=enviado, sent_at=datetime.now(timezone.utc))
+
+    async def _avisar(self, pedido: OutboundRequest, motivo: str, codigo: int | None = None) -> None:
+        """
+            EnvioFallido (HIG-87 del gateway): el pedido no salió ni saldrá, y por qué. Sin el texto ni el número. Si
+            Bifröst no lo toma, el pedido espera: así el cliente no se queda sin saberlo.
+        """
+        evento = FailedSend(schemaVersion=SCHEMA_VERSION, botId=pedido.botId, clientId=pedido.clientId,
+                            contactId=pedido.contactId, channel=pedido.channel, requestId=pedido.uuid, code=codigo,
+                            reason=motivo, failedAt=datetime.now(timezone.utc))
+        traza = tracing.traceparent()
+        cabeceras = {"traceparent": traza} if traza else {}
+        try:
+            await self._publisher.publish(failure_subject(pedido.botId), evento.model_dump_json().encode(),
+                                          f"{pedido.botId}:fallido:{pedido.uuid}", cabeceras)
+        except bus.BusUnavailable as e:
+            raise _Esperar(f"Bifröst: {e}") from None
+
+    async def _avisar_sin_esperar(self, pedido: OutboundRequest, motivo: str) -> None:
+        """En la última entrega ya no hay después: si Bifröst no toma el aviso, queda solo en el log."""
+        try:
+            await self._avisar(pedido, motivo)
+        except _Esperar as e:
+            log.error("El fallo del pedido de envío %s del bot %s no se pudo avisar: %s", pedido.uuid, pedido.botId, e)
 
     async def _publicar(self, pedido: OutboundRequest, envio: Envio) -> Resultado:
         # De una plantilla, el historial guarda su nombre y sus valores: es lo que la persona recibió.
@@ -269,6 +299,12 @@ class Salientes:
             raise _Esperar(f"Bifröst: {e}") from None
         log.info("Pedido de envío %s del bot %s enviado (%s)", pedido.uuid, pedido.botId, pedido.kind)
         return Resultado.CONFIRMADO
+
+
+def _codigo_de(rechazo: Exception) -> int | None:
+    """El código de Meta de un rechazo («Meta 131047»), o None si no lo trae."""
+    encontrado = CODIGO.search(str(rechazo))
+    return int(encontrado.group(1)) if encontrado else None
 
 
 def piezas(settings: NotifierSettings, store: EngineKeyStore | None = None) -> tuple[ApiDelGateway, WhatsAppCloud]:
