@@ -32,6 +32,7 @@ Desde `develop` al día:
 git fetch hive
 git switch -c release/X.Y.Z hive/develop
 python .ai-dlc/scripts/cortar_release.py X.Y.Z          # [Unreleased] pasa a [X.Y.Z] con la fecha de hoy
+GATEWAY_URLS= python .ai-dlc/scripts/gen_openapi.py     # los contratos dicen la versión: X.Y.Z, sin «+develop»
 git commit -am "chore: release X.Y.Z"
 git push -u hive release/X.Y.Z
 gh pr create --base main --head release/X.Y.Z --title "release X.Y.Z"
