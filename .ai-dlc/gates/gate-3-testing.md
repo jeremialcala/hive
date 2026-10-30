@@ -1,7 +1,29 @@
 # Gate 3 — Pruebas (cierre de Fase 04)
 
+**Estado a 2026-10-30: abierto.** Desde ese día las releases no esperan a los gates (decisión de Jeremi,
+[releases](../../docs/05-deployment/releases.md)): la 0.4.0 sale con este gate abierto, y aquí queda, con evidencia,
+lo que está y lo que falta. Lo que falta es HIG-125.
+
 - [ ] Pirámide completa pasando (unit → integration → contract → e2e → security)
+  - **Está:** en el CI (`ci`, `engine`, `portal`), con NATS de verdad para la integración.
+
+    | | unit | integration | contract | e2e | security |
+    |---|---|---|---|---|---|
+    | gateway | 1 879 | 49 | 87 | 0 | 0 |
+    | motor | 268 | 7 | 57 | 0 | 0 |
+    | portal | 60 | 2 | — | — | — |
+  - **Falta:** `tests/e2e/` y `tests/security/` están vacíos. Las comprobaciones de seguridad existen, pero como pruebas
+    unitarias: `test_client_isolation`, `test_dpop`, `test_role_matrix` y `test_webhook_security`, entre otras.
 - [ ] Matriz OWASP Top 10 ejecutada
+  - **Falta:** `.ai-dlc/owasp-mapping.md` sigue siendo la copia de la plantilla, «sin adaptar todavía». Los controles
+    que hay de verdad (aislamiento por cliente, DPoP, firma de Meta, CSP del portal, cifrado por cliente) no están
+    trazados en ella.
 - [ ] DAST limpio
+  - **Falta:** no hay DAST (HIG-90, OWASP ZAP en los PR hacia `main`).
 - [ ] Rendimiento dentro de SLOs
+  - **Está:** el webhook, 8,3 ms de mediana frente a los 250 ms de RNF01
+    ([medición](../../docs/04-testing/medicion-webhook-i1.md)).
+  - **Falta:** la latencia de punta a punta (unos 9 s el 2026-10-21) no tiene objetivo ni una medición que se pueda
+    repetir.
 - [ ] Mutation testing ≥ 60% (objetivo)
+  - **Falta:** no está configurado.

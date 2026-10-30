@@ -439,10 +439,10 @@ La imagen corre con un usuario sin privilegios, no incluye `config.env` ni `cert
 
 ## Despliegue
 
-Hoy Hive corre en midgard como instancia de prueba: las imágenes se construyen allí desde `develop`, a mano, sin
-pasar por `main` (decisión de Jeremi del 2026-10-20). El procedimiento está en
-[engine/docs/05-deployment](engine/docs/05-deployment/README.md). Lo que sigue es el despliegue continuo, para cuando
-Hive llegue a `main`.
+Hoy Hive corre en midgard, y producción es la última release (decisión de Jeremi del 2026-10-30). Cada tanda de cambios
+que se despliega se corta antes como versión, `vX.Y.Z`, y las imágenes se construyen allí, a mano, desde esa
+etiqueta. Cómo se corta, se despliega y se vuelve atrás está en [releases](docs/05-deployment/releases.md). Lo que
+sigue es el despliegue continuo desde `main`, que todavía no está montado para Hive.
 
 Fusionar a `main` construye y despliega:
 

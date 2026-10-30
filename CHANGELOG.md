@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-30
+
 ### Seguridad
 - **Los tokens de acceso van atados por DPoP a la clave que los pidió** (RFC 9449,
   [ADR-0033](docs/00-project/adr/0033-dpop-en-los-tokens-de-acceso.md), HIG-99; RS30). **Cambio incompatible:** el
@@ -46,6 +48,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **Releases continuas** (HIG-35; decisiones de Jeremi del 2026-10-30;
+  [releases](docs/05-deployment/releases.md)). Esta es la primera.
+  - **Una release por tanda:** cada tanda que se despliega se corta antes como versión SemVer: MENOR si añade algo,
+    PARCHE si solo corrige.
+  - **Producción es la última release:** se construye y se despliega en midgard desde su etiqueta `vX.Y.Z`, y las
+    imágenes llevan la versión.
+  - **Las versiones no esperan a los gates:** la 0.4.0 sale con el Gate 3 abierto. Su documento
+    (`.ai-dlc/gates/gate-3-testing.md`) dice con cifras qué está y qué falta.
+  - **`.ai-dlc/scripts/cortar_release.py`:** pasa `[Unreleased]` a la versión con su fecha y pone al día los enlaces.
+    No escribe nada si la versión ya existe, si no es mayor que la última o si no hay nada que publicar. Con
+    `--notas` da las notas de la release de GitHub. Lo prueba `tests/unit/test_release_cut.py`.
 - **El estado del bot lo mueve lo que dice Meta** (HIG-74, HIG-75; decisiones de Jeremi del 2026-10-30). Antes, ningún
   código lo cambiaba: los 2 bots de producción seguían en `REG` aunque recibían mensajes.
   - **`REG` → `ACT`:** cuando Meta verifica el webhook del bot, o le envía una notificación firmada. Lo segundo activa
@@ -1152,7 +1165,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jeremialcala/wh-python-fastapi-messenger/compare/v0.0.1...v0.1.0
