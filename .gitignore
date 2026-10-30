@@ -51,6 +51,8 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+# What mutmut makes: the mutated copy of the repository and its results (setup.cfg)
+mutants/
 
 # Translations
 *.mo
@@ -114,6 +116,8 @@ venv.bak/
 certs/
 # The register of erasures of a local run
 erasures/
+# What the end-to-end test and its DAST leave: Bifröst's copy in the CI, ZAP's reports (tests/e2e/test_dast.py)
+.e2e/
 images/
 prototypes/
 config.env

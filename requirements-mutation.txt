@@ -1,0 +1,10 @@
+# Mutation testing (HIG-137): the test tooling and mutmut, only for the `mutation` workflow. Apart from
+# requirements-dev.txt so the CI of every pull request does not install it. Pinned with hashes in
+# requirements-mutation.lock, with the same versions as requirements-dev.lock:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements-mutation.txt -o requirements-mutation.lock
+-r requirements-dev.txt
+-c requirements-dev.lock
+
+# Pinned: a new version can change which mutants it makes, and the scores of docs/04-testing/mutation-testing.md
+# would stop being comparable.
+mutmut==3.8.0

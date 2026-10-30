@@ -8,7 +8,7 @@
 # the images are the ones just built, the secrets are born in $E2E_DIR, Meta, the LLM and Zitadel are
 # tests/e2e/fakes.py, the portal is at http://localhost:15004 instead of behind the tunnel, and nothing restarts. The
 # rest, as in production: ENVIRONMENT=production, TLS to Bifröst and to Andvari, the workers read-only and without
-# capabilities.
+# capabilities. hive-api, the webhook and the portal are also on `dast`, the internal network of ZAP (HIG-90).
 name: hive-e2e
 
 x-gateway: &gateway
@@ -108,12 +108,14 @@ services:
       IDP_TOKEN_FILE: /run/e2e/zitadel-token
     tmpfs: [/tmp]
     ports: ["127.0.0.1:15002:5002"]
+    networks: [e2e, dast]
 
   webhook:
     <<: *gateway
     command: ["uvicorn", "webhook:app", "--host", "0.0.0.0", "--port", "5002", "--no-access-log"]
     env_file: ["${E2E_DIR}/gateway.env", "${E2E_DIR}/nats-webhook.env"]
     ports: ["127.0.0.1:15003:5002"]
+    networks: [e2e, dast]
 
   ingest:
     <<: *gateway
@@ -144,7 +146,7 @@ services:
       SESSION_KEY_FILE: /run/e2e/session-key
     volumes: ["${E2E_DIR}:/run/e2e:ro"]
     ports: ["127.0.0.1:15004:8080"]
-    networks: [e2e]
+    networks: [e2e, dast]
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
@@ -185,3 +187,7 @@ services:
 
 networks:
   e2e:
+  # The DAST (HIG-90, tests/e2e/test_dast.py): ZAP is only here, with what it scans, hive-api, the webhook and the
+  # portal. Internal, so that nothing ZAP sends can leave the machine, to production or anywhere else.
+  dast:
+    internal: true

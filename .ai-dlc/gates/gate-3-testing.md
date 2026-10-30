@@ -24,12 +24,16 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o
     una ADR citados dejan de existir.
   - **Falta:** sus huecos, cada uno con su tarea:
-    - DAST (HIG-90);
-    - límites en el resto de rutas (HIG-139);
     - el pipeline del Gate 4 (HIG-20);
     - las alertas y el runbook (HIG-140).
-- [ ] DAST limpio
-  - **Falta:** no hay DAST (HIG-90, OWASP ZAP en los PR hacia `main`).
+- [x] DAST limpio
+  - **Está** (2026-10-30, HIG-90): [OWASP ZAP](../../docs/04-testing/dast.md) contra el stack de la prueba de punta a
+    punta, en el job `dast · zap` de los PR a `main` y a mano. Escanea `hive-api` con su contrato OpenAPI, el webhook
+    con el suyo y el portal entero, y falla con un High que `tests/e2e/zap/rules.tsv` no acepte.
+  - **El primer resultado:** 0 High, 0 Medium y 0 Low en los tres; 5 informativas. Las 45 operaciones con token
+    responden `401` sin él.
+  - **Lo que no alcanza:** las rutas con token, porque ZAP no firma DPoP. Las cubren `tests/security/` y la matriz
+    OWASP.
 - [ ] Rendimiento dentro de SLOs
   - **Está:** el webhook, 8,3 ms de mediana frente a los 250 ms de RNF01
     ([medición](../../docs/04-testing/medicion-webhook-i1.md)).
@@ -39,4 +43,8 @@ lo que está y lo que falta. Lo que falta es HIG-125.
   - **Falta:** una medición que cuente, con 20 respuestas o más. La del 2026-10-30 cumple (mediana 9,5 s, p95
     10,0 s), pero con 3.
 - [ ] Mutation testing ≥ 60% (objetivo)
-  - **Falta:** no está configurado.
+  - **Está** (2026-10-30, HIG-137): mutmut sobre los módulos de seguridad (`src/auth/`, la firma del webhook, el estado
+    de un chatbot y el cifrado por cliente), en el workflow `mutation`, que informa y no bloquea.
+    [La puntuación por módulo](../../docs/04-testing/mutation-testing.md): del 84,8 % al 98,8 % sobre 977
+    mutantes, y todos los módulos por encima del 97 %. Sobreviven 12, cada uno con su motivo.
+  - **Falta:** el resto del gateway y el motor, y decidir si el workflow pasa a bloquear.

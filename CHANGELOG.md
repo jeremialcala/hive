@@ -7,6 +7,59 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-30
+
+### Añadido
+- **Mutation testing de los módulos de seguridad** (HIG-137, Gate 3;
+  [mutation testing](docs/04-testing/mutation-testing.md)). Dice si las pruebas se enteran cuando cambia el código
+  donde un fallo es un fallo de seguridad: `src/auth/`, la firma del webhook, el estado de un chatbot y el cifrado por
+  cliente.
+  - **La herramienta:** mutmut 3.8.0, configurado en `setup.cfg` y fijado en su propio lock,
+    `requirements-mutation.lock`, que el workflow `Seguridad` audita como los demás.
+  - **Dónde corre:** el workflow `mutation`, cada lunes sobre `main`, a mano, y en los pull requests que tocan esos
+    módulos. Informa y no bloquea: deja la puntuación por módulo en el resumen del job
+    (`.ai-dlc/scripts/mutation_score.py`).
+  - **La puntuación:** del 84,8 % al 98,8 % sobre 977 mutantes. Ningún módulo estaba por debajo del 60 %, ni antes.
+    Sobreviven 12: diez equivalentes y dos bordes de un límite de tamaño, cada uno con su motivo en el documento.
+  - **Lo que sobrevivía y cambiaba la seguridad:**
+    - una prueba DPoP se podía repetir en su último segundo si su jti se recordaba 55 s en vez de 65;
+    - un token de una persona que dijera tener un worker del motor o el rol `service`;
+    - un jti vacío o demasiado largo;
+    - hacer sitio en los límites de `/oauth/token` podía olvidar al origen que sigue fallando.
+
+    Ahora cada uno tiene su prueba.
+  - **Más pruebas nuevas:**
+    - los bordes de la vida de un token y de la ventana de una prueba DPoP;
+    - el motivo de cada rechazo en el log y el texto de cada `422` de una clave;
+    - que el índice ciego distingue campos y no cambia entre versiones;
+    - el WARNING de cada movimiento del estado de un chatbot.
+  - **Pruebas arregladas:** siete parametrizaciones tenían ids al azar (`uuid4()`) o que pytest no sabe volver a leer
+    (una IPv6). Ahora llevan `ids=`.
+- **DAST con OWASP ZAP** (HIG-90, Gate 3; [dast](docs/04-testing/dast.md)), en el job `dast · zap` del workflow
+  `e2e`: en los PR a `main`, en los de `develop` que cambian la prueba de punta a punta o el despliegue, y a mano.
+  - **Contra qué:** el stack de la prueba de punta a punta, con las imágenes de producción, en una red interna sin
+    salida. ZAP va fijado por digest y no descarga add-ons.
+  - **Qué escanea:** `hive-api` con su contrato OpenAPI y el webhook con el suyo, con escaneo activo, y el portal
+    entero, con las rutas del login sembradas. Comprueba además que las 45 operaciones con token responden `401` sin
+    él: ZAP no sabe firmar DPoP, y no pasa de ahí.
+  - **Cuándo falla:** con un hallazgo High que `tests/e2e/zap/rules.tsv` no acepte como falso positivo, con su motivo.
+    Medium, Low e Informational quedan en los informes HTML y JSON, adjuntos al job como `dast-zap`.
+  - **El primer resultado,** el 2026-10-30: ningún High, Medium ni Low; cinco informativas.
+
+### Seguridad
+- **El resto de rutas de `hive-api` y el webhook tienen límite de peticiones** (HIG-139, RS10, A06 de la matriz
+  OWASP). Hasta ahora solo lo tenían `/oauth/token` y los envíos.
+  - **`hive-api`:** 300 peticiones por minuto por credencial, sea una clave o una persona. Además, un origen con 30
+    respuestas `401` o `403` en 10 minutos espera, sin que se lea su cuerpo. El portal y el motor llaman desde
+    midgard y solo cuentan por credencial: así, una persona no deja fuera a las demás.
+  - **El webhook:** un origen con 20 peticiones en un minuto sin la firma de Meta, con una mala o con un verify token
+    malo recibe `429` sin que se lea su cuerpo. Lo que trae una firma con la forma de la de Meta pasa siempre. Con dos
+    workers, cada uno cuenta por su lado.
+  - **La respuesta es la de `/oauth/token`:** `429` con `Retry-After`. `/health` no tiene límite.
+  - **Dónde:** `src/auth/request_limits.py`, en memoria y con un tope de claves. La ADR-0028 sube a la 0.2.0 con la
+    enmienda, y la matriz OWASP a la 1.4.0.
+  - **Pruebas:** `tests/security/test_route_limits.py` y `tests/unit/test_request_limits.py`.
+
 ## [0.6.0] - 2026-10-30
 
 ### Seguridad
@@ -1242,7 +1295,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jeremialcala/hive/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jeremialcala/hive/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jeremialcala/hive/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0

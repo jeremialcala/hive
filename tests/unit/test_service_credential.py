@@ -209,7 +209,7 @@ def test_the_answer_with_the_tokens_is_not_to_be_kept(http, engine, bot):
     assert http.get(f"/chat/{bot}/tokens", headers=engine.auth).headers["cache-control"] == "no-store"
 
 
-@pytest.mark.parametrize("bot_id", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("bot_id", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_there_are_no_tokens_of_a_chatbot_that_does_not_exist(http, engine, bot_id):
     response = http.get(f"/chat/{bot_id}/tokens", headers=engine.auth)
 
@@ -402,7 +402,7 @@ def test_only_a_public_p256_key_is_accepted_for_the_engine(http, operator, acme,
     assert Client.objects(uuid=acme.client_id).first().serviceKeys == []
 
 
-@pytest.mark.parametrize("client_id", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("client_id", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_the_engine_is_not_let_in_for_a_client_that_does_not_exist(http, operator, client_id):
     added = http.post(f"/clients/{client_id}/service-keys", headers=operator.auth,
                       json={"signingKey": Engine(client_id).public, "worker": "notifier"})

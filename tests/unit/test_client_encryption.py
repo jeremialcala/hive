@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import json
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import mongoengine
 import pytest
@@ -18,7 +18,7 @@ import app as app_module
 import webhook as webhook_module
 import controller.ingestion as ingestion
 from classes import ChatBot, ChatbotPhone, Client, Contact
-from crypto.fields import ClientCipher, NotEncrypted, is_encrypted, normalize_number
+from crypto.fields import ClientCipher, NotEncrypted, is_encrypted, normalize_email, normalize_number
 from migrations import assign_operator_client, encrypt_client_data
 from repository import NotFound, TenantRepository, data_keys, operator_client
 
@@ -140,7 +140,7 @@ def test_a_tampered_ciphertext_does_not_open(cipher):
 
 
 def test_a_data_key_has_to_be_32_bytes():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="^A data key is 32 bytes$"):
         ClientCipher(uuid4(), os.urandom(16))
 
 
@@ -158,6 +158,33 @@ def test_the_blind_index_of_a_number_differs_between_clients_and_says_nothing_of
     assert WA_ID not in index
     # It is not a plain hash of the number, which anybody could compute for every number there is.
     assert index != hashlib.sha256(WA_ID.encode()).hexdigest()
+
+
+def test_the_blind_index_of_a_value_differs_between_fields(cipher):
+    """The index of a number is no use to find the same digits in another field (HIG-137, a surviving mutant)."""
+    assert cipher.blind_index("Contact.waId", WA_ID) != cipher.blind_index("ClientUser.email", WA_ID)
+
+
+def test_the_blind_index_is_the_same_from_one_version_to_the_next():
+    """
+        The indexes are stored: a contact is found by the index written when it came in. Any change to how one is made
+        (the key derived for it, what is bound to it, the normalization) loses every contact already stored, without
+        an error. These values were made by the version of 2026-10-30 (HIG-137).
+    """
+    cipher = ClientCipher(UUID("00000000-0000-4000-8000-000000000001"), bytes(range(32)))
+
+    assert cipher.blind_index("Contact.waId", "+1 (202) 555-0143") == "7hbCQWh_eiTvpdVeh8HctRWuPdJFY1m2bXcs_u7raGA="
+    assert cipher.blind_index("ClientUser.email", " Ana@Example.com ", normalize_email) \
+        == "a4HfuTWExg52cr0WqaDT3453L_vigh_5a-3FySSxLW8="
+
+
+@pytest.mark.parametrize("stored", ["a-token-in-clear", "v1:AAAA"], ids=["in clear", "does not open"])
+def test_what_does_not_open_says_only_which_field(cipher, stored):
+    """The log says what could not be read, by its field, and nothing of the value (HIG-137, a surviving mutant)."""
+    with pytest.raises(NotEncrypted) as refused:
+        cipher.decrypt("ChatBot.appSecret", stored)
+
+    assert refused.value.args == ("ChatBot.appSecret",)
 
 
 # --- The data key of a client ------------------------------------------------------------------------------------

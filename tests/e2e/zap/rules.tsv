@@ -1,0 +1,13 @@
+# The false positives of the DAST that are accepted (HIG-90, docs/04-testing/dast.md), in the format of ZAP's rules
+# file: three fields separated by a TAB.
+#
+#   <rule id>	IGNORE	(<the rule's name>)            every alert of that rule, on every target
+#   <rule id>	OUTOFSCOPE	<regex of the URL>        only where the URL matches, from its start (re.match)
+#
+# Each entry carries above it, in a comment, why it is a false positive, and who accepted it on what date. The test
+# (tests/e2e/test_dast.py) fails if one does not, or if an entry is not one of these two forms.
+#
+# What this file decides is only which High findings fail the job: it is not passed to ZAP, so that what ZAP runs does
+# not change with what is accepted here (zap-api-scan.py runs another policy as soon as it gets a rules file).
+#
+# None so far: the first scan, on 2026-10-30, found no High.

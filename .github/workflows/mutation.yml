@@ -1,0 +1,80 @@
+# Mutation testing of the modules where a failure is a security failure (HIG-137, Gate 3): who is calling (src/auth),
+# the webhook's signature, what moves a chatbot's state and the per-client encryption. setup.cfg says which, and
+# docs/04-testing/mutation-testing.md has the scores and the mutants that survive on purpose.
+#
+# It informs and does not block: the 60 % of Gate 3 is an objective, and the job only fails if mutmut cannot run.
+# It is not a required check, and it runs on a pull request only when one of those modules or this set-up changes,
+# so it costs the others nothing. Every week it measures what is on main, and by hand whatever branch is asked.
+name: mutation
+
+on:
+  pull_request:
+    paths:
+      - src/auth/**
+      - src/utils/security.py
+      - src/controller/bot_state.py
+      - src/crypto/fields.py
+      - setup.cfg
+      - requirements-mutation.txt
+      - requirements-mutation.lock
+      - .ai-dlc/scripts/mutation_score.py
+      - .github/workflows/mutation.yml
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutmut:
+    name: gateway · mutation
+    runs-on: ubuntu-latest
+    # About 1 000 mutants, and each one of the authentication that survives runs the 1 600 tests that go through it:
+    # with 8 processes it took some 80 minutes (docs/04-testing/mutation-testing.md), and this runner has 4.
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-mutation.lock
+
+      # From its own lock: the same versions as requirements-dev.lock, and mutmut, which the CI of every pull request
+      # does not need.
+      - run: pip install --require-hashes -r requirements-mutation.lock
+
+      # mutmut forks a process per mutant, and runs only the tests that reach the mutated function. The integration
+      # tests are not among them (setup.cfg): without their services they would be skipped, and a skipped test
+      # kills nothing.
+      - name: Mutate and run the tests
+        run: mutmut run --max-children "$(nproc)"
+
+      - name: Score per module
+        run: |
+          python .ai-dlc/scripts/mutation_score.py mutants | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo
+            echo "<details><summary>Surviving mutants</summary>"
+            echo
+            echo '```'
+            mutmut results
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # `mutmut show <mutant>` reads these: the mutated copies and what each mutant did.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants
+          path: |
+            mutants/src/**/*.meta
+            mutants/mutmut-stats.json
+          retention-days: 14

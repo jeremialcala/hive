@@ -218,6 +218,92 @@ def test_a_proof_is_turned_away_for_the_reason_it_should_be(caller):
         dpop.check([forged_proof(caller.key, token)], "GET", {url}, None, time.time(), seen=dpop.Seen())
 
 
+def test_a_proof_is_turned_away_for_the_reason_it_should_be_before_it_is_read(caller):
+    """
+        The reasons the test above does not reach (HIG-137, surviving mutants). An oversized proof is not parsed at all,
+        and a key that is not P-256 is turned away before it is used: with ES256 it would not verify either, but that
+        is a second line, not the first.
+    """
+    token, url = "the.access.token", f"{TEST_SERVER}/keys"
+    p384 = json.loads(jwk.JWK.generate(kty="EC", crv="P-384").export_public())
+    private = jwk.JWK(**caller.key)
+    not_an_object = jws.JWS(b'["a", "list"]')
+    not_an_object.add_signature(private, alg="ES256", protected={"alg": "ES256", "typ": "dpop+jwt",
+                                                                  "jwk": json.loads(private.export_public())})
+    cases = {
+        "not a DPoP proof": [None, forged_proof(caller.key, token, padding="x" * dpop.MAX_PROOF_SIZE)],
+        "no public P-256 key in the proof": [forged_proof(caller.key, token, public=p384),
+                                             forged_proof(caller.key, token, public="a-key")],
+        "bad signature": [not_an_object.serialize(compact=True)],
+    }
+    for reason, proofs in cases.items():
+        for proof in proofs:
+            with pytest.raises(dpop.InvalidProof) as rejection:
+                dpop.check([proof], "GET", {url}, token, time.time(), seen=dpop.Seen())
+            assert str(rejection.value) == reason, (reason, proof)
+
+
+def test_the_window_of_a_proof_and_its_jti_are_checked_to_the_second(caller, monkeypatch):
+    """Each edge on its right side (HIG-137: mutation testing found every one of them unchecked)."""
+    token, url, made = "the.access.token", f"{TEST_SERVER}/keys", int(time.time())
+    monkeypatch.setattr(dpop, "STARTED", made)
+
+    def check(now, **claims):
+        return dpop.check([forged_proof(caller.key, token, **{"iat": made, **claims})], "GET", {url}, token, now,
+                          seen=dpop.Seen())
+
+    jkt = dpop.thumbprint(caller.key)
+    # A minute old, five seconds ahead, made the second the process started, and a jti as long as it may be.
+    assert check(made + dpop.WINDOW) == check(made - dpop.FUTURE) == check(made) == jkt
+    assert check(made, jti="j" * dpop.MAX_JTI_SIZE) == jkt
+    for now, claims, reason in [(made + dpop.WINDOW + 1, {}, "made outside its window"),
+                                (made - dpop.FUTURE - 1, {}, "made outside its window"),
+                                (made, {"iat": made - 1}, "made before this process started"),
+                                (made, {"jti": ""}, "no jti"),
+                                (made, {"jti": 7}, "no jti"),
+                                (made, {"jti": "j" * (dpop.MAX_JTI_SIZE + 1)}, "no jti")]:
+        with pytest.raises(dpop.InvalidProof) as rejection:
+            check(now, **claims)
+        assert str(rejection.value) == reason, (now, claims)
+    with pytest.raises(dpop.InvalidProof) as rejection:
+        dpop.check([forged_proof(caller.key, token)], "GET", {url}, None, made, seen=dpop.Seen())
+    assert str(rejection.value) == "an access token hash where there is no access token"
+
+
+def test_a_proof_cannot_be_taken_again_for_as_long_as_it_could_be_taken(caller, monkeypatch):
+    """
+        A proof is good from 5 seconds before it was made until a minute after: its jti is remembered for all of that,
+        so it cannot be replayed at its last second either (HIG-137, a surviving mutant). Another key may use the
+        same jti: the jtis are remembered per key.
+    """
+    token, url, made = "the.access.token", f"{TEST_SERVER}/keys", int(time.time())
+    monkeypatch.setattr(dpop, "STARTED", 0)
+    seen, other = dpop.Seen(), new_signing_key()
+    proof = forged_proof(caller.key, token, iat=made, jti="once")
+
+    assert dpop.check([proof], "GET", {url}, token, made - dpop.FUTURE, seen) == dpop.thumbprint(caller.key)
+    assert dpop.check([forged_proof(other, token, iat=made, jti="once")], "GET", {url}, token, made, seen) \
+        == dpop.thumbprint(other)
+    with pytest.raises(dpop.InvalidProof) as rejection:
+        dpop.check([proof], "GET", {url}, token, made + dpop.WINDOW, seen)
+    assert str(rejection.value) == "proof already used"
+
+
+def test_a_jti_is_remembered_until_its_window_is_over_and_not_a_moment_more():
+    """The edge of the window is the same for a replay and for making room (HIG-137, surviving mutants)."""
+    seen = dpop.Seen(capacity=2)
+
+    assert seen.remember("k", "a", 100.0, 0.0)
+    assert not seen.remember("k", "a", 160.0, 99.9)
+    # At 100 the proof of "a" could no longer be taken: its jti is free again.
+    assert seen.remember("k", "a", 200.0, 100.0)
+
+    full = dpop.Seen(capacity=1)
+    assert full.remember("k", "a", 100.0, 0.0)
+    assert not full.remember("k", "b", 160.0, 99.9)
+    assert full.remember("k", "b", 200.0, 100.0)
+
+
 def test_a_forged_proof_does_not_burn_a_jti(caller):
     """Only a proof that is good is remembered: somebody else's bad one cannot spend a jti before it is used."""
     seen, url, token = dpop.Seen(), f"{TEST_SERVER}/keys", "the.access.token"

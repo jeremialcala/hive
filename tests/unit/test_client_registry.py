@@ -153,6 +153,27 @@ def test_only_a_public_p256_key_is_accepted(http, operator, kind):
     assert BAD_KEYS[kind].get("d", "no-private-part") not in response.text
 
 
+def test_the_answer_says_what_is_wrong_with_the_key(http, operator):
+    """Each kind of bad key gets its own text, the one the 422 carries (HIG-137: surviving mutants)."""
+    from auth.client_keys import public_signing_key
+
+    not_ec = "The signing key must be an EC key on the P-256 curve"
+    no_coordinates = "The signing key has no coordinates"
+    expected = {"a private key": "That is a private key: only the public part is registered",
+                "an RSA key": not_ec, "another curve": not_ec, "a symmetric key": not_ec, "nothing": not_ec,
+                "no coordinates": no_coordinates, "coordinates that are not text": no_coordinates,
+                "a point off the curve": "The signing key is not a valid point of the P-256 curve"}
+    only_x = {"kty": "EC", "crv": "P-256", "x": public_part(new_signing_key())["x"]}
+
+    for kind, key in [*BAD_KEYS.items(), ("only x", only_x), ("not a key", "a-key")]:
+        with pytest.raises(ValueError) as refused:
+            public_signing_key(key)
+        assert str(refused.value) == {**expected, "only x": no_coordinates,
+                                      "not a key": "The signing key must be a JWK"}[kind], kind
+    response = http.post("/clients", headers=operator.auth, json={"name": "acme", "signingKey": only_x})
+    assert response.json() == {"detail": no_coordinates}
+
+
 # --- A client rotates its own key --------------------------------------------------------------------------------
 
 def test_a_client_rotates_its_key_without_a_gap(http, register):
