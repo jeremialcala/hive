@@ -13,6 +13,23 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El coordinador recuerda cada conversación** (HIG-19; ADR-0017 del gateway). Hasta ahora pedía las vueltas al
+  gateway en cada mensaje.
+  - **Dónde:** el bucket `contexto` de Bifröst, una clave por conversación (`<clientId>.<botId>.<contactId>`), con
+    las 10 últimas vueltas de la persona y lo que vino después, 40 como mucho. Cifrado con la clave Transit
+    `contexto` de Andvari, derivada por cliente. Cada escritura renueva sus 24 horas y se hace con compare-and-swap.
+  - **De dónde salen las vueltas:** del contexto si sirve para el mensaje; si no está, o tiene algo posterior a un
+    mensaje que llega con retraso, del gateway, como antes, y con ellas se siembra.
+  - **Qué se apunta:** lo que dijo la persona, al publicar el pedido; lo que contestó el bot, con el consumidor nuevo
+    `MOTOR/coordinator-respuesta`. Una reentrega no apunta dos veces.
+  - **La supresión:** el consumidor nuevo `SUPRESIONES/coordinator` purga por sujeto las conversaciones del
+    contacto, el bot o el cliente borrados.
+  - **Si Bifröst o Andvari fallan,** se pregunta al gateway y el mensaje sigue; el log dice el tipo de fallo, nunca
+    el texto.
+  - **El resumen** queda para HIG-143.
+  - **Pruebas:** `tests/unit/test_memoria.py`, 30, y `tests/integration/test_contexto_bifrost.py`, 4, contra NATS
+    con los permisos de Bifröst. Necesita higerotech/bifrost (permisos y consumidores) y higerotech/andvari (la
+    clave y su política).
 - **El notificador avisa de los pedidos del cliente que no envía** (HIG-87 del gateway). Hasta ahora se
   descartaban dejando solo una línea en el log. Ahora publica un `EnvioFallido` en
   `engine.reply.failed.{botId}` del stream `RESPUESTAS`, con el pedido, el motivo y, si fue Meta, su código. La API

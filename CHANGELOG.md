@@ -17,6 +17,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - **Pruebas:** la misma notificación, otra vez a las 6 horas y a los 6 días, no se publica; el historial la recuerda
     más que los reintentos de Meta; una publicación repetida lleva el mismo `Nats-Msg-Id`.
   - **En producción**, del 2026-10-19 al 30, ningún mensaje recibió dos respuestas.
+- **`EngineKeyStore` cifra y abre con una clave Transit de Andvari, derivada por cliente** (HIG-19): `encrypt` y
+  `decrypt`, para el contexto que el coordinador del motor guarda en Bifröst. Lo cifrado para un cliente no se abre
+  con el de otro, y un rol sin la política no llega: comprobado contra OpenBao en
+  `tests/integration/test_engine_key_store.py`.
+
+### Cambiado
+- **ADR-0017, 0.2.0: lo construido en HIG-19.** El contexto sin resumen (pasa a HIG-143), quién apunta cada vuelta,
+  cuándo no sirve el contexto, la supresión como purga por sujeto, la clave Transit `contexto` y los permisos de
+  Bifröst.
 
 ## [0.9.0] - 2026-10-30
 
