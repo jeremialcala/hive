@@ -198,7 +198,8 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 **Huecos:**
 - no hay fuzzing de los cuerpos de las rutas con token: el DAST ([`dast · zap`](../docs/04-testing/dast.md), HIG-90)
   solo llega hasta su `401`;
-- los modelos de gestión no acotan todos sus campos (RS11): la persona y las reglas sí, desde HIG-105 y HIG-106;
+- los modelos de gestión no acotan todos sus campos (RS11): la persona y las reglas sí, desde HIG-105 y HIG-106, y
+  los intents desde HIG-142 (`tu/test_intent_request.py`);
 - el catálogo de herramientas MCP sigue pendiente (RS29).
 
 ## A06 — Diseño inseguro

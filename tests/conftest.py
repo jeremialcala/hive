@@ -402,7 +402,8 @@ def another():
 SECURITY_MODULES = {
     "test_authentication", "test_bot_config", "test_bot_state", "test_bot_versions", "test_client_encryption",
     "test_client_isolation",
-    "test_data_access_boundary", "test_dpop", "test_intent_destinations", "test_key_proof", "test_logs_and_errors",
+    "test_data_access_boundary", "test_dpop", "test_intent_destinations", "test_intent_request", "test_key_proof",
+    "test_logs_and_errors",
     "test_owasp_mapping", "test_people", "test_request_limits", "test_role_matrix", "test_service_credential",
     "test_token_limits", "test_webhook_security",
 }

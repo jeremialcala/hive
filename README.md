@@ -301,9 +301,12 @@ Hive gestiona en Meta las plantillas de WhatsApp de un bot, con su `whatsappToke
 | `DELETE` | `/chat/{bot_id}/intents/{intent_id}` | Borra un intent. |
 | `GET`  | `/chat/{bot_id}/tools` | Devuelve las acciones activas de los intents activos del bot como una lista plana de definiciones de herramientas para el LLM. |
 
-`IntentRequest` todavía rellena con ejemplos lo que falta: un intent sin `actions` recibe la acción de ejemplo
-`get_order`. Hay que enviar todos sus campos, también `parameters` y el `apiCall` entero de cada acción, como hace
-la PWA.
+`IntentRequest` no rellena nada con un ejemplo (HIG-142). Pide `name` y `description` del intent, y de cada acción
+su `name` (un nombre de herramienta: letras, cifras, `_` y `-`, hasta 64) y su `description`. Lo demás tiene un
+valor neutro: sin `samplePhrases` ni `actions`, ninguna; sin `parameters`, ninguno; del `apiCall`, `GET`, sin
+cabeceras ni consulta, `authType` `none` y 30 segundos. Una acción `api_call` lleva su `apiCall` y un `handoff` no
+lleva ninguno. El texto que lee el modelo sigue las reglas de la persona; las cabeceras y la consulta no admiten
+saltos de línea; `authRef` es el nombre de un secreto, nunca su valor. Un campo de más es un `422`.
 
 ### Versiones — etiqueta `Versions`
 
