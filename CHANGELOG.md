@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-30
+
 ### Añadido
 - **Mutation testing de los módulos de seguridad** (HIG-137, Gate 3;
   [mutation testing](docs/04-testing/mutation-testing.md)). Dice si las pruebas se enteran cuando cambia el código
@@ -1293,7 +1295,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jeremialcala/hive/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jeremialcala/hive/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jeremialcala/hive/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jeremialcala/hive/compare/v0.3.0...v0.4.0
