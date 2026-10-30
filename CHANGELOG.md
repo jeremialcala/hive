@@ -7,6 +7,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **DAST con OWASP ZAP** (HIG-90, Gate 3; [dast](docs/04-testing/dast.md)), en el job `dast · zap` del workflow
+  `e2e`: en los PR a `main`, en los de `develop` que cambian la prueba de punta a punta o el despliegue, y a mano.
+  - **Contra qué:** el stack de la prueba de punta a punta, con las imágenes de producción, en una red interna sin
+    salida. ZAP va fijado por digest y no descarga add-ons.
+  - **Qué escanea:** `hive-api` con su contrato OpenAPI y el webhook con el suyo, con escaneo activo, y el portal
+    entero, con las rutas del login sembradas. Comprueba además que las 45 operaciones con token responden `401` sin
+    él: ZAP no sabe firmar DPoP, y no pasa de ahí.
+  - **Cuándo falla:** con un hallazgo High que `tests/e2e/zap/rules.tsv` no acepte como falso positivo, con su motivo.
+    Medium, Low e Informational quedan en los informes HTML y JSON, adjuntos al job como `dast-zap`.
+  - **El primer resultado,** el 2026-10-30: ningún High, Medium ni Low; cinco informativas.
+
 ## [0.6.0] - 2026-10-30
 
 ### Seguridad
