@@ -7,6 +7,20 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **El resto de rutas de `hive-api` y el webhook tienen límite de peticiones** (HIG-139, RS10, A06 de la matriz
+  OWASP). Hasta ahora solo lo tenían `/oauth/token` y los envíos.
+  - **`hive-api`:** 300 peticiones por minuto por credencial, sea una clave o una persona. Además, un origen con 30
+    respuestas `401` o `403` en 10 minutos espera, sin que se lea su cuerpo. El portal y el motor llaman desde
+    midgard y solo cuentan por credencial: así, una persona no deja fuera a las demás.
+  - **El webhook:** un origen con 20 peticiones en un minuto sin la firma de Meta, con una mala o con un verify token
+    malo recibe `429` sin que se lea su cuerpo. Lo que trae una firma con la forma de la de Meta pasa siempre. Con dos
+    workers, cada uno cuenta por su lado.
+  - **La respuesta es la de `/oauth/token`:** `429` con `Retry-After`. `/health` no tiene límite.
+  - **Dónde:** `src/auth/request_limits.py`, en memoria y con un tope de claves. La ADR-0028 sube a la 0.2.0 con la
+    enmienda, y la matriz OWASP a la 1.4.0.
+  - **Pruebas:** `tests/security/test_route_limits.py` y `tests/unit/test_request_limits.py`.
+
 ## [0.6.0] - 2026-10-30
 
 ### Seguridad

@@ -27,6 +27,9 @@ it a DPoP proof (RFC 9449) in the `DPoP` header: the token is bound to the key o
 * The access token lasts 10 minutes and is good for every request in them. Ask for a new one shortly before it
   expires, not for every request: each key gets a bounded number of tokens an hour, and an address that asks too
   often, or keeps sending assertions that are not good, gets a 429 with `Retry-After`.
+* Every other route but the health check counts the requests of each credential, a key or a person: 300 a minute,
+  and more get the same 429 with `Retry-After`. An address that got a 401 or a 403 30 times in ten minutes gets it
+  too, until the first of them is ten minutes old.
 
 ### A client and its chatbots
 

@@ -202,6 +202,19 @@ def token_limits(monkeypatch):
     return limits
 
 
+@pytest.fixture(autouse=True)
+def request_limits(monkeypatch):
+    """
+        The same for the limits of the other routes and of the webhook (HIG-139): every test gets its own counters of
+        credentials and of failures. Returns them.
+    """
+    from auth import request_limits
+
+    limits = request_limits.RequestLimits()
+    monkeypatch.setattr(request_limits, "LIMITS", limits)
+    return limits
+
+
 # The private key each assertion and each access token of the tests was made with. For every request that carries
 # one of those tokens, the test client signs the DPoP proof a client would (ADR-0033); a token that is not here goes
 # without one, and a request that already brings its own DPoP header is left as it is.
@@ -389,8 +402,8 @@ def another():
 SECURITY_MODULES = {
     "test_authentication", "test_bot_state", "test_client_encryption", "test_client_isolation",
     "test_data_access_boundary", "test_dpop", "test_intent_destinations", "test_key_proof", "test_logs_and_errors",
-    "test_owasp_mapping", "test_people", "test_role_matrix", "test_service_credential", "test_token_limits",
-    "test_webhook_security",
+    "test_owasp_mapping", "test_people", "test_request_limits", "test_role_matrix", "test_service_credential",
+    "test_token_limits", "test_webhook_security",
 }
 
 
