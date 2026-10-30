@@ -59,6 +59,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - **Volver a una versión** revisa también la persona y las reglas con los límites de hoy: la respuesta `422` dice qué
     no pasa (`persona`, `rules`, `intents`).
 
+### Corregido
+- **La PWA ya no pierde una acción al editar un intent.** Las acciones que no son una llamada a una API (un
+  `handoff`) no tienen formulario en la ficha, y `hive-api` no acepta una acción sin su llamada: guardar las quitaba sin
+  avisar. Ahora la ficha lo dice y no deja guardar ese intent. En producción no hay ningún intent, así que no se
+  perdió nada.
+- **El README dice lo que piden hoy `POST /bot` y las reglas:** todos los campos, sin ejemplos y con los límites
+  de RS11. Faltaban también en sus tablas las rutas de la persona, de editar y borrar reglas, de las versiones y
+  `GET /client`.
+
 ## [0.8.0] - 2026-10-30
 
 ### Añadido

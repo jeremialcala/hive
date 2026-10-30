@@ -311,6 +311,9 @@ function IntentEditor({ botId, intent, version, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const route = creating ? `chat/${botId}/intents` : `chat/${botId}/intents/${intent.uuid}`;
   const body = intentBody(draft);
+  // An action that is not a call to an API (a handoff) has no form here, and hive-api takes no action without its
+  // call: saving would drop it. The intent is not saved from here, so nothing is lost without a word.
+  const untouchable = intent ? intent.actions.filter((action) => !action.apiCall).map((action) => action.name) : [];
 
   const setAction = (index, change) => setDraft({ ...draft,
     actions: draft.actions.map((action, at) => (at === index ? change(action) : action)) });
@@ -331,8 +334,12 @@ function IntentEditor({ botId, intent, version, onClose, onSaved }) {
         subtitle=${creating ? `POST /chat/${botId}/intents` : `PUT /chat/${botId}/intents/${intent.uuid}`} onClose=${onClose}
         footer=${html`
           <${Button} variant="ghost" onClick=${onClose}>Cancelar<//>
-          <${Button} variant="primary" icon="check" disabled=${!draft.name.trim() || !draft.description.trim() || saving}
+          <${Button} variant="primary" icon="check"
+              disabled=${!draft.name.trim() || !draft.description.trim() || saving || untouchable.length > 0}
               onClick=${() => send(creating ? "POST" : "PUT")}>Guardar intent · v${(version || 0) + 1}<//>`}>
+      ${untouchable.length > 0 && html`<p class="pwa-error" role="alert">
+        Este intent tiene acciones que no son una llamada a una API (${untouchable.join(", ")}), y la PWA no puede
+        guardarlo sin quitarlas. Cámbialo por la API.</p>`}
       <${Field} id="intent-name" label="Intent" mono required value=${draft.name}
           onChange=${(event) => setDraft({ ...draft, name: event.target.value })} help="Una palabra: lo que quiere la persona." />
       <${Field} id="intent-description" label="Descripción" required value=${draft.description}
