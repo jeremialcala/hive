@@ -1,0 +1,56 @@
+# hive-portal, the BFF of Hive's PWA (HIG-93), as it runs on midgard, next to hive-api. Copy to /srv/apps/hive-portal/,
+# next to its .env and its keys/ directory.
+#
+#   * the image tag is never `latest`: PORTAL_IMAGE_TAG says which build runs, so a rollback is bringing the previous
+#     tag back up
+#   * Zitadel, by its public name and with TLS (ADR-0029): the portal is its confidential client, with OIDC_CLIENT_ID
+#     in .env and its secret in keys/oidc-client-secret
+#   * the sessions, in the bucket `sesiones` of Bifröst (ADR-0034), with the portal's own user, as Bifröst wrote it
+#     in credenciales/portal.env, over the external `bifrost` network; sealed with keys/session-key
+#   * hive-api and the tunnel, over the gateway's network `publico`: the tunnel publishes the portal at
+#     https://hive-app.higerotech.com, and the portal reaches hive-api by its name, as the engine does
+#   * keys/ is mounted as a directory: without a file there yet, the container starts, and says what is missing
+#     instead of Docker making a directory where the file should be
+#
+#   PORTAL_IMAGE_TAG=<tag> docker compose --project-directory /srv/apps/hive-portal up -d
+
+name: hive-portal
+
+services:
+  portal:
+    image: ghcr.io/jeremialcala/hive-portal:${PORTAL_IMAGE_TAG:?PORTAL_IMAGE_TAG is required}
+    container_name: hive-portal
+    restart: unless-stopped
+    env_file:
+      - .env
+      - /srv/infra/bifrost/credenciales/portal.env
+    environment:
+      ENVIRONMENT: production
+      PORTAL_URL: https://hive-app.higerotech.com
+      IDP_ISSUER: https://hive-auth.higerotech.com
+      HIVE_API_URL: http://hive-api:5002
+      OIDC_CLIENT_SECRET_FILE: /run/portal/oidc-client-secret
+      SESSION_KEY_FILE: /run/portal/session-key
+    volumes:
+      - ./keys:/run/portal:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    networks: [publico, bifrost]
+    # For the operator, on midgard itself: the tunnel reaches it by the network.
+    ports:
+      - "127.0.0.1:5004:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+networks:
+  # The gateway's: the tunnel and hive-api are there.
+  publico:
+    name: hive-gateway_publico
+    external: true
+  bifrost:
+    external: true

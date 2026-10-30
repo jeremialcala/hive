@@ -46,6 +46,37 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **`hive-portal`, el BFF de la PWA** (HIG-93, [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md),
+  [ADR-0034](docs/00-project/adr/0034-sesiones-del-portal-en-bifrost.md); RS22, AB25). Es un proyecto nuevo en
+  `portal/`, con su imagen, `ghcr.io/jeremialcala/hive-portal`, sus pruebas y su CI (`portal · test`,
+  `portal · image`).
+  - **El inicio de sesión con Zitadel:** OIDC Authorization Code con PKCE (S256), `state` y `nonce`. El portal es un
+    cliente confidencial (`client_secret_basic`). Un inicio de sesión en curso dura 10 minutos, vale una vez y va
+    atado al navegador que lo empezó (cookie `__Host-hive-login`).
+  - **El ID token:** el portal lo comprueba con el código de `shared/auth/idp.py`, que pasa del gateway a `shared/`
+    con el `nonce` de ese inicio de sesión. Después lo cambia por un token de Hive en `hive-api` (RFC 8693), con una
+    prueba DPoP de su propia clave, que solo vive en su memoria.
+  - **La sesión, en el servidor:** en el bucket `sesiones` de Bifröst, sellada con AES-256-GCM y guardada bajo el hash
+    de su identificador (ADR-0034). Termina a los 30 minutos sin uso, a las 12 horas en total, o cuando Hive deja de
+    dar token a la persona.
+  - **En el navegador, solo una cookie:** `__Host-hive-session`, con `HttpOnly`, `Secure` y `SameSite=Lax`. Toda
+    petición que cambia algo lleva `X-Hive-Portal: 1` y el origen del portal. Si no, `403`, y no se reenvía nada.
+  - **`/api/<ruta>`** reenvía la petición de la PWA a `hive-api` como la persona:
+    - pasan solo las cabeceras necesarias, sin la cookie;
+    - el token se renueva antes de caducar, y una vez más si `hive-api` responde `401`, como tras un reinicio;
+    - `/api/oauth/…` no se alcanza.
+  - **Las páginas:** CSP sin nada de fuera, HSTS, `nosniff` y `no-store`. La PWA de HIG-87 ocupará `/`; hasta
+    entonces hay una página que dice si hay sesión.
+  - **El despliegue:** `portal/deploy/docker-compose.yml`, en las redes `hive-gateway_publico` y `bifrost`. La guía de
+    autenticación (0.6.0) dice cómo configurar la app en Zitadel, la clave de las sesiones, Bifröst y el nombre
+    público.
+  - **Bifröst:** el bucket `sesiones` y el usuario `portal` (higerotech/bifrost#7).
+  - **CI:** el análisis de dependencias (`Seguridad`) audita también los locks del portal, y un cambio solo del portal
+    no redespliega el gateway.
+  - **Pruebas:** 51 pruebas unitarias contra un Zitadel y un `hive-api` falsos, y 2 de integración contra un NATS con
+    los permisos de Bifröst. Cubren lo que pedía HIG-93: una cookie robada sin la cabecera no cambia nada, una sesión
+    caducada lleva otra vez al inicio de sesión y el navegador nunca recibe un token. Cobertura del 85 %, y pylint
+    10/10.
 - **El `cliente-admin` invita y gestiona las personas de su cliente** (HIG-94,
   [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md); RF16, AB24).
   - **Rutas nuevas:** `POST` y `GET /people`, y `PUT` y `DELETE /people/{person_id}`. Las usa el `cliente-admin` o la

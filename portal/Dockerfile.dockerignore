@@ -1,0 +1,18 @@
+# The context of the image of hive-portal, built from the root of the monorepo (docker build -f portal/Dockerfile .).
+# BuildKit reads this file instead of the root's .dockerignore. Nothing goes in by default; only what the Dockerfile
+# copies.
+**
+
+!portal/requirements.lock
+!portal/src/
+!shared/
+
+# And of that, never what is not code.
+**/__pycache__
+**/*.pyc
+**/*.log
+**/config.env
+**/*.env
+**/.env*
+**/*.pem
+**/*.key

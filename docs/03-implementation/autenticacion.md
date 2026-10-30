@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.5.2
+* **Versión:** 0.6.0
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -445,6 +445,60 @@ lleguen a midgard. Se da de alta una vez, en el panel de Cloudflare, en la zona 
 Es la única regla de límite del plan Free, que solo cuenta por IP y en ventanas de 10 segundos. El motor no pasa por
 ella, porque llama a `hive-api` por la red interna. Se comprueba desde fuera: once peticiones seguidas desde la misma
 máquina, y la undécima recibe la respuesta de bloqueo de Cloudflare, no la de `hive-api`.
+
+## El portal (`hive-portal`)
+
+El BFF de la PWA (HIG-93, [portal/README.md](../../portal/README.md)) corre en midgard, en `/srv/apps/hive-portal`,
+junto a `hive-api`, y se publica en `https://hive-app.higerotech.com`. Ponerlo en marcha lleva estos pasos, una vez:
+
+1. **La app `hive-portal` en Zitadel** (*Projects → Hive → hive-portal*):
+   - *Redirect Settings*:
+     - Redirect URI: `https://hive-app.higerotech.com/auth/callback`;
+     - Post Logout URI: `https://hive-app.higerotech.com/`.
+   - *Authentication Method*: **Basic**, que ya está.
+   - *Actions → Regenerate client secret*. Zitadel lo enseña una sola vez y va directo al fichero:
+
+     ```sh
+     # En midgard. Se pega el secreto, Enter y Ctrl-D.
+     sudo install -d -m 700 -o 10001 -g 10001 /srv/apps/hive-portal/keys
+     sudo sh -c 'umask 077; cat > /srv/apps/hive-portal/keys/oidc-client-secret'
+     sudo chown 10001:10001 /srv/apps/hive-portal/keys/oidc-client-secret
+     sudo chmod 400 /srv/apps/hive-portal/keys/oidc-client-secret
+     ```
+2. **La caducidad de los ID tokens**, en *Default settings → OIDC Token lifetimes*: **12 horas** o más. El portal
+   renueva el token de Hive con el ID token de la sesión, así que con menos la sesión termina antes de tiempo
+   ([ADR-0034](../00-project/adr/0034-sesiones-del-portal-en-bifrost.md)).
+3. **La clave de las sesiones**, que nace en midgard y no sale de allí:
+
+   ```sh
+   sudo sh -c 'umask 077; head -c 32 /dev/urandom | base64 > /srv/apps/hive-portal/keys/session-key'
+   sudo chown 10001:10001 /srv/apps/hive-portal/keys/session-key
+   sudo chmod 400 /srv/apps/hive-portal/keys/session-key
+   ```
+
+   Rotarla cierra todas las sesiones, y no rompe nada más.
+4. **Bifröst:** el bucket `sesiones` y el usuario `portal` (higerotech/bifrost#7). Se instala con `instalar.sh`,
+   después se reinicia Bifröst y por último se ejecuta `jetstream/aprovisionar.sh`. Las credenciales quedan en
+   `/srv/infra/bifrost/credenciales/portal.env`.
+5. **El `.env` de `/srv/apps/hive-portal`:** `OIDC_CLIENT_ID=<el Client Id de hive-portal>`. El resto ya lo pone el
+   compose.
+6. **El nombre público**, en el túnel de midgard. En Cloudflare Zero Trust: *Networks → Tunnels → el túnel de
+   midgard → Public Hostname → Add*. Ahí, `hive-app.higerotech.com` → `http://hive-portal:8080`. El túnel y el portal
+   comparten la red `hive-gateway_publico`.
+7. **La imagen y el arranque**, desde una copia de `develop` en `~/hive-build`:
+
+   ```sh
+   sudo docker build -f portal/Dockerfile -t ghcr.io/jeremialcala/hive-portal:hive-<sha7> .
+   sudo install -d /srv/apps/hive-portal
+   sudo install -m 644 portal/deploy/docker-compose.yml /srv/apps/hive-portal/docker-compose.yml
+   cd /srv/apps/hive-portal && sudo env PORTAL_IMAGE_TAG=hive-<sha7> docker compose up -d
+   ```
+
+Para comprobarlo:
+- `curl -s http://127.0.0.1:5004/health`, en midgard;
+- `https://hive-app.higerotech.com/auth/login`, que tiene que llevar a Zitadel.
+
+Mientras Nidavellir no cumpla 14 días seguidos sin colgarse, solo entran personas de prueba (ADR-0029, enmienda).
 
 ## Lo que no hace todavía
 

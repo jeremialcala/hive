@@ -1,0 +1,9 @@
+# What the CI and the tests install besides the runtime. Pinned in requirements-dev.lock:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements-dev.txt \
+#     -c ../requirements-dev.lock -o requirements-dev.lock
+-r requirements.txt
+
+pytest
+pytest-cov
+httpx
+pylint
