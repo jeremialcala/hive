@@ -348,6 +348,8 @@ BODIES = {
     ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": LEAK},
     ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
     ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
+    ("POST", "/people"): {"email": "failure-text-marker@acme.test", "role": "cliente-analista"},
+    ("PUT", "/people/{person_id}"): {"status": "blocked"},
 }
 
 
@@ -360,7 +362,8 @@ def test_no_route_writes_what_its_address_carries(http, operator, logged, method
     """One part of the address at a time is not an identifier, in every route that has one."""
     made = set_up(http, operator)
     parts = {"bot_id": made["bot"], "intent_id": made["intent"], "contact_id": made["contact"],
-             "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID}
+             "client_id": str(operator.client_id), "kid": operator.kid, "template_id": TEMPLATE_ID,
+             "person_id": str(uuid4())}
     parts[planted] = "address-marker%0AFORGED"
 
     response = call(http, operator, method, path.format(**parts), BODIES.get((method, path)))
@@ -390,7 +393,8 @@ def everything_fails(monkeypatch):
 def test_the_text_of_a_failure_is_neither_answered_nor_logged(http, operator, logged, everything_fails, method, path):
     made = set_up(http, operator)
     address = path.format(bot_id=made["bot"], intent_id=made["intent"], contact_id=made["contact"],
-                          client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID)
+                          client_id=operator.client_id, kid=operator.kid, template_id=TEMPLATE_ID,
+                          person_id=uuid4())
     # Adding a key of its own needs a proof for the token of that same request: the body cannot be made ahead.
     request = (operator.adding(new_signing_key()) if (method, path) == ("POST", "/keys") else
                {"headers": operator.auth, "json": BODIES.get((method, path))})

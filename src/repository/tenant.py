@@ -212,12 +212,43 @@ class TenantRepository:
         try:
             person.save(force_insert=True)
         except NotUniqueError:
-            raise Conflict("person") from None
+            person = self._invite_again(person)
         if not Client.objects(uuid=self.client_id, status=Status.ACT.value).count():
             # The client was deleted while this was on its way: nobody is left behind in its name.
             person.delete()
             raise NotFound(self.client_id)
         return person
+
+    def _invite_again(self, person: ClientUser) -> ClientUser:
+        """The same person of the IdP is already in the client: only one that was removed is invited again."""
+        again = self._own(ClientUser, key=person.key, status=PersonStatus.REMOVED.value).modify(
+            new=True, set__email=person.email, set__emailIndex=person.emailIndex, set__role=person.role,
+            set__status=person.status, set__invitedBy=person.invitedBy, set__invitedAt=datetime.now(timezone.utc),
+            set__statusDate=datetime.now(timezone.utc))
+        if again is None:
+            raise Conflict("person")
+        return again
+
+    def list_people(self) -> list:
+        """The people of the client, the removed ones too: what is left of them says who did what."""
+        return list(self._own(ClientUser).order_by("invitedAt"))
+
+    def active_admins(self) -> int:
+        return self._own(ClientUser, role=PersonRole.ADMIN.value, status=PersonStatus.ACTIVE.value).count()
+
+    def set_person_role(self, person: ClientUser, role: PersonRole) -> ClientUser:
+        """Another role, from their next exchange of a token on."""
+        person.role = role.value
+        return self._save_own(person)
+
+    def remove_person(self, person: ClientUser) -> ClientUser:
+        """
+            The person gets no token any more, ever, and their email is erased: what is left, the uuid and who they
+            are in the IdP, is what the client's audit says who did what by. Inviting them again brings them back.
+        """
+        person.status, person.statusDate = PersonStatus.REMOVED.value, datetime.now(timezone.utc)
+        person.email, person.emailIndex = None, None
+        return self._save_own(person)
 
     def get_person(self, person_id) -> ClientUser:
         person = self._own(ClientUser, uuid=as_uuid(person_id)).first()
@@ -229,10 +260,11 @@ class TenantRepository:
         return self._own(ClientUser, emailIndex=self._cipher.blind_index("ClientUser.email", email,
                                                                          normalize_email)).first()
 
-    def person_email(self, person: ClientUser) -> str:
+    def person_email(self, person: ClientUser) -> str | None:
+        """The email, opened; None for a person who was removed."""
         if person.clientId != self.client_id:
             raise NotFound(person.uuid)
-        return self._cipher.decrypt("ClientUser.email", person.email)
+        return self._cipher.decrypt("ClientUser.email", person.email) if person.email else None
 
     def set_person_status(self, person: ClientUser, status: PersonStatus) -> ClientUser:
         """Lets a person in, blocks them or removes them: from their next exchange of a token on (ADR-0029, point 8)."""

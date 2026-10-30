@@ -22,8 +22,9 @@ class ClientUser(Document):
     # Who the person is in the IdP: the `iss` and the `sub` of the ID token.
     issuer = StringField(required=True, max_length=255)
     subject = StringField(required=True, max_length=255)
-    email = StringField(required=True)
-    emailIndex = StringField(required=True)
+    # Erased when the person is removed: what is left says only who did what, by the uuid.
+    email = StringField()
+    emailIndex = StringField()
     role = StringField(required=True, choices=[role.value for role in PersonRole])
     status = StringField(required=True, choices=[status.value for status in PersonStatus],
                          default=PersonStatus.PENDING.value)

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     idp_issuer: str | None = None
     idp_audience: str | None = None
     idp_jwks_url: str | None = None
+    # Hive's service account in Zitadel, which invites the people (HIG-94): its API, by default the issuer; the
+    # organization of Hive's people there; and the file its token is read from, which goes nowhere else.
+    idp_api_url: str | None = None
+    idp_organization_id: str | None = None
+    idp_token_file: str | None = None
     # The key service that holds the master key: an OpenBao. The app starts without reaching it, but nothing
     # encrypted can be read or written until it answers.
     andvari_addr: str = Field(min_length=8)

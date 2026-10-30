@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.4.0
+* **Versión:** 0.5.0
 
 Todo endpoint que no sea el webhook de Meta, `/health` ni `/oauth/token` pide un **token de acceso** en la cabecera
 `Authorization: DPoP <token>`, y a su lado una **prueba DPoP** en la cabecera `DPoP`. Es OAuth 2.0 con la concesión
@@ -254,8 +254,34 @@ Sin `IDP_ISSUER` o sin `IDP_AUDIENCE`, el intercambio responde `unsupported_gran
 credenciales de máquina. `hive-api` lee las claves de Zitadel por su nombre público, con TLS, y las guarda una hora.
 Si llega un ID token firmado por una clave que no tiene, las vuelve a leer, como mucho una vez por minuto.
 
-Las personas todavía no se invitan por la API: eso es HIG-94. Hasta entonces, nadie consigue un token de persona en
-producción, lo que además respeta la condición de los 14 días de estabilidad de Nidavellir (ADR-0029, enmienda).
+### La cuenta de servicio que invita a las personas
+
+Hive invita a las personas con una cuenta de servicio propia en Zitadel (HIG-94, ADR-0029, punto 7). Se crea una vez,
+en la consola de Zitadel, `https://hive-auth.higerotech.com/ui/console`:
+
+1. **El usuario de servicio.** En la organización de las personas de Hive: *Users → Service Users → New*. Nombre
+   `hive-api`, tipo de token *Bearer*.
+2. **Su permiso.** *Organization → Managers → +*: el usuario `hive-api`, con el rol `ORG_USER_MANAGER`. Le basta
+   para buscar, crear e invitar usuarios de esa organización, y nada más.
+3. **Su token.** En el usuario, *Personal Access Tokens → New*. Zitadel lo enseña una sola vez: va directo al fichero
+   de midgard, sin pasar por el chat ni por un comando con argumentos.
+
+   ```sh
+   # En midgard. Se pega el token, Enter y Ctrl-D: no queda en el historial ni en ps, y el fichero es solo de root.
+   sudo install -d -m 700 /srv/apps/hive-gateway/keys/idp
+   sudo sh -c 'umask 077; cat > /srv/apps/hive-gateway/keys/idp/zitadel-token'
+   ```
+
+   El contenedor lo lee de `/run/idp/zitadel-token` en cada invitación, así que rotarlo no pide reiniciar nada.
+4. **En el `.env` de `hive-api`:** `IDP_ORGANIZATION_ID=<el id de esa organización>`, junto a `IDP_ISSUER`. Si
+   Zitadel no se alcanza por el emisor, `IDP_API_URL`.
+
+Sin la organización o sin el token, `POST /people` responde `503` y el log dice qué falta. Si Zitadel rechaza la
+cuenta de servicio (`401`, `403`), también `503`, con el código en el log: es para el operador, no para el cliente.
+
+Nadie consigue un token de persona en producción hasta que haya un IdP, una cuenta de servicio y una persona
+invitada. Además, las personas de verdad esperan a que Nidavellir cumpla 14 días seguidos sin colgarse (ADR-0029,
+enmienda).
 
 ### Alta de un cliente
 

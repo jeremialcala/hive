@@ -636,12 +636,12 @@ ROUTES = sorted({(method, route.path) for route in app_module.app.routes if hasa
                  and not route.path.startswith(("/docs", "/redoc", "/openapi")) for method in route.methods
                  if method != "HEAD"} - PUBLIC)
 PLACEHOLDERS = {"bot_id": str(uuid4()), "intent_id": str(uuid4()), "client_id": str(uuid4()), "kid": "a-kid",
-                "template_id": "1234567890",
+                "template_id": "1234567890", "person_id": str(uuid4()),
                 "contact_id": str(uuid4())}
 
 
 def test_the_webhook_health_and_token_routes_are_the_only_ones_without_a_token():
-    assert len(ROUTES) == 38
+    assert len(ROUTES) == 42
 
 
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer not-a-token"}], ids=["no token", "garbage"])
