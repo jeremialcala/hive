@@ -8,6 +8,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **La ficha del bot en la PWA** (HIG-121; RF23, RF24, RF26; las pantallas 05 a 08 del canvas).
+  - **La cabecera:** el estado REG/ACT/ERR, el `bot_id` y la versión. En ERR dice qué hacer.
+  - **Identidad:** el `cliente-admin` cambia la persona; guardar crea la versión siguiente y un rechazo de RS11 sale
+    en su campo.
+  - **Credenciales de Meta:** dice qué está cargado, sin mostrar nunca su valor, y solo deja cargarlo o reemplazarlo.
+  - **Cerebro e intents:** las reglas y los intents, cada uno con su destino; se añaden, editan y borran con los
+    destinos permitidos a la vista.
+  - **Versiones:** la lista y lo que cambiaría al volver a una. «Volver a vN», solo para el `cliente-admin`; si algo
+    ya no cumple las reglas de hoy, la ficha dice qué.
+  - **El `cliente-analista`** lo ve todo en solo lectura.
 - **El esqueleto de la PWA: barra lateral, cabecera de página, `TabBar` en el teléfono y tema** (HIG-126; el canvas
   «Pantallas de Hive»).
   - **La barra lateral:** 240 px y ocho secciones, con la tarjeta del cliente abajo (nombre, `client_id`, rol, «Salir»
