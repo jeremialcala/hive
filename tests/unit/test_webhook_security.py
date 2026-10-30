@@ -17,6 +17,7 @@ import controller.amqp_broker as broker
 import controller.ingestion as ingestion
 import controller.messages as messages
 from classes import FacebookRequest
+from enums import Status
 from controller import BrokerUnavailable
 from utils import is_valid_signature
 
@@ -56,7 +57,8 @@ def client():
 
 @pytest.fixture
 def bot(monkeypatch):
-    _bot = SimpleNamespace(uuid=BOT_ID, verifyToken=VERIFY_TOKEN, appSecret=None)
+    _bot = SimpleNamespace(uuid=BOT_ID, clientId=uuid4(), verifyToken=VERIFY_TOKEN, appSecret=None,
+                           status=Status.ACT.value)
     monkeypatch.setattr(webhook_module, "find_webhook_bot", lambda bot_id: _bot)
     # Read when asked for, not now: the tests change the secrets of the bot after this.
     monkeypatch.setattr(webhook_module, "webhook_secrets",
@@ -203,11 +205,15 @@ def whatsapp_message(monkeypatch):
     return FacebookRequest(**WHATSAPP_PAYLOAD)
 
 
+# A live chatbot: its notification does not also activate it (HIG-75).
+LIVE = SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID, status=Status.ACT.value)
+
+
 def test_processing_waits_for_the_broker(whatsapp_message, monkeypatch):
     send = AsyncMock()
     monkeypatch.setattr(ingestion, "send_message_to_queue", send)
 
-    asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID)))
+    asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=LIVE))
 
     send.assert_awaited_once()
     assert send.await_args.kwargs["queue"] == "llm"
@@ -217,7 +223,7 @@ def test_processing_does_not_swallow_a_broker_failure(whatsapp_message, monkeypa
     monkeypatch.setattr(ingestion, "send_message_to_queue", AsyncMock(side_effect=BrokerUnavailable("llm")))
 
     with pytest.raises(BrokerUnavailable):
-        asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=SimpleNamespace(uuid=BOT_ID, clientId=BOT_ID)))
+        asyncio.run(messages.ctr_process_messages(req=whatsapp_message, _bot=LIVE))
 
 
 def publish(monkeypatch, connection):

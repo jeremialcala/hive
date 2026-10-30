@@ -24,6 +24,7 @@ from crypto.key_service import KeyServiceUnavailable
 from repository import NotFound, TenantRepository
 
 from .answers import answer
+from .bot_state import bot_accepted, bot_refused
 from .meta_templates import META_ID, MetaPermission, MetaRefused, MetaTemplates, MetaUnavailable
 
 __all__ = ["ctr_create_template", "ctr_list_templates", "ctr_edit_template", "ctr_delete_template", "template_info"]
@@ -72,8 +73,15 @@ def _account(repo: TenantRepository, bot) -> tuple[str, str] | JSONResponse:
     return bot.wabaId, token
 
 
-def _meta_failed(error: Exception, bot, doing: str) -> JSONResponse:
+def _meta_took(repo: TenantRepository, bot) -> None:
+    """Meta took a call made with the chatbot's token: one in ERR is live again (HIG-74)."""
+    bot_accepted(repo, bot.uuid, "Meta took a call on its templates", bot.status)
+
+
+def _meta_failed(repo: TenantRepository, error: Exception, bot, doing: str) -> JSONResponse:
     if isinstance(error, MetaPermission):
+        # A token Meta does not take, or without the permission: the chatbot is in ERR (HIG-74).
+        bot_refused(repo, bot.uuid, error.code)
         log.warning(f"Meta turned the WhatsApp token of chatbot {bot.uuid} away to {doing} templates: "
                     f"{error.reason}")
         return answer(status.HTTP_502_BAD_GATEWAY,
@@ -141,7 +149,8 @@ def ctr_create_template(repo: TenantRepository, bot_id: str, request: TemplateCr
     try:
         made = meta.create(waba_id, token, request.for_meta())
     except (MetaUnavailable, MetaRefused) as e:
-        return _meta_failed(e, bot, "create")
+        return _meta_failed(repo, e, bot, "create")
+    _meta_took(repo, bot)
     template = MessageTemplate(name=request.name, language=request.language, metaId=made["id"],
                                category=made["category"] if made.get("category") in CATEGORIES else request.category,
                                status=_state(made.get("status"), PENDING), parameters=request.values(),
@@ -170,7 +179,8 @@ def ctr_list_templates(repo: TenantRepository, bot_id: str, sync: bool = False) 
         try:
             found, complete = meta.every(*account)
         except (MetaUnavailable, MetaRefused) as e:
-            return _meta_failed(e, bot, "list")
+            return _meta_failed(repo, e, bot, "list")
+        _meta_took(repo, bot)
         kept = set()
         for template in filter(None, map(_from_meta, found)):
             # Meta's list does not say why: the reason a notice gave stays while the state is the same.
@@ -210,7 +220,8 @@ def ctr_edit_template(repo: TenantRepository, bot_id: str, template_id: str,
     try:
         meta.edit(template.metaId, account[1], request.components_for_meta())
     except (MetaUnavailable, MetaRefused) as e:
-        return _meta_failed(e, bot, "edit")
+        return _meta_failed(repo, e, bot, "edit")
+    _meta_took(repo, bot)
     template.components, template.parameters, template.status = request.components_for_meta(), request.values(), PENDING
     template.statusReason = None
     try:
@@ -244,7 +255,8 @@ def ctr_delete_template(repo: TenantRepository, bot_id: str, template_id: str) -
     try:
         meta.remove(account[0], account[1], template.metaId, template.name)
     except (MetaUnavailable, MetaRefused) as e:
-        return _meta_failed(e, bot, "delete")
+        return _meta_failed(repo, e, bot, "delete")
+    _meta_took(repo, bot)
     repo.delete_template(template)
     log.info(f"Template {template.metaId} of chatbot {bot.uuid} deleted in Meta and in Hive")
     return answer(status.HTTP_200_OK, data={"id": template.metaId, "deleted": True})

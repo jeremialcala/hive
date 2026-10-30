@@ -8,7 +8,7 @@ from enums import Status
 from .tool_settings import Settings
 from .tool_database import connect_database
 from .entity_credentials import Credentials
-from .tool_clock import utc_now
+from .tool_clock import as_utc, utc_now
 
 
 settings = Settings()
@@ -40,6 +40,9 @@ class ChatBot(Document):
             "name": self.name,
             "rol": self.role,
             "tone": self.tone,
+            # Its state by name, as the surfaces show it (HIG-74): REG till Meta reaches it, ACT, ERR... (bot_state).
+            "status": Status(self.status).name,
+            "statusDate": as_utc(self.statusDate),
             # Which Meta credentials are loaded, never their values: those go in and do not come out.
             "credentials": {
                 "facebookToken": bool(self.facebookToken),

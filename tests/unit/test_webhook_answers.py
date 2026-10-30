@@ -29,7 +29,8 @@ import service
 import webhook as webhook_module
 import controller.facebook as facebook
 import controller.ingestion as ingestion
-from classes import Contact
+from classes import ChatBot, Contact
+from enums import Status
 from controller.incoming import MESSENGER, WHATSAPP, NotUnderstood, incoming_messages, read_notification
 from repository import NotFound, TenantRepository, data_keys, database_failed
 from utils import BodySizeLimit
@@ -111,6 +112,8 @@ def bot(caller):
     created = management.post("/bot", headers=caller.auth, json=BOT).json()["data"]
     assert management.put(f"/chat/{created['uuid']}/credentials", headers=caller.auth,
                           json=SECRETS).status_code == 200
+    # Live, as a chatbot Meta already sends to: its first notification does not activate it (HIG-75).
+    ChatBot.objects(uuid=created["uuid"]).update(set__status=Status.ACT.value)
     return created["uuid"]
 
 

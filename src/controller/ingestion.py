@@ -41,6 +41,7 @@ from shared.contract import FailedSend, identified_subject, what_was_said
 from utils import describe
 
 from .amqp_broker import BrokerUnavailable, send_message_to_queue
+from .bot_state import bot_accepted, bot_refused, bot_verified
 from .facebook import ctr_identify_contact_by_wa_id, ctr_identify_fb_contact
 from .incoming import META_ID, WORD, IncomingMessage
 from .webhook_event import SCHEMA_VERSION, TEMPLATES, traceparent
@@ -235,6 +236,13 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
             if database_failed(e):
                 raise DatabaseUnavailable(type(e).__name__) from None
             raise
+        # Meta signed it with the chatbot's App Secret: its webhook works, and a REG chatbot is live (HIG-75).
+        try:
+            await asyncio.to_thread(bot_verified, repo, bot, "Meta sent it a signed notification")
+        except Exception as e:
+            if database_failed(e):
+                raise DatabaseUnavailable(type(e).__name__) from None
+            raise
         if event.get("channel") == TEMPLATES:
             current.set(**{"gateway.bot_id": str(bot.uuid), "gateway.client_id": str(bot.clientId),
                            "gateway.channel": TEMPLATES})
@@ -323,6 +331,9 @@ def _store_reply(event: dict) -> dict:
         if origin == "client" and event.get("requestId"):
             # What the client asked for went: the request says so, and the PWA reads it (HIG-87).
             repo.outbound_sent(UUID(event["requestId"]), message_id, sent_at)
+        if stored:
+            # Meta took it with the chatbot's token: one in ERR is live again (HIG-74).
+            bot_accepted(repo, UUID(event["botId"]), "Meta took a send")
     except NotFound:
         raise Unprocessable("for a contact deleted in the meantime") from None
     except Exception as e:
@@ -339,8 +350,10 @@ def _store_failure(event: dict) -> dict:
     except ValueError:
         raise Unprocessable("not a failed send of version 2") from None
     try:
-        changed = TenantRepository(failure.clientId).outbound_failed(failure.requestId, failure.code, failure.reason,
-                                                                      failure.failedAt)
+        repo = TenantRepository(failure.clientId)
+        changed = repo.outbound_failed(failure.requestId, failure.code, failure.reason, failure.failedAt)
+        # Meta turned the chatbot's token or its permissions away: it is in ERR (HIG-74).
+        bot_refused(repo, failure.botId, failure.code)
     except Exception as e:
         if database_failed(e):
             raise DatabaseUnavailable(type(e).__name__) from None

@@ -174,9 +174,11 @@ def test_si_bifröst_no_toma_el_aviso_el_pedido_espera():
     assert resultado is Resultado.EN_ESPERA
 
 
-@pytest.mark.parametrize("fallo", [EnvioFallido("Meta 130429"), FuenteNoDisponible("el gateway no responde")],
-                         ids=["Meta limita la tasa", "el gateway no responde"])
-def test_lo_que_puede_ir_más_tarde_queda_en_espera_y_en_la_última_entrega_se_descarta(fallo):
+@pytest.mark.parametrize("fallo, codigo", [
+    (EnvioFallido("Meta 130429"), 130429), (TokenRechazado("Meta 190 (el token caducó)"), 190),
+    (FuenteNoDisponible("el gateway no responde"), None)],
+    ids=["Meta limita la tasa", "Meta rechaza el token dos veces", "el gateway no responde"])
+def test_lo_que_puede_ir_más_tarde_queda_en_espera_y_en_la_última_entrega_se_descarta(fallo, codigo):
     meta = Meta(fallo) if isinstance(fallo, EnvioFallido) else None
     gateway = Gateway(fallo) if isinstance(fallo, FuenteNoDisponible) else None
 
@@ -184,7 +186,8 @@ def test_lo_que_puede_ir_más_tarde_queda_en_espera_y_en_la_última_entrega_se_d
     ultima, piezas = atender(pedido(), meta=meta, gateway=gateway, entregas=5)
     assert ultima is Resultado.DESCARTADO
     (aviso,) = piezas.bifrost.publicado
-    assert (aviso.evento["reason"], aviso.evento["code"]) == ("gave_up", None)
+    # Con el último código de Meta: un 190 pone el bot en ERR en el gateway (HIG-74).
+    assert (aviso.evento["reason"], aviso.evento["code"]) == ("gave_up", codigo)
 
 
 def test_en_la_última_entrega_un_aviso_que_bifröst_no_toma_queda_en_el_log():

@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-18
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **ID:** ADR-0021
 * **Supersede:** [ADR-0006](0006-publicacion-confirmada-y-503.md) y la tabla de [ADR-0015](0015-que-se-responde-a-meta.md),
   cuando se acepte. Lo demás de ADR-0015 sigue: el cuerpo no se lee antes de la firma, y lo firmado que no se
@@ -128,6 +128,22 @@ Si cae a mitad de una notificación, el evento se reentrega entero, y el paso 1 
 - **Medido en midgard:** el webhook responde en 8,3 ms de mediana, frente a los 185 ms de I1 con un contacto conocido
   y los 415 ms con uno nuevo. La ingesta trata 2,1 notificaciones por segundo
   ([medición](../../04-testing/medicion-webhook-i1.md)).
+
+## Enmienda del 2026-10-30: el webhook apunta que Meta lo verificó (HIG-75)
+
+Decisión de Jeremi del 2026-10-30. El webhook escribe en la base una sola cosa: el paso de un bot de `REG` a `ACT`
+cuando Meta verifica su webhook (`GET /chat/{bot_id}` con el `verifyToken` bueno).
+
+- **Por qué no va por el bus:** una verificación pasa una vez por suscripción y está fuera del camino de los mensajes,
+  así que no toca la latencia que motivó esta ADR. Escrita aquí, el bot está en `ACT` en cuanto Meta dice
+  «verificado». Por el bus habría hecho falta otro sujeto y otros permisos en Bifröst.
+- **Una escritura condicional:** solo desde `REG`. No saca a nadie de `LOK`, `DIS` ni `ERR`: la verificación prueba
+  el webhook, no el token (`TenantRepository.move_bot`).
+- **Si la escritura falla, Meta recibe igual su `challenge`**, y el aviso queda en el log. La ingesta, que ya escribe
+  en la base, también pasa a `ACT` un bot en `REG` con su primera notificación firmada. Eso cubre ese caso y los bots
+  que se verificaron antes de esta enmienda.
+- **Lo demás no cambia:** el webhook no escribe nada al recibir mensajes.
+- La regla entera del estado, con `ERR`, está en `src/controller/bot_state.py`.
 
 ## Condiciones de revisión
 

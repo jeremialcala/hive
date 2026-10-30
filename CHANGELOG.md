@@ -46,6 +46,30 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   TUN-10994. Desplegado a mano en midgard el 2026-10-26.
 
 ### Añadido
+- **El estado del bot lo mueve lo que dice Meta** (HIG-74, HIG-75; decisiones de Jeremi del 2026-10-30). Antes, ningún
+  código lo cambiaba: los 2 bots de producción seguían en `REG` aunque recibían mensajes.
+  - **`REG` → `ACT`:** cuando Meta verifica el webhook del bot, o le envía una notificación firmada. Lo segundo activa
+    también los bots que se verificaron hace tiempo.
+  - **`REG` o `ACT` → `ERR`:** cuando Meta rechaza el token del bot (0 o 190) o sus permisos (10 o 131005), al enviar
+    o al gestionar plantillas.
+  - **`ERR` → `ACT`:** al cargar un token nuevo, o cuando Meta acepta un envío o una llamada sobre plantillas.
+  - **Lo que no lo mueve:** nada saca un bot de `LOK` o `DIS`, y una verificación nueva no lo saca de `ERR`, porque
+    prueba el webhook y no el token. Una firma mala tampoco cuenta: la puede enviar cualquiera.
+  - **Cómo se escribe:** cada paso es una actualización condicional (`TenantRepository.move_bot`) y deja un `WARNING`.
+    La regla está en `src/controller/bot_state.py`.
+  - **El webhook escribe una sola cosa**, el paso a `ACT` al verificar
+    ([ADR-0021](docs/00-project/adr/0021-el-webhook-solo-publica.md), enmienda 0.2.0). Si esa escritura falla, Meta
+    recibe igual su `challenge`, y la ingesta activa el bot con su primer mensaje.
+  - **`GET /chat/{bot_id}/info` y `GET /bots`** dicen el estado por su nombre (`status`) y desde cuándo
+    (`statusDate`).
+  - **El notificador del motor:** cuando se rinde con un pedido del cliente, el aviso `EnvioFallido` lleva el último
+    código de Meta. El estado del envío dice entonces `token_rejected` o `permission`, y la PWA lo explica.
+  - **Pruebas:**
+    - `tests/unit/test_bot_state.py`, con 30 casos;
+    - tres casos nuevos en `tests/unit/test_conversations.py`;
+    - el caso del token en `engine/tests/unit/test_worker_salientes.py`.
+
+    Las pruebas del webhook usan ahora un bot en `ACT`, como el que ve Meta.
 - **La PWA del cliente** (HIG-87, [ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md),
   [ADR-0027](docs/00-project/adr/0027-el-mapa-de-estilo-de-hive.md); RF29, RF30). Va en `portal/src/static/`,
   sin paso de build: React 18 y htm como UMD, módulos ES y los componentes del sistema de diseño. Todo sale del

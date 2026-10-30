@@ -21,6 +21,8 @@ export const REASONS = {
   sample_template: "hello_world es la plantilla de muestra de Meta: solo sale desde sus números públicos de prueba. "
     + "Envía una plantilla propia aprobada.",
   no_token: "El bot no tiene token de WhatsApp: cárgalo antes de enviar.",
+  token_rejected: "Meta no acepta el token de WhatsApp del bot: caducó o se revocó. Carga uno nuevo en sus credenciales.",
+  permission: "El token del bot no tiene permiso para enviar desde este número: revisa sus permisos en Meta.",
   gave_up: "No se pudo enviar después de varios intentos: inténtalo más tarde.",
   rejected: "Meta rechazó el mensaje.",
 };

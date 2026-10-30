@@ -16,6 +16,7 @@ from shared import bus
 from classes import ChatBot, FacebookRequest
 from constants import HUB_CHALLENGE, HUB_MODE, HUB_SIGNATURE, HUB_VERIFY_TOKEN, SUBSCRIBE, WEBHOOK_DESCRIPTION
 from controller import RETRY_LATER, ctr_process_messages
+from controller.bot_state import bot_verified
 from controller.incoming import NotUnderstood, read_notification
 from crypto.fields import NotEncrypted
 from crypto.key_service import KeyServiceUnavailable
@@ -106,6 +107,16 @@ def verify(request: Request, bot_id, _bot: ChatBot = Depends(get_webhook_bot)):
             or not secrets_match(webhook_secrets(_bot).verify_token, request.query_params.get(HUB_VERIFY_TOKEN))):
         log.warning(f"Rejected webhook verification for chatbot {_bot.uuid}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
+
+    # Meta reached the webhook: a REG chatbot is live (HIG-75). The one write of the webhook (ADR-0021, as amended),
+    # out of the way of the messages. If it fails, Meta still gets its challenge: the ingestion activates the chatbot
+    # with its first signed message.
+    try:
+        bot_verified(TenantRepository(_bot.clientId), _bot, "Meta verified its webhook")
+    except Exception as e:
+        if not database_failed(e):
+            raise
+        log.warning(f"Chatbot {_bot.uuid} was verified, but its state could not be written: {describe(e)}")
 
     log.info(f"Ending: {currentframe().f_code.co_name}")
     return PlainTextResponse(challenge)
