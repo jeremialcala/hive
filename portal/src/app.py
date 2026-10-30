@@ -54,6 +54,9 @@ STATIC = Path(__file__).resolve().parent / "static"
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("font/woff2", ".woff2")
 NO_STORE = {"Cache-Control": "no-store"}
+# The PWA's files, kept but asked again each time by their etag: a 304 if nothing changed. Without it, Cloudflare and
+# the browser kept them 4 hours (max-age=14400), and after a deploy a new app.js could run with an old api.js.
+REVALIDATE = "no-cache"
 # Nothing from outside (ADR-0026, ADR-0027): the PWA's own scripts, styles and fonts, and its own API.
 SECURITY = {
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -103,6 +106,7 @@ def build(settings: Settings, sessions: Sessions, zitadel: Zitadel, idp: Identit
         response = await call_next(request)
         for name, value in SECURITY.items():
             response.headers.setdefault(name, value)
+        response.headers.setdefault("Cache-Control", REVALIDATE)
         return response
 
     def csrf_ok(request: Request) -> bool:

@@ -73,6 +73,9 @@ responda `/auth/session` y `/api/*` con datos de prueba.
   token nuevo con su ID token, la primera vez que hace falta.
 - **Las cabeceras:** CSP sin nada de fuera (`default-src 'self'`, `frame-ancestors 'none'`), HSTS, `nosniff`,
   `Referrer-Policy: no-referrer` y `Cache-Control: no-store` en todo lo que no es la PWA.
+- **Los ficheros de la PWA llevan `Cache-Control: no-cache`.** Cloudflare y el navegador los guardan, pero los vuelven
+  a pedir cada vez con su `etag`. Si no cambiaron, la respuesta es un `304` sin cuerpo; tras un despliegue, llega el
+  nuevo enseguida. Sin esa cabecera, Cloudflare los guardaba 4 horas, y podía mezclar módulos de dos versiones.
 - **Lo que pasa a `hive-api`:** solo `Accept`, `Content-Type` e `Idempotency-Key` de la petición. Ni la cookie, ni un
   `Authorization` del navegador. De la respuesta vuelven el cuerpo, `Content-Type` y `Retry-After`, nunca un
   `Set-Cookie`.
