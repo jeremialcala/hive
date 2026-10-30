@@ -15,6 +15,7 @@ from classes import (ChatBot, ChatbotPhone, Client, ClientUser, Contact, Convers
                      MessageTemplate, OutboundRequest, Rule)
 from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING
+from classes.entity_outbound import FAILED, SENT
 from crypto.fields import ClientCipher, normalize_email
 from enums import PersonRole, PersonStatus, Status
 
@@ -121,6 +122,10 @@ class TenantRepository:
         # The webhook checks signatures against the secrets it was kept with.
         kept_bots.forget(saved.uuid)
         return saved
+
+    def list_bots(self) -> list:
+        """The chatbots of the client, oldest first."""
+        return list(self._own(ChatBot).order_by("createdAt"))
 
     def get_bot(self, bot_id) -> ChatBot:
         bot = self._own(ChatBot, uuid=as_uuid(bot_id)).first()
@@ -486,6 +491,23 @@ class TenantRepository:
             return False
         return True
 
+    def outbound_of(self, contact: Contact, request_id) -> OutboundRequest | None:
+        """A request to send to that contact, by its uuid, while it is remembered (24 hours)."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        return self._own(OutboundRequest, uuid=as_uuid(request_id), botId=contact.botId,
+                         contactId=contact._uuid).first()
+
+    def outbound_sent(self, request_id: UUID, message_id: str, sent_at: datetime) -> bool:
+        """Meta took the request: its message id. Only a request not failed meanwhile; says whether it changed."""
+        return bool(self._own(OutboundRequest, uuid=request_id, status__ne=FAILED).update_one(
+            set__status=SENT, set__messageId=message_id, set__sentAt=sent_at))
+
+    def outbound_failed(self, request_id: UUID, code: int | None, reason: str, failed_at: datetime) -> bool:
+        """The request will not be sent: why. Not one already sent; says whether it changed."""
+        return bool(self._own(OutboundRequest, uuid=request_id, status__ne=SENT).update_one(
+            set__status=FAILED, set__failureCode=code, set__failureReason=reason, set__failedAt=failed_at))
+
     def forget_outbound(self, request: OutboundRequest) -> None:
         """A request the bus did not take: the same key can be tried again."""
         self._own(OutboundRequest, key=request.key).delete()
@@ -532,6 +554,14 @@ class TenantRepository:
             message.delete()
             raise NotFound(contact._uuid)
         return True
+
+    def recent_history(self, contact: Contact, limit: int = 50) -> list[dict]:
+        """The last `limit` messages of the contact's conversation, oldest first, with each text opened."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        last = list(self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid)
+                    .order_by("-sentAt").limit(limit))
+        return self._opened(reversed(last))
 
     def history(self, contact: Contact) -> list[dict]:
         """The contact's conversation, oldest first, with each text opened."""

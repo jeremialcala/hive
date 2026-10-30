@@ -65,7 +65,28 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     segundo, y con `nosniff` un módulo que llegara como `text/plain` no se ejecutaría.
   - **Pruebas:** todo lo que piden la página, sus módulos y sus estilos sale del portal con su tipo. La copia del
     sistema de diseño es la de `assets/design-system/`.
-  - **Depende de #130 y #131**, que dan `GET /bots`, la conversación y el estado de un envío.
+  - **Usa la primera parte (#130) y la segunda (#131)**: `GET /bots`, la conversación y el estado de un envío.
+- **Lo que la PWA lee de un cliente** (HIG-87, primera parte).
+  - **`GET /bots`:** los bots del cliente y qué credenciales de Meta tiene cargadas cada uno, nunca su valor.
+  - **`GET /chat/{bot_id}/contacts/{contact_id}/conversation`:** los últimos 50 mensajes del contacto, cada uno con su
+    origen (el motor, o el cliente y quién), y la ventana de 24 horas de Meta: si está abierta y hasta cuándo. No
+    lleva el número del contacto. Cuando la lee una persona, queda un `WARNING` de auditoría (RF28).
+  - **`GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}`:** qué pasó con un pedido de envío durante sus
+    24 horas:
+    - `accepted`: Bifröst lo tiene;
+    - `sent`: Meta lo aceptó, y lleva su id de mensaje;
+    - `failed`: con el código de Meta y un motivo que la PWA explica (`window_closed`, `template_paused`,
+      `template_disabled`, `template_parameters`, `template_missing`, `marketing_limit`, `not_deliverable`,
+      `no_token`, `gave_up`).
+  - **El estado del pedido:** `OutboundRequest` gana `status`, `messageId`, `sentAt` y el fallo. La ingesta lo marca
+    `sent` cuando llega su `RespuestaEnviada`, y `failed` con el evento nuevo `EnvioFallido`. Un pedido ya enviado no
+    pasa a fallido, ni al revés.
+  - **`EnvioFallido`:** evento nuevo en `engine.reply.failed.{botId}`, en el stream `RESPUESTAS`. Queda en
+    `asyncapi-v2.yaml` y en `shared.contract.FailedSend`. Lo publicará el notificador en la segunda parte, junto con el
+    cambio de Bifröst.
+  - Las tres rutas son también del `cliente-analista`. La matriz pasa a la 1.6.0.
+  - **Pruebas:** `tests/unit/test_conversations.py`, con 26 pruebas: la ventana, los 50 mensajes, sin número, la
+    auditoría, cada motivo de fallo, el orden entre enviado y fallido, el aislamiento y el contrato del evento.
 - **`hive-portal`, el BFF de la PWA** (HIG-93, [ADR-0029](docs/00-project/adr/0029-autenticacion-de-personas.md),
   [ADR-0034](docs/00-project/adr/0034-sesiones-del-portal-en-bifrost.md); RS22, AB25). Es un proyecto nuevo en
   `portal/`, con su imagen, `ghcr.io/jeremialcala/hive-portal`, sus pruebas y su CI (`portal · test`,

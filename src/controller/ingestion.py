@@ -37,7 +37,7 @@ from classes.entity_conversation_message import INCOMING, OUTGOING
 from crypto.key_service import KeyServiceUnavailable
 from repository import NotFound, TenantRepository, database_failed
 from shared import bus, tracing
-from shared.contract import identified_subject, what_was_said
+from shared.contract import FailedSend, identified_subject, what_was_said
 from utils import describe
 
 from .amqp_broker import BrokerUnavailable, send_message_to_queue
@@ -292,13 +292,15 @@ async def ingest_reply(event: dict, trace: str | None = None) -> dict:
         stored = await asyncio.to_thread(_store_reply, event)
         current.set(**{"gateway.bot_id": event.get("botId"), "gateway.client_id": event.get("clientId"),
                        "gateway.contact_id": event.get("contactId"),
-                       "gateway.outcome": "stored" if stored["stored"] else "seen"})
+                       "gateway.outcome": "failed" if "failed" in stored else "stored" if stored["stored"] else "seen"})
         return stored
 
 
 def _store_reply(event: dict) -> dict:
     if not isinstance(event, dict) or event.get("schemaVersion") != SCHEMA_VERSION:
         raise Unprocessable("not an answer of version 2")
+    if "failedAt" in event:
+        return _store_failure(event)
     try:
         repo = TenantRepository(UUID(event["clientId"]))
         contact = repo.get_contact(event["botId"], event["contactId"])
@@ -318,6 +320,9 @@ def _store_reply(event: dict) -> dict:
         stored = repo.record_message(contact, OUTGOING, message_id, channel, sent_at, text=event.get("text"),
                                      attachments=attachments, in_reply_to=event.get("inReplyTo"), origin=origin,
                                      sent_by=sent_by)
+        if origin == "client" and event.get("requestId"):
+            # What the client asked for went: the request says so, and the PWA reads it (HIG-87).
+            repo.outbound_sent(UUID(event["requestId"]), message_id, sent_at)
     except NotFound:
         raise Unprocessable("for a contact deleted in the meantime") from None
     except Exception as e:
@@ -325,3 +330,21 @@ def _store_reply(event: dict) -> dict:
             raise DatabaseUnavailable(type(e).__name__) from None
         raise
     return {"stored": stored}
+
+
+def _store_failure(event: dict) -> dict:
+    """EnvioFallido (HIG-87): a request of the client the notifier did not send. Its request says why."""
+    try:
+        failure = FailedSend.model_validate(event)
+    except ValueError:
+        raise Unprocessable("not a failed send of version 2") from None
+    try:
+        changed = TenantRepository(failure.clientId).outbound_failed(failure.requestId, failure.code, failure.reason,
+                                                                      failure.failedAt)
+    except Exception as e:
+        if database_failed(e):
+            raise DatabaseUnavailable(type(e).__name__) from None
+        raise
+    log.warning(f"Request {failure.requestId} of chatbot {failure.botId} was not sent: {failure.reason}"
+                + (f", Meta {failure.code}" if failure.code is not None else ""))
+    return {"failed": changed}

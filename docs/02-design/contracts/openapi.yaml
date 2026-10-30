@@ -864,6 +864,22 @@ paths:
       summary: Delete Chatbot
       tags:
       - Bot
+  /bots:
+    get:
+      description: The chatbots of the client, with which Meta credentials each has loaded, never their values.
+      operationId: list_bots_bots_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+      security:
+      - OAuth2: []
+      summary: List Bots
+      tags:
+      - Bot
   /chat/{bot_id}/contacts:
     get:
       description: The contacts of a chatbot, oldest first, a page at a time, with everything stored about each.
@@ -1059,6 +1075,45 @@ paths:
       summary: Set Consent
       tags:
       - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/conversation:
+    get:
+      description: 'A contact''s last 50 messages, each with its origin (the engine or the client, and who), and
+        Meta''s window of 24
+
+        hours: open or not, and until when. Without the contact''s number. When a person reads it, the log says
+        who.'
+      operationId: get_conversation_chat__bot_id__contacts__contact_id__conversation_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Conversation
+      tags:
+      - Contacts
   /chat/{bot_id}/contacts/{contact_id}/messages:
     post:
       description: 'Sends a WhatsApp message to a contact who already wrote to the chatbot (ADR-0031): a text, within
@@ -1124,6 +1179,52 @@ paths:
       security:
       - OAuth2: []
       summary: Send Message
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}:
+    get:
+      description: 'What came of a request to send, for 24 hours: accepted (the bus holds it), sent (Meta took it)
+        or failed, with
+
+        Meta''s code and why (window_closed, template_paused, template_disabled, template_parameters, marketing_limit,
+
+        no_token, gave_up...).'
+      operationId: get_send_status_chat__bot_id__contacts__contact_id__messages__request_id__get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      - in: path
+        name: request_id
+        required: true
+        schema:
+          title: Request Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Send Status
       tags:
       - Contacts
   /chat/{bot_id}/contacts/{contact_id}/turns:

@@ -216,6 +216,7 @@ Sin token solo se llaman las dos rutas del webhook (`GET` y `POST /chat/{bot_id}
 | Método | Ruta | Cuerpo | Descripción |
 |---|---|---|---|
 | `POST` | `/bot` | `ChatbotRequest` | Crea un chatbot del cliente que llama. Genera un `uuid` y un `verifyToken` firmado (JWT). Devuelve `BotResponse`. |
+| `GET` | `/bots` | — | Los bots del cliente y qué credenciales de Meta tiene cargadas cada uno, nunca su valor (HIG-87). |
 | `DELETE` | `/bot/{bot_id}` | — | Borra un chatbot con todo lo guardado para él: contactos, números, reglas e intents. No se puede deshacer. Desde entonces su webhook responde `404`: también hay que quitar la suscripción en Meta. |
 
 Campos de `ChatbotRequest`: `name`, `role`, `description`, `tone`. Hay que enviarlos todos: el modelo todavía tiene valores de ejemplo, y el que falta se rellena con uno.
@@ -253,6 +254,8 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | `DELETE` | `/chat/{bot_id}/contacts/{contact_id}` | Borra un contacto. No se puede deshacer. |
 | `POST` | `/chat/{bot_id}/contacts/{contact_id}/messages` | Escribe por WhatsApp a un contacto: un texto dentro de las 24 horas desde su último mensaje, o una plantilla aprobada, dentro o fuera de ellas; fuera, solo con su consentimiento. Pide `Idempotency-Key`. `202` cuando Bifröst guarda el pedido; lo envía el notificador. 60 envíos por minuto por bot y 1 000 al día por cliente ([ADR-0031](docs/00-project/adr/0031-mensajes-salientes.md)). |
 | `PUT` | `/chat/{bot_id}/contacts/{contact_id}/consent` | Registra el consentimiento de un contacto para recibir mensajes del cliente: categorías (`MARKETING`, `UTILITY`), origen y fecha. |
+| `GET` | `/chat/{bot_id}/contacts/{contact_id}/conversation` | Los últimos 50 mensajes del contacto, con su origen, y la ventana de 24 horas: abierta o no, y hasta cuándo. Sin el número. Si la lee una persona, el log lo apunta. |
+| `GET` | `/chat/{bot_id}/contacts/{contact_id}/messages/{request_id}` | Qué pasó con un pedido de envío, durante 24 horas: `accepted`, `sent` (con el id de Meta) o `failed`, con el código de Meta y el motivo (`window_closed`, `template_paused`…). |
 | `DELETE` | `/chat/{bot_id}/contacts/{contact_id}/consent` | Retira el consentimiento. Queda guardado con la fecha. |
 | `GET`  | `/chat/{bot_id}/contacts/{contact_id}/turns` | Las últimas 10 vueltas de una conversación, **solo para el coordinador del motor**. Cada entrega queda en el log. |
 
