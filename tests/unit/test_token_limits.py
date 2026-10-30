@@ -110,6 +110,64 @@ def test_many_origins_cost_memory_up_to_a_bound(monkeypatch):
     assert limits.admit("origin-499") is None
 
 
+def test_the_wait_is_until_the_oldest_request_leaves_the_window_and_never_less_than_a_second():
+    """HIG-137: with every request counted at the same instant, the oldest and the next were the same."""
+    clock = Clock()
+    limits = TokenLimits(clock)
+    limits.admit("a")
+    clock.now += 30
+    for _ in range(token_limits.ORIGIN_REQUESTS - 1):
+        limits.admit("a")
+
+    assert limits.admit("a").retry_after == 30
+    clock.now += 29.5
+    assert limits.admit("a").retry_after == 1
+
+
+def test_the_limits_hold_as_many_origins_as_they_may_and_counting_one_of_them_forgets_none(monkeypatch):
+    """
+        At the bound, a new origin makes room; one already counted does not, or it would push out the oldest, which
+        may be the one that keeps failing (HIG-137, surviving mutants).
+    """
+    monkeypatch.setattr(token_limits, "MAX_KEYS", 50)
+    limits = TokenLimits(Clock())
+    for _ in range(token_limits.FAILURES - 1):
+        limits.failed(ATTACKER)
+    for i in range(49):
+        limits.failed(f"origin-{i}")
+
+    limits.failed(ATTACKER)
+    assert len(limits.failures) == 50
+    assert limits.admit(ATTACKER).reason == "failures"
+
+    limits.failed("one-more")
+    assert len(limits.failures) == 50
+
+
+def test_making_room_drops_what_expired_before_an_origin_that_is_still_failing(monkeypatch):
+    """
+        A burst from many origins must not make the limits forget an origin that is turned away: the room is made by
+        dropping the windows that are over first (HIG-137, a surviving mutant).
+    """
+    monkeypatch.setattr(token_limits, "MAX_KEYS", 50)
+    clock = Clock()
+    limits = TokenLimits(clock)
+    # The attacker is the oldest of the 50 origins the limits can hold.
+    limits.failed(ATTACKER)
+    for i in range(49):
+        limits.failed(f"old-{i}")
+    clock.now += token_limits.FAILURES_WINDOW / 2
+    for _ in range(token_limits.FAILURES):
+        limits.failed(ATTACKER)
+    # Now the windows of the others are over; the attacker's last failures are not.
+    clock.now += token_limits.FAILURES_WINDOW / 2 + 1
+
+    limits.failed("a-new-one")
+
+    assert len(limits.failures) == 2
+    assert limits.admit(ATTACKER).reason == "failures"
+
+
 @pytest.mark.parametrize("header,peer,origin", [
     ("203.0.113.7", "172.18.0.5", "203.0.113.7"),
     (None, "172.18.0.5", "172.18.0.5"),
@@ -118,7 +176,7 @@ def test_many_origins_cost_memory_up_to_a_bound(monkeypatch):
     ("2001:db8:1:2:ffff::1", None, "2001:db8:1:2::/64"),
     ("::ffff:203.0.113.7", None, "203.0.113.7"),
     (None, "testclient", "unknown"),
-])
+], ids=["what cloudflare saw", "the peer", "a bad header", "ipv6", "ipv6 with zeros", "ipv4 mapped", "no address"])
 def test_the_origin_is_the_address_cloudflare_saw_and_an_ipv6_counts_by_its_64(header, peer, origin):
     headers = {} if header is None else {"cf-connecting-ip": header}
 

@@ -154,7 +154,7 @@ def test_the_webhook_finds_the_chatbot_and_its_client(owner, stored):
     assert find_webhook_bot(str(bot.uuid)).clientId == owner.client_id
 
 
-@pytest.mark.parametrize("bot_id", [str(uuid4()), "not-a-uuid"])
+@pytest.mark.parametrize("bot_id", [str(uuid4()), "not-a-uuid"], ids=["unknown", "not a uuid"])
 def test_the_webhook_does_not_find_an_unknown_chatbot(bot_id):
     with pytest.raises(NotFound):
         find_webhook_bot(bot_id)

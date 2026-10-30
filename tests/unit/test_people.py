@@ -250,6 +250,19 @@ def test_a_person_of_two_clients_says_which_one(http, zitadel, acme, register):
                                                                      PersonRole.ANALYST)
 
 
+def test_the_log_says_why_an_exchange_was_turned_away(http, zitadel, acme, register, caplog):
+    """The reasons are fixed texts, for the log; the answer says none of them (HIG-137, surviving mutants)."""
+    assert exchange(http, zitadel.id_token()).json() == {"error": "invalid_grant"}
+    person(acme)
+    person(register("globex"))
+    assert exchange(http, zitadel.id_token()).json() == {"error": "invalid_target"}
+
+    rejected = [record.getMessage() for record in caplog.records
+                if record.getMessage().startswith("Rejected an exchange")]
+    assert rejected == ["Rejected an exchange for an access token: no person in Hive who may get a token",
+                        "Rejected an exchange for an access token: a person of more than one client"]
+
+
 def test_a_person_cannot_ask_for_a_client_they_are_not_of(http, zitadel, acme, register):
     globex = register("globex")
     person(acme)

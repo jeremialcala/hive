@@ -51,6 +51,8 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+# What mutmut makes: the mutated copy of the repository and its results (setup.cfg)
+mutants/
 
 # Translations
 *.mo

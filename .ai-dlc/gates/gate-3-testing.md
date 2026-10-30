@@ -43,4 +43,8 @@ lo que está y lo que falta. Lo que falta es HIG-125.
   - **Falta:** una medición que cuente, con 20 respuestas o más. La del 2026-10-30 cumple (mediana 9,5 s, p95
     10,0 s), pero con 3.
 - [ ] Mutation testing ≥ 60% (objetivo)
-  - **Falta:** no está configurado.
+  - **Está** (2026-10-30, HIG-137): mutmut sobre los módulos de seguridad (`src/auth/`, la firma del webhook, el estado
+    de un chatbot y el cifrado por cliente), en el workflow `mutation`, que informa y no bloquea.
+    [La puntuación por módulo](../../docs/04-testing/mutation-testing.md): del 84,8 % al 98,8 % sobre 977
+    mutantes, y todos los módulos por encima del 97 %. Sobreviven 12, cada uno con su motivo.
+  - **Falta:** el resto del gateway y el motor, y decidir si el workflow pasa a bloquear.

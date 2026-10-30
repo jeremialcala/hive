@@ -8,6 +8,31 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Añadido
+- **Mutation testing de los módulos de seguridad** (HIG-137, Gate 3;
+  [mutation testing](docs/04-testing/mutation-testing.md)). Dice si las pruebas se enteran cuando cambia el código
+  donde un fallo es un fallo de seguridad: `src/auth/`, la firma del webhook, el estado de un chatbot y el cifrado por
+  cliente.
+  - **La herramienta:** mutmut 3.8.0, configurado en `setup.cfg` y fijado en su propio lock,
+    `requirements-mutation.lock`, que el workflow `Seguridad` audita como los demás.
+  - **Dónde corre:** el workflow `mutation`, cada lunes sobre `main`, a mano, y en los pull requests que tocan esos
+    módulos. Informa y no bloquea: deja la puntuación por módulo en el resumen del job
+    (`.ai-dlc/scripts/mutation_score.py`).
+  - **La puntuación:** del 84,8 % al 98,8 % sobre 977 mutantes. Ningún módulo estaba por debajo del 60 %, ni antes.
+    Sobreviven 12: diez equivalentes y dos bordes de un límite de tamaño, cada uno con su motivo en el documento.
+  - **Lo que sobrevivía y cambiaba la seguridad:**
+    - una prueba DPoP se podía repetir en su último segundo si su jti se recordaba 55 s en vez de 65;
+    - un token de una persona que dijera tener un worker del motor o el rol `service`;
+    - un jti vacío o demasiado largo;
+    - hacer sitio en los límites de `/oauth/token` podía olvidar al origen que sigue fallando.
+
+    Ahora cada uno tiene su prueba.
+  - **Más pruebas nuevas:**
+    - los bordes de la vida de un token y de la ventana de una prueba DPoP;
+    - el motivo de cada rechazo en el log y el texto de cada `422` de una clave;
+    - que el índice ciego distingue campos y no cambia entre versiones;
+    - el WARNING de cada movimiento del estado de un chatbot.
+  - **Pruebas arregladas:** siete parametrizaciones tenían ids al azar (`uuid4()`) o que pytest no sabe volver a leer
+    (una IPv6). Ahora llevan `ids=`.
 - **DAST con OWASP ZAP** (HIG-90, Gate 3; [dast](docs/04-testing/dast.md)), en el job `dast · zap` del workflow
   `e2e`: en los PR a `main`, en los de `develop` que cambian la prueba de punta a punta o el despliegue, y a mano.
   - **Contra qué:** el stack de la prueba de punta a punta, con las imágenes de producción, en una red interna sin

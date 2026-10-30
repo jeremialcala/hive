@@ -24,7 +24,7 @@ import controller.templates as templates
 import webhook as webhook_module
 from classes import ChatBot, ChatbotPhone, Contact
 from classes.tool_clock import as_utc
-from controller.bot_state import TOKEN_OR_PERMISSION
+from controller.bot_state import TOKEN_OR_PERMISSION, bot_accepted, bot_refused, bot_verified
 from controller.conversations import REASONS
 from controller.incoming import IncomingMessage
 from controller.meta_templates import MetaPermission, MetaRefused
@@ -268,3 +268,52 @@ def test_a_call_on_templates_meta_takes_brings_a_chatbot_in_err_back(http, calle
 
 def test_every_code_that_puts_a_chatbot_in_err_has_its_reason_for_the_pwa():
     assert {REASONS[code] for code in TOKEN_OR_PERMISSION} == {"token_rejected", "permission"}
+
+
+# --- Each move by itself (HIG-137: what mutation testing found unchecked) --------------------------------------------
+
+class Moves:
+    """A repository that only writes down the moves it is asked for, and says whether each matched."""
+    client_id = "the-client"
+
+    def __init__(self, matched=True):
+        self.matched, self.asked = matched, []
+
+    def move_bot(self, bot_uuid, start, to):
+        self.asked.append((bot_uuid, start, to))
+        return self.matched
+
+
+def test_each_move_says_whether_it_happened_and_asks_nothing_when_it_cannot_happen():
+    bot_uuid = uuid4()
+    live, registered = (SimpleNamespace(uuid=bot_uuid, status=status.value) for status in (Status.ACT, Status.REG))
+
+    nothing = Moves()
+    assert not bot_verified(nothing, live, "Meta verified its webhook")
+    assert not bot_refused(nothing, bot_uuid, 131047)
+    assert not bot_accepted(nothing, bot_uuid, "Meta took a send", Status.ACT.value)
+    assert nothing.asked == []
+
+    asked = Moves()
+    assert bot_verified(asked, registered, "Meta verified its webhook")
+    assert bot_refused(asked, bot_uuid, 190)
+    assert bot_accepted(asked, bot_uuid, "Meta took a send", Status.ERR.value)
+    assert bot_accepted(asked, bot_uuid, "Meta took a send")
+    assert asked.asked == [(bot_uuid, (Status.REG,), Status.ACT), (bot_uuid, (Status.REG, Status.ACT), Status.ERR),
+                           (bot_uuid, (Status.ERR,), Status.ACT), (bot_uuid, (Status.ERR,), Status.ACT)]
+
+    # The update matched nothing: another process moved it first.
+    assert not bot_refused(Moves(matched=False), bot_uuid, 190)
+
+
+def test_the_warning_of_a_move_says_why_and_only_a_move_writes_one(caplog):
+    """The WARNING is the audit of a move, the one production keeps: it says what moved the chatbot."""
+    bot_uuid = uuid4()
+
+    bot_refused(Moves(), bot_uuid, 131005)
+    bot_accepted(Moves(), bot_uuid, "the client loaded a new token")
+    bot_refused(Moves(matched=False), bot_uuid, 190)
+
+    moves = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+    assert moves == [f"Chatbot {bot_uuid} of client the-client is now ERR: Meta turned its token away, 131005",
+                     f"Chatbot {bot_uuid} of client the-client is now ACT: the client loaded a new token"]

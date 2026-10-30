@@ -60,12 +60,14 @@ jobs:
       # auditar solo uno dejaba pasar una versión vulnerable en el otro. `--strict` exige que todo se haya podido
       # auditar.
       # Los del gateway, en la raíz, los del motor de respuestas, en engine/ (ADR-0023), y los del portal, en portal/
-      # (HIG-93). El de la prueba de punta a punta, en tests/e2e/, con Playwright (HIG-141).
+      # (HIG-93). El de la prueba de punta a punta, en tests/e2e/, con Playwright (HIG-141). El de mutation testing, en
+      # la raíz, es lo que instala el workflow `mutation` (HIG-137).
       - name: Auditar el árbol fijado
         run: |
           pip install --quiet pip-audit
           locks="requirements.lock requirements-dev.lock engine/requirements.lock engine/requirements-dev.lock"
           locks="$locks portal/requirements.lock portal/requirements-dev.lock tests/e2e/requirements.lock"
+          locks="$locks requirements-mutation.lock"
           for lock in $locks; do
             pip-audit --progress-spinner off --requirement "$lock" --no-deps --strict
           done
@@ -80,7 +82,7 @@ jobs:
           fijados() { grep -E '^[A-Za-z0-9_.-]+==' "$1" | sort; }
           # Cada lock se resuelve desde su directorio: el de desarrollo del motor incluye su requirements.txt con -r.
           bases="requirements requirements-dev engine/requirements engine/requirements-dev"
-          bases="$bases portal/requirements portal/requirements-dev tests/e2e/requirements"
+          bases="$bases portal/requirements portal/requirements-dev tests/e2e/requirements requirements-mutation"
           for base in $bases; do
             dir=$(dirname "$base"); nombre=$(basename "$base"); tmp="/tmp/$(echo "$base" | tr / _)"
             (cd "$dir" && uv pip compile --universal --python-version 3.12 --generate-hashes --quiet "$nombre.txt" -o "$tmp.lock")

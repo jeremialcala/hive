@@ -17,6 +17,10 @@ Seguridad:
 
 - [DAST con OWASP ZAP](dast.md): `hive-api`, el webhook y el portal, sobre el mismo stack (HIG-90).
 
+Mutation testing:
+
+- [De los módulos de seguridad](mutation-testing.md): qué se muta, cómo corre y la puntuación por módulo (HIG-137).
+
 Mediciones:
 
 - [I1: cuánto tarda hoy el webhook en responder a Meta](medicion-webhook-i1.md), la línea base de RNF01.
