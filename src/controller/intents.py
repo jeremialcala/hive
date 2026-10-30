@@ -86,13 +86,13 @@ def ctr_create_intent(repo: TenantRepository, request: IntentRequest, bot_id: st
 
     except NotFound as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {bot_id} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
 
     except OperationError as e:
         log.error(describe(e))
         body = ResponseData(code=status.HTTP_400_BAD_REQUEST,
-                            message=f"This intent already exists {request.name}", data=None)
+                            message="This intent already exists", data=None)
 
     except Exception as e:
         log.error(describe(e))
@@ -142,7 +142,7 @@ def ctr_get_intents(repo: TenantRepository, bot_id: str, eventId: str = None) ->
 
     except NotFound as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {bot_id} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
 
     except Exception as e:
@@ -194,7 +194,7 @@ def ctr_get_intent(repo: TenantRepository, bot_id: str, intent_id: str, eventId:
     except (ValueError, IndexError, NotFound) as e:
         log.error(describe(e))
         body = ResponseData(code=status.HTTP_404_NOT_FOUND,
-                            message=f"This intent {intent_id} was not found", data=None)
+                            message="This intent was not found", data=None)
 
     except Exception as e:
         log.error(describe(e))
@@ -252,7 +252,7 @@ def ctr_update_intent(repo: TenantRepository, request: IntentRequest, bot_id: st
     except (ValueError, IndexError, NotFound) as e:
         log.error(describe(e))
         body = ResponseData(code=status.HTTP_404_NOT_FOUND,
-                            message=f"This intent {intent_id} was not found", data=None)
+                            message="This intent was not found", data=None)
 
     except Exception as e:
         log.error(describe(e))
@@ -305,7 +305,7 @@ def ctr_delete_intent(repo: TenantRepository, bot_id: str, intent_id: str, event
     except (ValueError, IndexError, NotFound) as e:
         log.error(describe(e))
         body = ResponseData(code=status.HTTP_404_NOT_FOUND,
-                            message=f"This intent {intent_id} was not found", data=None)
+                            message="This intent was not found", data=None)
 
     except Exception as e:
         log.error(describe(e))
@@ -361,7 +361,7 @@ def ctr_get_bot_tools(repo: TenantRepository, bot_id: str, eventId: str = None) 
 
     except NotFound as e:
         log.error(describe(e))
-        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message=f"This chatbot {bot_id} was not found",
+        body = ResponseData(code=status.HTTP_404_NOT_FOUND, message="This chatbot was not found",
                             data=None)
 
     except Exception as e:
