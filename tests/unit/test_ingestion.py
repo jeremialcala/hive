@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -196,6 +196,50 @@ def test_a_bus_that_does_not_keep_the_message_makes_the_event_wait_and_nothing_i
 
     # Not in the history: delivered again, it is published then.
     assert ConversationMessage.objects.count() == 0 and queue == []
+
+
+# Meta delivers a message again for as long as it did not get its 200: 7 days in WhatsApp, 36 hours in Instagram
+# (HIG-114, RNF04). The history, which holds every message for 12 months, is what says it was already seen.
+META_RETRIES = timedelta(days=7)
+
+
+@pytest.mark.parametrize("later", [timedelta(hours=6), timedelta(days=6, hours=23)], ids=["hours", "days"])
+def test_a_message_meta_delivers_again_later_is_seen_and_not_published_again(bot, bifrost, queue, later):
+    first = event_of(bot, whatsapp_message("wamid.A"))
+    ingest_now(first)
+    again = dict(first, receivedAt=(datetime.fromisoformat(first["receivedAt"]) + later).isoformat())
+
+    assert ingest_now(again) == {"ingested": 0, "seen": 1, "failed": 0}
+    assert [event.payload["messageId"] for event in bifrost.events] == ["wamid.A"]
+    assert ConversationMessage.objects.count() == 1
+
+
+def test_the_history_remembers_a_message_longer_than_meta_delivers_it_again(bot, bifrost, queue):
+    ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+
+    (stored,) = ConversationMessage.objects
+    assert stored.expiresAt - stored.createdAt > META_RETRIES
+
+
+def test_a_message_published_twice_carries_the_same_id_for_the_bus_to_drop_the_second(bot, bifrost, queue,
+                                                                                       monkeypatch):
+    """
+        Stopping between publishing and storing publishes it again on the next delivery, with the same Nats-Msg-Id:
+        MENSAJES drops the copy for 24 hours, as long as it keeps a message (higerotech/bifrost#10).
+    """
+    record = TenantRepository.record_message
+    monkeypatch.setattr(TenantRepository, "record_message", lambda *args, **kwargs: (_ for _ in ()).throw(
+        ingestion.DatabaseUnavailable("ServerSelectionTimeoutError")))
+    with pytest.raises(ingestion.DatabaseUnavailable):
+        ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+    monkeypatch.setattr(TenantRepository, "record_message", record)
+
+    later = event_of(bot, whatsapp_message("wamid.A"))
+    later["receivedAt"] = (datetime.fromisoformat(later["receivedAt"]) + timedelta(hours=3)).isoformat()
+    ingest_now(later)
+
+    first, second = bifrost.events
+    assert first.message_id == second.message_id == f"{bot.uuid}:wamid.A"
 
 
 def test_a_message_published_but_not_stored_is_published_again_and_stored_once(bot, bifrost, queue, monkeypatch):
