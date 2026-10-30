@@ -140,7 +140,7 @@ def test_a_tampered_ciphertext_does_not_open(cipher):
 
 
 def test_a_data_key_has_to_be_32_bytes():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="^A data key is 32 bytes$"):
         ClientCipher(uuid4(), os.urandom(16))
 
 
