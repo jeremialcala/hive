@@ -101,7 +101,9 @@ async def announce(repo: TenantRepository, bot_id) -> None:
     except Exception as e:
         if not database_failed(e):
             raise
-        log.warning(f"The engine was not told of a change of chatbot {bot_id}: {type(e).__name__}")
+        # Not the id: it is what the address carried.
+        log.warning(f"The engine was not told of a change of a chatbot of client {repo.client_id}: "
+                    f"{type(e).__name__}")
         return
     if not bot.configVersion:
         # Nothing was versioned: there is no version to tell.

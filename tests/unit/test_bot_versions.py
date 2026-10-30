@@ -134,8 +134,10 @@ def test_each_change_writes_exactly_one_version_with_who_made_it(http, caller, b
 def test_a_change_that_does_not_go_through_writes_no_version(http, caller, bot):
     missing = "6f1c7e2a-0d2b-4c1e-9a77-2f3b6a1d9e10"
 
-    assert http.put(f"/chat/{bot}/intents/{missing}", headers=caller.auth, json=INTENT).status_code == 404
-    assert http.delete(f"/chat/{bot}/intents/{missing}", headers=caller.auth).status_code == 404
+    changed = http.put(f"/chat/{bot}/intents/{missing}", headers=caller.auth, json=INTENT)
+    deleted = http.delete(f"/chat/{bot}/intents/{missing}", headers=caller.auth)
+
+    assert (changed.status_code, deleted.status_code) == (404, 404)
     assert len(versions(http, caller, bot)) == 1
 
 
@@ -210,8 +212,9 @@ def test_the_first_version_is_compared_with_nothing(http, caller, bot):
 
 @pytest.mark.parametrize("number", ["0", "9", "abc", "1.0", "-1", "١"])
 def test_a_version_that_does_not_exist_is_not_found(http, caller, bot, number):
-    assert version(http, caller, bot, number).status_code == 404
-    assert restore(http, caller, bot, number).status_code == 404
+    seen, restored = version(http, caller, bot, number), restore(http, caller, bot, number)
+
+    assert (seen.status_code, restored.status_code) == (404, 404)
 
 
 def test_a_version_compared_with_one_that_does_not_exist_is_not_found(http, caller, bot):
@@ -253,8 +256,9 @@ def test_going_back_brings_the_configuration_of_the_version_and_writes_a_new_one
 def test_going_back_leaves_out_an_intent_made_after_the_version(http, caller, bot, repo):
     later = add_intent(http, caller, bot)
 
-    assert restore(http, caller, bot, 1).status_code == 200
+    restored = restore(http, caller, bot, 1)
 
+    assert restored.status_code == 200
     assert repo.bot_config(bot)["intents"] == []
     assert Intent.objects(uuid=later).first().status != 1
     assert http.get(f"/chat/{bot}/intents/{later}", headers=caller.auth).status_code == 404
@@ -292,8 +296,9 @@ def test_going_back_brings_the_rules_with_the_same_ids(http, caller, bot):
     Rule.objects(botId=bot).delete()
     http.post(f"/chat/{bot}/rules", headers=caller.auth, json={"rules": ["Other"]})
 
-    assert restore(http, caller, bot, 2).status_code == 200
+    restored = restore(http, caller, bot, 2)
 
+    assert restored.status_code == 200
     assert sorted(str(rule.uuid) for rule in Rule.objects(botId=bot)) == ids
 
 
@@ -321,9 +326,12 @@ def analyst(http, repo, monkeypatch):
 def test_the_analyst_sees_the_versions_and_what_changed_but_does_not_go_back(http, caller, bot, analyst):
     add_intent(http, caller, bot)
 
-    assert http.get(f"/chat/{bot}/versions", headers=analyst.auth).status_code == 200
-    assert http.get(f"/chat/{bot}/versions/2", headers=analyst.auth).json()["data"]["changes"]["intents"]["added"]
-    assert http.post(f"/chat/{bot}/versions/1/restore", headers=analyst.auth).status_code == 403
+    listed = http.get(f"/chat/{bot}/versions", headers=analyst.auth)
+    seen = http.get(f"/chat/{bot}/versions/2", headers=analyst.auth)
+    restored = http.post(f"/chat/{bot}/versions/1/restore", headers=analyst.auth)
+
+    assert (listed.status_code, seen.status_code, restored.status_code) == (200, 200, 403)
+    assert seen.json()["data"]["changes"]["intents"]["added"]
     assert len(versions(http, caller, bot)) == 2
 
 
