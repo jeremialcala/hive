@@ -31,6 +31,9 @@ def stack():
         for args in (["-t", "hive-gateway:e2e", "."], ["-f", "engine/Dockerfile", "-t", "hive-engine:e2e", "."]):
             subprocess.run(["docker", "build", "-q", *args], cwd=ROOT, check=True, capture_output=True)
     with tempfile.TemporaryDirectory(prefix="hive-e2e-") as directory:
+        # It is made 0700, and the containers' users must get into it, as into its files (Stack.write). Docker Desktop
+        # does not look; Linux, as in the CI, does.
+        Path(directory).chmod(0o755)
         built = Stack(Path(directory))
         built.make_secrets()
         built.compose("down", "-v", "--remove-orphans", check=False)
