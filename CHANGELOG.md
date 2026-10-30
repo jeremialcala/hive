@@ -7,6 +7,20 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Hive vuelve solo tras un apagón de midgard, y Thor avisa si algo no vuelve** (HIG-116, RNF06;
+  [arranque tras un apagón](docs/05-deployment/arranque-tras-apagon.md)).
+  - **Cómo vuelve:** Docker arranca con el sistema y levanta los diez contenedores de Hive, que tienen
+    `restart: unless-stopped`.
+  - **Sin orden de arranque:** cada pieza espera a Bifröst y Andvari sin caer en bucle, y Andvari se desella solo con
+    su clave de sello.
+  - **`tests/unit/test_restart_after_outage.py`:** falla si un servicio de los compose de producción pierde su
+    política, o si la página deja de nombrar algún contenedor.
+  - **Thor vigila los contenedores de Hive:** desde el 2026-10-30, `THOR_CONTENEDORES` en midgard los incluye, y
+    `THOR_UNIDADES` incluye `hive-vigia.timer`. Si falta uno, salta `ServicioDePlataformaCaido`.
+  - **Probado con un reinicio real de midgard** el 2026-10-30: los 13 contenedores (10 de Hive y la infraestructura)
+    quedaron sanos en 8 minutos, con 0 reinicios, y Andvari se desselló solo. RNF06 pasa a «Construido y probado».
+
 ## [0.7.0] - 2026-10-30
 
 ### Añadido
