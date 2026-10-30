@@ -129,7 +129,8 @@ class KvStore:
         try:
             await (await self._bucket()).delete(key)
         except KeyNotFoundError:
-            pass
+            # Already gone: a session that ended, or that the bucket forgot after its 12 hours.
+            return
 
 
 def _name(kind: str, raw: str) -> str:

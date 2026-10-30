@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import CLIENT_ID, CLIENT_SECRET, PORTAL, FakeHive, FakeZitadel, Servers
+from conftest import CLIENT_ID, CLIENT_SECRET, PORTAL, FakeHive, FakeZitadel, Servers, id_token
 from shared.auth.idp import IdentityProvider
 from src.app import CSRF_HEADER, LOGIN_COOKIE, SESSION_COOKIE, build
 from src.hive import Hive
@@ -170,9 +170,7 @@ def test_an_error_from_zitadel_or_no_code_ends_the_login(http):
 
 
 def test_an_id_token_without_the_nonce_of_the_login_is_turned_away(http, monkeypatch):
-    import conftest  # pylint: disable=import-outside-toplevel
-    real = conftest.id_token
-    monkeypatch.setattr(conftest, "id_token", lambda nonce, subject, amr: real("another-nonce", subject, amr))
+    monkeypatch.setattr("conftest.id_token", lambda nonce, subject, amr: id_token("another-nonce", subject, amr))
 
     answer = sign_in(http)
 

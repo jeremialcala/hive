@@ -17,7 +17,8 @@ import requests
 
 from shared.auth.client import dpop_proof, new_signing_key
 
-__all__ = ["Hive", "NoAccess", "ClientNeeded", "HiveUnavailable", "EXCHANGE", "ID_TOKEN"]
+__all__ = ["Hive", "NoAccess", "ClientNeeded", "HiveUnavailable", "EXCHANGE", "ID_TOKEN", "REQUEST_HEADERS",
+           "ANSWER_HEADERS", "claims_of"]
 
 TIMEOUT = 30  # seconds
 EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
