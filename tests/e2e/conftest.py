@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The fixtures of the end-to-end test (HIG-135, HIG-141): the stack, and a client with its chatbot. See e2e_stack.py."""
+"""The fixtures of the end-to-end test (HIG-135, HIG-141): the stack, and a client with its chatbot (e2e_stack.py)."""
 import os
 import secrets
 import subprocess

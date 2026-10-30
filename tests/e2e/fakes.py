@@ -54,33 +54,54 @@ def _read(handler) -> bytes:
     return handler.rfile.read(int(handler.headers.get("Content-Length", 0)))
 
 
-def _answer(handler, code: int, body: dict | None = None, headers: dict | None = None, page: str | None = None):
-    data = page.encode() if page is not None else json.dumps(body if body is not None else {}).encode()
-    handler.send_response(code)
-    handler.send_header("Content-Type", "text/html; charset=utf-8" if page is not None else "application/json")
-    handler.send_header("Content-Length", str(len(data)))
-    for name, value in (headers or {}).items():
-        handler.send_header(name, value)
-    handler.end_headers()
-    handler.wfile.write(data)
+def reply(code: int, body: dict | None = None, headers: dict | None = None, page: str | None = None) -> tuple:
+    """What to answer: JSON, or a page of HTML."""
+    return code, body, headers, page
 
 
-class Fakes(BaseHTTPRequestHandler):
-    """Meta and the LLM."""
+class Answering(BaseHTTPRequestHandler):
+    """Each request, answered with what its _get or _post gives back."""
     def log_message(self, *_args):
         pass
 
+    def _answer(self, answer: tuple) -> None:
+        code, body, headers, page = answer
+        data = page.encode() if page is not None else json.dumps(body if body is not None else {}).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8" if page is not None else "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):  # noqa: N802
+        self._answer(self._get())
+
+    def do_POST(self):  # noqa: N802
+        self._answer(self._post())
+
+    def _get(self) -> tuple:
+        return reply(404, {})
+
+    def _post(self) -> tuple:
+        return reply(404, {})
+
+
+class Fakes(Answering):
+    """Meta and the LLM."""
+
+    def _get(self) -> tuple:
         path = urlsplit(self.path).path
         if path == "/_seen":
             with lock:
-                return _answer(self, 200, seen)
+                return reply(200, json.loads(json.dumps(seen)))
         if TEMPLATES.match(path):
             with lock:
-                return _answer(self, 200, {"data": list(templates.values()), "paging": {}})
-        return _answer(self, 404, {"error": {"code": 100}})
+                return reply(200, {"data": list(templates.values()), "paging": {}})
+        return reply(404, {"error": {"code": 100}})
 
-    def do_POST(self):  # noqa: N802
+    def _post(self) -> tuple:
         body = json.loads(_read(self) or b"{}")
         authorization = self.headers.get("Authorization", "")
         found = MESSAGES.match(self.path)
@@ -88,8 +109,8 @@ class Fakes(BaseHTTPRequestHandler):
             with lock:
                 seen["meta"].append({"phoneId": found.group(1), "authorization": authorization, "body": body})
             if body.get("status") == "read":
-                return _answer(self, 200, {"success": True})
-            return _answer(self, 200, {"messaging_product": "whatsapp", "messages": [
+                return reply(200, {"success": True})
+            return reply(200, {"messaging_product": "whatsapp", "messages": [
                 {"id": f"wamid.E2E{len(seen['meta'])}"}]})
         found = TEMPLATES.match(self.path)
         if found:
@@ -99,24 +120,24 @@ class Fakes(BaseHTTPRequestHandler):
                         "components": body.get("components") or [], "status": "PENDING"}
                 templates[made["name"]] = made
                 seen["templates"].append({"waba": found.group(1), "authorization": authorization, "body": body})
-            return _answer(self, 200, {"id": made["id"], "status": "PENDING", "category": made["category"]})
+            return reply(200, {"id": made["id"], "status": "PENDING", "category": made["category"]})
         if self.path == "/_approve":
             with lock:
                 templates[body["name"]]["status"] = "APPROVED"
-            return _answer(self, 200, {})
+            return reply(200, {})
         if self.path == "/v1/chat/completions":
             classifying = "response_format" in body
             with lock:
                 seen["llm"].append({"kind": "classifier" if classifying else "responder",
                                     "authorization": authorization})
             content = json.dumps(VERDICT) if classifying else REPLY
-            return _answer(self, 200, {"choices": [{"message": {"role": "assistant", "content": content},
-                                                    "finish_reason": "stop"}],
-                                       "usage": {"prompt_tokens": 10, "completion_tokens": 10}})
-        return _answer(self, 404, {"error": {"code": 100}})
+            return reply(200, {"choices": [{"message": {"role": "assistant", "content": content},
+                                            "finish_reason": "stop"}],
+                               "usage": {"prompt_tokens": 10, "completion_tokens": 10}})
+        return reply(404, {"error": {"code": 100}})
 
 
-# --- Zitadel -----------------------------------------------------------------------------------------------------------
+# --- Zitadel ----------------------------------------------------------------------------------------------------------
 
 def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
@@ -130,7 +151,17 @@ def _int_bytes(number: int) -> bytes:
 SHA256_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
 
 
-class Zitadel(BaseHTTPRequestHandler):
+def _read_file(path: str) -> str:
+    with open(path, encoding="utf-8") as file:
+        return file.read().strip()
+
+
+# What the test made for Zitadel (e2e_stack.py, Stack.zitadel_secrets).
+CLIENT_SECRET_FILE, SERVICE_TOKEN_FILE, KEY_FILE = ("/run/e2e/oidc-client-secret", "/run/e2e/zitadel-token",
+                                                    "/run/e2e/zitadel-key.json")
+
+
+class Zitadel(Answering):
     """Zitadel: the IdP the portal signs people in with, and the users hive-api invites."""
     issuer = os.environ.get("IDP_ISSUER", "")
     client_id = os.environ.get("OIDC_CLIENT_ID", "")
@@ -141,15 +172,9 @@ class Zitadel(BaseHTTPRequestHandler):
     requests: dict = {}   # id of an authorization request -> its parameters
     codes: dict = {}      # code -> the login it answers
 
-    @staticmethod
-    def secret(name: str) -> str:
-        with open(f"/run/e2e/{name}", encoding="utf-8") as file:
-            return file.read().strip()
-
     @classmethod
     def key(cls) -> dict:
-        with open("/run/e2e/zitadel-key.json", encoding="utf-8") as file:
-            return json.load(file)
+        return json.loads(_read_file(KEY_FILE))
 
     @classmethod
     def sign(cls, claims: dict) -> str:
@@ -163,38 +188,35 @@ class Zitadel(BaseHTTPRequestHandler):
         signature = pow(int.from_bytes(encoded, "big"), d, n).to_bytes(size, "big")
         return f"{signing_input.decode()}.{_b64(signature)}"
 
-    def log_message(self, *_args):
-        pass
-
     def _form(self) -> dict:
         return {name: values[0] for name, values in parse_qs(_read(self).decode()).items()}
 
     def _service_account(self) -> bool:
-        return hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {self.secret('zitadel-token')}")
+        return hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {_read_file(SERVICE_TOKEN_FILE)}")
 
-    def do_GET(self):  # noqa: N802
+    def _get(self) -> tuple:
         parts = urlsplit(self.path)
         query = {name: values[0] for name, values in parse_qs(parts.query).items()}
         if parts.path == "/.well-known/openid-configuration":
-            return _answer(self, 200, {"issuer": self.issuer,
-                                       "authorization_endpoint": f"{self.issuer}/oauth/v2/authorize",
-                                       "token_endpoint": f"{self.issuer}/oauth/v2/token",
-                                       "end_session_endpoint": f"{self.issuer}/oidc/v1/end_session",
-                                       "jwks_uri": f"{self.issuer}/oauth/v2/keys"})
+            return reply(200, {"issuer": self.issuer,
+                               "authorization_endpoint": f"{self.issuer}/oauth/v2/authorize",
+                               "token_endpoint": f"{self.issuer}/oauth/v2/token",
+                               "end_session_endpoint": f"{self.issuer}/oidc/v1/end_session",
+                               "jwks_uri": f"{self.issuer}/oauth/v2/keys"})
         if parts.path == "/oauth/v2/keys":
             key = self.key()
-            return _answer(self, 200, {"keys": [{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": key["kid"],
-                                                 "n": _b64(_int_bytes(int(key["n"], 16))),
-                                                 "e": _b64(_int_bytes(int(key["e"], 16)))}]})
+            return reply(200, {"keys": [{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": key["kid"],
+                                         "n": _b64(_int_bytes(int(key["n"], 16))),
+                                         "e": _b64(_int_bytes(int(key["e"], 16)))}]})
         if parts.path == "/oauth/v2/authorize":
             if (query.get("client_id") != self.client_id or query.get("redirect_uri") != self.redirect_uri
                     or query.get("response_type") != "code" or query.get("code_challenge_method") != "S256"
                     or "openid" not in query.get("scope", "").split() or not query.get("code_challenge")):
-                return _answer(self, 400, page="<!doctype html><title>Zitadel</title><p>invalid_request</p>")
+                return reply(400, page="<!doctype html><title>Zitadel</title><p>invalid_request</p>")
             request_id = secrets.token_urlsafe(16)
             with lock:
                 Zitadel.requests[request_id] = query
-            return _answer(self, 200, page=(
+            return reply(200, page=(
                 "<!doctype html><html><head><meta charset=\"utf-8\"><title>Zitadel (e2e)</title></head><body>"
                 "<form method=\"post\" action=\"/oauth/v2/authorize\">"
                 f"<input type=\"hidden\" name=\"authRequest\" value=\"{html.escape(request_id)}\">"
@@ -203,11 +225,11 @@ class Zitadel(BaseHTTPRequestHandler):
         if parts.path == "/oidc/v1/end_session":
             after = query.get("post_logout_redirect_uri", "")
             if query.get("client_id") == self.client_id and after.startswith(self.portal + "/"):
-                return _answer(self, 302, {}, headers={"Location": after})
-            return _answer(self, 400, {"error": "invalid_request"})
-        return _answer(self, 404, {})
+                return reply(302, {}, headers={"Location": after})
+            return reply(400, {"error": "invalid_request"})
+        return reply(404, {})
 
-    def do_POST(self):  # noqa: N802
+    def _post(self) -> tuple:
         path = urlsplit(self.path).path
         if path == "/oauth/v2/authorize":
             return self._sign_in(self._form())
@@ -215,45 +237,45 @@ class Zitadel(BaseHTTPRequestHandler):
             return self._token(self._form())
         if path.startswith("/v2/users"):
             return self._users(path, json.loads(_read(self) or b"{}"))
-        return _answer(self, 404, {})
+        return reply(404, {})
 
-    def _sign_in(self, form: dict):
+    def _sign_in(self, form: dict) -> tuple:
         """The person said who they are; with their password and their second factor, as this fake takes it."""
         with lock:
             request = Zitadel.requests.pop(form.get("authRequest", ""), None)
             login_name = form.get("loginName", "").strip().lower()
             user_id = next((uid for uid, user in Zitadel.users.items() if user["email"] == login_name), None)
             if request is None or user_id is None:
-                return _answer(self, 400, page="<!doctype html><title>Zitadel</title><p>User not found</p>")
+                return reply(400, page="<!doctype html><title>Zitadel</title><p>User not found</p>")
             code = secrets.token_urlsafe(24)
             Zitadel.codes[code] = {"sub": user_id, "nonce": request.get("nonce"),
                                    "challenge": request["code_challenge"], "redirect_uri": request["redirect_uri"]}
             seen["zitadel"].append({"login": user_id})
         back = f"{request['redirect_uri']}?" + urlencode({"code": code, "state": request.get("state", "")})
-        return _answer(self, 302, {}, headers={"Location": back})
+        return reply(302, {}, headers={"Location": back})
 
-    def _token(self, form: dict):
-        expected = "Basic " + base64.b64encode(f"{self.client_id}:{self.secret('oidc-client-secret')}".encode()).decode()
+    def _token(self, form: dict) -> tuple:
+        expected = "Basic " + base64.b64encode(f"{self.client_id}:{_read_file(CLIENT_SECRET_FILE)}".encode()).decode()
         if not hmac.compare_digest(self.headers.get("Authorization", ""), expected):
-            return _answer(self, 401, {"error": "invalid_client"})
+            return reply(401, {"error": "invalid_client"})
         with lock:
             login = Zitadel.codes.pop(form.get("code", ""), None)
         verifier = form.get("code_verifier", "")
         if (login is None or form.get("grant_type") != "authorization_code"
                 or _b64(hashlib.sha256(verifier.encode()).digest()) != login["challenge"]
                 or form.get("redirect_uri") != login["redirect_uri"]):
-            return _answer(self, 400, {"error": "invalid_grant"})
+            return reply(400, {"error": "invalid_grant"})
         now = int(time.time())
         claims = {"iss": self.issuer, "sub": login["sub"], "aud": [self.client_id], "azp": self.client_id,
                   "iat": now, "exp": now + 3600, "auth_time": now, "amr": ["pwd", "mfa", "otp"]}
         if login["nonce"]:
             claims["nonce"] = login["nonce"]
-        return _answer(self, 200, {"access_token": secrets.token_urlsafe(24), "token_type": "Bearer",
-                                   "expires_in": 3600, "id_token": self.sign(claims)})
+        return reply(200, {"access_token": secrets.token_urlsafe(24), "token_type": "Bearer",
+                           "expires_in": 3600, "id_token": self.sign(claims)})
 
-    def _users(self, path: str, body: dict):
+    def _users(self, path: str, body: dict) -> tuple:
         if not self._service_account():
-            return _answer(self, 401, {"code": 16, "message": "Errors.Token.Invalid (AUTH-7fs1e)"})
+            return reply(401, {"code": 16, "message": "Errors.Token.Invalid (AUTH-7fs1e)"})
         with lock:
             if path == "/v2/users":
                 queries = body.get("queries") or []
@@ -262,19 +284,19 @@ class Zitadel(BaseHTTPRequestHandler):
                                      if "organizationIdQuery" in q), None)
                 found = [{"userId": uid} for uid, user in Zitadel.users.items()
                          if user["email"] == email and organization == self.organization]
-                return _answer(self, 200, {"details": {"totalResult": str(len(found))}, "result": found})
+                return reply(200, {"details": {"totalResult": str(len(found))}, "result": found})
             if path == "/v2/users/human":
                 if (body.get("organization") or {}).get("orgId") != self.organization:
-                    return _answer(self, 400, {"code": 3, "message": "Errors.Org.NotFound (COMMAND-3n8fs)"})
+                    return reply(400, {"code": 3, "message": "Errors.Org.NotFound (COMMAND-3n8fs)"})
                 user_id = str(300_000_000_000_000_000 + len(Zitadel.users) + 1)
                 Zitadel.users[user_id] = {"email": body["email"]["email"].lower(), "invited": False}
-                return _answer(self, 200, {"userId": user_id, "emailCode": secrets.token_urlsafe(6)})
+                return reply(200, {"userId": user_id, "emailCode": secrets.token_urlsafe(6)})
             found = re.fullmatch(r"/v2/users/(\d+)/invite_code", path)
             if found and found.group(1) in Zitadel.users:
                 Zitadel.users[found.group(1)]["invited"] = True
                 seen["zitadel"].append({"invited": found.group(1)})
-                return _answer(self, 200, {"details": {}})
-        return _answer(self, 404, {"code": 5, "message": "Errors.User.NotFound (COMMAND-uyhj3)"})
+                return reply(200, {"details": {}})
+        return reply(404, {"code": 5, "message": "Errors.User.NotFound (COMMAND-uyhj3)"})
 
 
 if __name__ == "__main__":

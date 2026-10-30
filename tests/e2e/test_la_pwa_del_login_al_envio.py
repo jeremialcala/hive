@@ -196,7 +196,8 @@ def test_a_cliente_admin_signs_in_creates_a_template_and_sends_it_to_a_contact(s
     expect(page.get_by_role("button", name="Entrar")).to_be_visible()
     assert not [each for each in admin.context.cookies() if each["name"] == "__Host-hive-session"]
 
-    assert admin.close() == []
+    problems = admin.close()
+    assert problems == []
 
 
 def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(client, people, bea, browser):
@@ -222,4 +223,5 @@ def test_a_cliente_analista_sees_no_button_of_an_admin_and_sends_only_templates(
     analyst.send_template()
     assert len(templates_to(NUMBER)) == before + 1
 
-    assert analyst.close() == []
+    problems = analyst.close()
+    assert problems == []

@@ -295,9 +295,9 @@ class Stack:
     def nats(self, *args: str) -> str:
         """A command of the nats CLI against Bifröst, as its admin, and what it printed."""
         done = subprocess.run(
-            ["docker", "run", "--rm", "--network", "hive-e2e_e2e",
-             "-e", "NATS_URL=tls://nats:4222", "-e", "NATS_USER=admin", "-e", f"NATS_PASSWORD={self.passwords['admin']}",
-             "-e", "NATS_CA=/ca.crt", "-v", f"{self.dir / 'tls' / 'ca.crt'}:/ca.crt:ro", NATS_BOX, "nats", *args],
+            ["docker", "run", "--rm", "--network", "hive-e2e_e2e", "-e", "NATS_URL=tls://nats:4222",
+             "-e", "NATS_USER=admin", "-e", f"NATS_PASSWORD={self.passwords['admin']}", "-e", "NATS_CA=/ca.crt",
+             "-v", f"{self.dir / 'tls' / 'ca.crt'}:/ca.crt:ro", NATS_BOX, "nats", *args],
             capture_output=True, check=False, env={**os.environ, "MSYS_NO_PATHCONV": "1"})
         if done.returncode != 0:
             raise AssertionError(f"nats {' '.join(args)} failed: {done.stderr[-1000:]!r}")
