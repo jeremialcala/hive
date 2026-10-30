@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.7.0
+* **Versión:** 1.8.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -107,7 +107,7 @@ los suyos tiene lo mismo que `cliente-admin`.
 | Borrar un bot con todo lo suyo | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF10 | ✅ `DELETE /bot/{bot_id}` |
 | Registrar un número de WhatsApp | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST /chat/{bot_id}/phones` |
 | Ver los números del bot | ⛔ `404` | ✅ | ✅ nuevo | ⛔ | RF02 | ✅ `GET /chat/{bot_id}/phones` |
-| Editar la persona del bot (nombre, rol, tono, descripción) | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF23 (D9) | ⚠️ |
+| Editar la persona del bot (nombre, rol, tono, descripción) | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF23 (D9) | ✅ `PUT /chat/{bot_id}/persona` |
 | Ver el estado del bot (REG, ACT, ERR) | ⛔ | ✅ nuevo | ✅ nuevo | ⛔ | ADR-0027 (HIG-74) | ❌ |
 | Publicar o despublicar un bot | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | D4, ADR-0027 (HIG-75) | ❌ |
 | Ver el historial de versiones y volver a una | ⛔ | ✅ nuevo | ✅ ver / ⛔ volver, nuevo | ⛔ | RF26 (D9), [ADR-0035](../00-project/adr/0035-versiones-de-la-configuracion-del-bot.md) | ✅ `GET /chat/{bot_id}/versions`, `…/{version}`; volver, `POST …/{version}/restore` |
@@ -118,7 +118,7 @@ los suyos tiene lo mismo que `cliente-admin`.
 |---|---|---|---|---|---|---|
 | Ver la persona y las reglas como datos | ⛔ `404` | ✅ | ✅ nuevo | ✅ clasificador, coordinador, de respuesta, evaluador | RF05 | ✅ `GET /chat/{bot_id}/rules` |
 | Añadir reglas | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST /chat/{bot_id}/rules` |
-| Editar o borrar una regla | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF24 (D9) | ⚠️ |
+| Editar o borrar una regla | ⛔ | ✅ nuevo | ⛔ nuevo | ⛔ | RF24 (D9) | ✅ `PUT`, `DELETE /chat/{bot_id}/rules/{rule_id}` |
 | Ver los intents | ⛔ `404` | ✅ | ✅ nuevo | ⛔ | RF02 | ✅ `GET /chat/{bot_id}/intents`, `…/{intent_id}` |
 | Crear, editar o borrar un intent | ⛔ `404` | ✅ | ⛔ nuevo | ⛔ | RF02 | ✅ `POST`, `PUT`, `DELETE /chat/{bot_id}/intents…` |
 | Ver las herramientas del bot | ⛔ `404` | ✅ | ✅ nuevo | ✅ coordinador, enlace | RF05 | ✅ `GET /chat/{bot_id}/tools` |
@@ -230,10 +230,13 @@ Lo que hoy aplica el código, ruta por ruta (HIG-92). Una tabla para cada ruta d
 | `DELETE /chat/{bot_id}/intents/{intent_id}` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/intents/{intent_id}` | ✅ | ✅ | ⛔ | ⛔ |
 | `PUT /chat/{bot_id}/intents/{intent_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/persona` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/phones` | ✅ | ✅ | ⛔ | ⛔ |
 | `POST /chat/{bot_id}/phones` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/rules` | ✅ | ✅ | ✅ | ⛔ |
 | `POST /chat/{bot_id}/rules` | ✅ | ⛔ | ⛔ | ⛔ |
+| `DELETE /chat/{bot_id}/rules/{rule_id}` | ✅ | ⛔ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/rules/{rule_id}` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/templates` | ✅ | ✅ | ⛔ | ⛔ |
 | `POST /chat/{bot_id}/templates` | ✅ | ⛔ | ⛔ | ⛔ |
 | `DELETE /chat/{bot_id}/templates/{template_id}` | ✅ | ⛔ | ⛔ | ⛔ |

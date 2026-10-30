@@ -13,7 +13,9 @@ from constants import APPLICATION_JSON, CONTENT_TYPE, CONTENT_LENGTH
 from crypto.key_service import KeyServiceUnavailable
 from repository import TenantRepository, NotFound
 from utils import describe
+from .bot_config import TOO_MANY_RULES, TooManyRules, rule_info
 from .bot_versions import CREATED, RULES_ADDED, record, versioned
+from classes.bot_text import RULES_PER_BOT
 from .events import ctr_notify_action
 from enums import Status
 
@@ -290,10 +292,14 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
 
     try:
         _chatbot = repo.get_bot(_uuid)
+        _rules = repo.list_rules(_uuid)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
                             data={"name": _chatbot.name, "role": _chatbot.role, "tone": _chatbot.tone,
                                   "description": _chatbot.description,
-                                  "rules": [rule.rule for rule in repo.list_rules(_uuid)],
+                                  # As text, for the engine to write the `system` with.
+                                  "rules": [rule.rule for rule in _rules],
+                                  # With the id of each, for whoever edits or deletes one (RF24).
+                                  "ruleList": [rule_info(rule) for rule in _rules],
                                   # The version this is (RF26): the engine keeps it no longer than a notice of a
                                   # newer one (ADR-0035).
                                   "version": _chatbot.configVersion})
@@ -346,10 +352,15 @@ def ctr_create_chatbot_rules(repo: TenantRepository, request: RulesRequest, bot_
     )
 
     try:
+        if repo.count_rules(bot_id) + len(request.rules) > RULES_PER_BOT:
+            raise TooManyRules()
         with versioned(repo, bot_id, author, RULES_ADDED):
-            repo.add_rules(bot_id, request.rules)
+            added = repo.add_rules(bot_id, request.rules)
         body = ResponseData(code=status.HTTP_200_OK, message="Process completed successfully",
-                            data=None)
+                            data=[rule_info(rule) for rule in added])
+
+    except TooManyRules:
+        body = ResponseData(code=status.HTTP_422_UNPROCESSABLE_CONTENT, message=TOO_MANY_RULES, data=None)
 
     except NotFound as e:
         log.error(describe(e))

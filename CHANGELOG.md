@@ -7,6 +7,28 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Editar la persona y las reglas de un bot** (HIG-105 y HIG-106; RF23, RF24).
+  - **La persona:** `PUT /chat/{bot_id}/persona` cambia el nombre, el rol, el tono y la descripción, los cuatro a la
+    vez. `409` si es la que ya tiene.
+  - **Las reglas:** `PUT` y `DELETE /chat/{bot_id}/rules/{rule_id}`. `GET /chat/{bot_id}/rules` trae sus ids en
+    `ruleList`, y `POST /chat/{bot_id}/rules` devuelve las que añade, con su id.
+  - **Versiones:** cada cambio es una versión con su autor, y el motor se entera por `gateway.bot.configured`. Una regla
+    borrada por error vuelve al volver a la versión anterior, con el mismo id.
+  - **Roles:** el `cliente-analista` las ve y recibe `403` al cambiarlas.
+
+### Cambiado
+- **La persona y las reglas tienen límites, los mismos al crear que al editar** (RS11; decisiones de Jeremi del
+  2026-10-30).
+  - **Las longitudes:** nombre, rol y tono de 1 a 100 caracteres en una línea; descripción hasta 2000; regla de 1 a
+    1000; y 50 reglas por bot.
+  - **Lo que se rechaza:** caracteres de control y las marcas con las que un modelo separa roles (`<|...|>`, `[INST]`,
+    `<<SYS>>`, `<s>`, `</s>`), con un `422`.
+  - **Sin valores de ejemplo:** `POST /bot` y `POST /chat/{bot_id}/rules` piden todos sus campos, y un campo de más es
+    un `422`. Antes rellenaban lo que faltaba con valores de ejemplo.
+  - **Volver a una versión** revisa también la persona y las reglas con los límites de hoy: la respuesta `422` dice qué
+    no pasa (`persona`, `rules`, `intents`).
+
 ## [0.8.0] - 2026-10-30
 
 ### Añadido

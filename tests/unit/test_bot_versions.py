@@ -284,7 +284,7 @@ def test_going_back_to_an_intent_whose_destination_is_not_allowed_any_more_chang
 
     assert response.status_code == 422
     assert response.json()["message"].startswith("NOT_ALLOWED") and response.json()["data"] == {
-        "intents": ["check_order"]}
+        "persona": False, "rules": [], "intents": ["check_order"]}
     assert repo.bot_config(bot) == before and len(versions(http, caller, bot)) == 3
     assert NOT_ALLOWED_ANY_MORE not in logged() and "check_order" not in logged()
     assert intent in logged()
