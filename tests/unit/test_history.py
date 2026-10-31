@@ -180,7 +180,7 @@ def test_deleting_a_contact_deletes_its_conversation_and_no_other(repo, bot, ana
     record(repo, ana)
     record(repo, luis, "wamid.LUIS")
 
-    assert repo.delete_contact(bot.uuid, ana._uuid) == {"contacts": 1, "messages": 1, "outbound": 0}
+    assert repo.delete_contact(bot.uuid, ana._uuid) == {"contacts": 1, "messages": 1, "outbound": 0, "ratings": 0}
     assert [m.contactId for m in ConversationMessage.objects] == [luis._uuid]
 
 
@@ -205,4 +205,4 @@ def test_making_a_contact_deletion_again_takes_the_conversation_too(repo, bot, a
     """What the register of erasures makes again after restoring a backup (migrations.replay_erasures)."""
     record(repo, ana)
 
-    assert repo.erase_contacts(bot.uuid, [ana._uuid, uuid4()]) == {"contacts": 1, "messages": 1, "outbound": 0}
+    assert repo.erase_contacts(bot.uuid, [ana._uuid, uuid4()]) == {"contacts": 1, "messages": 1, "outbound": 0, "ratings": 0}

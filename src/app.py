@@ -6,6 +6,7 @@
         uvicorn app:app
 """
 import time
+from datetime import datetime
 from inspect import currentframe
 from uuid import UUID
 from urllib.parse import parse_qs
@@ -25,7 +26,8 @@ from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
-                     PersonaRequest, PersonChangeRequest, PersonInviteRequest, ResponseData, RuleRequest,
+                     PersonaRequest, PersonChangeRequest, PersonInviteRequest, RatingRequest, ResponseData,
+                     RuleRequest,
                      RulesRequest, ServiceKeyRequest,
                      SigningKeyRequest, TemplateCreateRequest, TemplateEditRequest)
 from constants import DESCRIPTION, SUMMARY, TAGS_METADATA, TITLE
@@ -41,7 +43,7 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
-                        ctr_delete_rule, ctr_set_persona, ctr_own_client)
+                        ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -131,6 +133,8 @@ ANALYST_ROUTES = {
     ("GET", "/chat/{bot_id}/versions"), ("GET", "/chat/{bot_id}/versions/{version}"),
     # Whose area it is, for the card of the client (HIG-126).
     ("GET", "/client"),
+    # Rating the answers of the bots and seeing the compliance of each (RF28, HIG-111).
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings"), ("GET", "/chat/{bot_id}/compliance"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -554,6 +558,27 @@ def get_send_status(bot_id: str, contact_id: str, request_id: str, principal: Pr
         no_token, gave_up...).
     """
     return ctr_send_status(TenantRepository(principal.client_id), bot_id, contact_id, request_id)
+
+
+@app.put(path="/chat/{bot_id}/contacts/{contact_id}/ratings", tags=["Contacts"], response_model=ResponseData)
+def rate_answer(bot_id: str, contact_id: str, rating: RatingRequest, principal: Principal = Depends(get_principal)):
+    """
+        A person of the client rates an answer of the bot to that contact: good (`up`) or bad (`down`), and why if they
+        want (RF28). The answer is Meta's id of what was sent, as the conversation gives it. Rating it again changes
+        theirs. A machine credential does not rate: 403.
+    """
+    return ctr_rate(TenantRepository(principal.client_id), bot_id, contact_id, rating, principal.actor,
+                    principal.is_person)
+
+
+@app.get(path="/chat/{bot_id}/compliance", tags=["Bot"], response_model=ResponseData)
+def get_compliance(bot_id: str, since: datetime | None = None, principal: Principal = Depends(get_principal)):
+    """
+        The compliance of a chatbot (RF28): how many of its answers the evaluator approved, had rewritten or replaced,
+        the criteria and rules that failed, the fixed texts, and the people's ratings. Over the history (12 months at
+        most), from `since` if given. Only counts: no text of any conversation.
+    """
+    return ctr_compliance(TenantRepository(principal.client_id), bot_id, since)
 
 
 @app.put(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)

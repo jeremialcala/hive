@@ -7,6 +7,26 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Calificar las respuestas de los bots y ver su cumplimiento** (HIG-111, RF28). Las decisiones son de Jeremi del
+  2026-10-31.
+  - **`PUT /chat/{bot_id}/contacts/{contact_id}/ratings`:** el `cliente-admin` y el `cliente-analista` califican una
+    respuesta del bot con 👍/👎 y un comentario opcional de hasta 500 caracteres. La respuesta se indica por su id de
+    Meta, en el cuerpo, nunca en la dirección.
+    - Cada persona tiene una calificación por respuesta, y calificar otra vez la cambia.
+    - Solo se califica lo que el bot envió y está en el historial del contacto.
+    - Una credencial de máquina recibe `403`.
+    - El log escribe quién calificó y de qué contacto, nunca qué.
+  - **Dónde se guarda (D9):** en la colección `ratings`, con el comentario cifrado con la clave del cliente. Se borra
+    con el contacto, el bot y el cliente, y caduca con la respuesta que califica.
+  - **`GET /chat/{bot_id}/compliance`:** las métricas de un bot. Incluye los veredictos del evaluador, los criterios y
+    reglas que fallan, los textos fijos y las calificaciones, con `since` opcional. Los textos fijos hacen de tarjeta
+    de guardrails hasta HIG-103.
+  - **La conversación** lleva la evaluación y las calificaciones de cada respuesta, sin el número.
+  - **La matriz rol × acción** (1.10.0) y la clasificación de datos (0.4.0) están al día. La pantalla de la PWA es
+    HIG-149.
+  - **Pruebas:** `tests/unit/test_ratings.py`, 21.
+
 ## [0.12.0] - 2026-10-31
 
 ### Añadido
