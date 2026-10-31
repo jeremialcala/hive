@@ -13,6 +13,9 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El notificador pasa al historial lo que decidió el evaluador** (HIG-147). El `RespuestaEnviada` lleva
+  `evaluation`, con los nombres del contrato v2 del gateway. El evaluador mide lo que tarda cada juicio (`segundos`
+  en la `Evaluacion`, con `asyncapi-motor.yaml` 2.2.0). Pruebas: 3 del notificador, más las del evaluador.
 - **El evaluador: ninguna respuesta del modelo sale sin juzgarse** (HIG-146; ADR-0008 «Construido (E8)», ADR-0012).
   `python -m src.workers.evaluator` lee lo que propone el de respuesta y publica lo que se envía en
   `motor.aprobada.…`.

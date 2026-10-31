@@ -7,6 +7,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Lo que decide el evaluador queda guardado con cada respuesta** (HIG-147; RF28).
+  - **El evento:** el `RespuestaEnviada` del notificador lleva `evaluation` en el contrato v2: veredicto
+    (`approved`, `rewritten`, `replaced`, `fixed` o `unevaluated`), criterio, regla, modelo y segundos, sin el texto
+    (RS07). Es opcional, así que un notificador de antes sigue cumpliendo el contrato.
+  - **Dónde se guarda:** la ingesta lo guarda dentro del documento del mensaje enviado. Caduca con él (12 meses), se
+    borra con el contacto, el bot y el cliente, y una reentrega no lo cuenta dos veces. Uno que no cumple el contrato
+    se deja fuera, y el mensaje se guarda igual.
+  - **Las métricas de cumplimiento:** `TenantRepository.compliance(bot, since)` cuenta los veredictos de un bot y los
+    criterios y reglas que fallaron. La ruta y la pantalla son de HIG-111.
+  - **Pruebas:** `tests/unit/test_compliance.py`, 13.
+
 ## [0.11.0] - 2026-10-31
 
 ### Añadido

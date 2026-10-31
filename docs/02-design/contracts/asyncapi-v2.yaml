@@ -634,6 +634,13 @@ components:
               type: [string, 'null']
               format: uuid
               description: 'Con `origin: client`, el `uuid` del PedidoDeEnvio del que sale.'
+            evaluation:
+              description: >-
+                Con `origin: engine`, qué decidió el evaluador del motor (HIG-147, ADR-0012 del motor). La ingesta lo
+                guarda con el mensaje, para las métricas de cumplimiento (RF28). Un mensaje del cliente no se juzga.
+              oneOf:
+                - $ref: '#/components/schemas/Evaluacion'
+                - type: 'null'
             messageId:
               type: string
               description: Identificador que Meta dio al envío.
@@ -654,6 +661,37 @@ components:
                 properties:
                   type:
                     type: string
+    Evaluacion:
+      type: object
+      required: [verdict]
+      additionalProperties: false
+      description: >-
+        Qué decidió el evaluador de una respuesta del bot, sin el texto (RS07). `criterion` y `rule` son los del último
+        juicio que no se cumplió, si lo hubo.
+      properties:
+        verdict:
+          enum: [approved, rewritten, replaced, fixed, unevaluated]
+          description: >-
+            `approved`, cumplía a la primera. `rewritten`, no cumplía y la reescrita sí. `replaced`, tampoco la
+            reescrita cumplía, y salió el texto fijo de «no puedo». `fixed`, un texto fijo, que no se juzga.
+            `unevaluated`, no se pudo juzgar, y salió el de «no disponible».
+        criterion:
+          enum: [none, rule, invented, contact, language, tone, format, instructions, role]
+          default: none
+        rule:
+          type: integer
+          minimum: 0
+          maximum: 50
+          default: 0
+          description: El número de la regla del bot que no se cumplía, empezando en 1, o 0.
+        model:
+          type: [string, 'null']
+          maxLength: 100
+        seconds:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 600
+          description: Lo que tardó el evaluador en juzgarla, la última vez.
     Supresion:
       type: object
       required: [schemaVersion, uuid, entity, clientId, erasedAt]
