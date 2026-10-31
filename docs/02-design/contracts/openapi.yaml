@@ -622,7 +622,10 @@ components:
       description: 'What a person of the client thinks of an answer of the bot (RF28, HIG-111): good (`up`) or bad
         (`down`), and
 
-        why if they want. The answer is said by Meta''s id of what was sent, which the conversation gives.'
+        why if they want. The answer is said by its reference, `ref` in the conversation: never Meta''s id, which
+        in
+
+        WhatsApp carries the contact''s number (HIG-149).'
       properties:
         comment:
           anyOf:
@@ -630,10 +633,9 @@ components:
             type: string
           - type: 'null'
           title: Comment
-        messageId:
-          maxLength: 200
-          minLength: 1
-          title: Messageid
+        ref:
+          pattern: ^[0-9a-f]{24}$
+          title: Ref
           type: string
         score:
           enum:
@@ -642,7 +644,7 @@ components:
           title: Score
           type: string
       required:
-      - messageId
+      - ref
       - score
       title: RatingRequest
       type: object
@@ -1061,6 +1063,52 @@ paths:
       summary: Get Compliance
       tags:
       - Bot
+  /chat/{bot_id}/compliance/answers:
+    get:
+      description: 'The last answers of a chatbot that the evaluator judged, newest first, to rate them (RF28):
+        whose contact, when,
+
+        what the evaluator decided and how the people rated it, with its `ref`. `filter`: unrated, flagged (not
+
+        approved as it was, or rated bad) or all. No text, no number, no id of Meta.'
+      operationId: get_answers_to_rate_chat__bot_id__compliance_answers_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: filter
+        required: false
+        schema:
+          title: Filter
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Answers To Rate
+      tags:
+      - Bot
   /chat/{bot_id}/contacts:
     get:
       description: The contacts of a chatbot, oldest first, a page at a time, with everything stored about each.
@@ -1413,9 +1461,9 @@ paths:
       description: 'A person of the client rates an answer of the bot to that contact: good (`up`) or bad (`down`),
         and why if they
 
-        want (RF28). The answer is Meta''s id of what was sent, as the conversation gives it. Rating it again changes
+        want (RF28). The answer is its `ref`, as the conversation gives it. Rating it again changes theirs. A machine
 
-        theirs. A machine credential does not rate: 403.'
+        credential does not rate: 403.'
       operationId: rate_answer_chat__bot_id__contacts__contact_id__ratings_put
       parameters:
       - in: path

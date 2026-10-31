@@ -31,7 +31,7 @@ BODIES = {
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "an-app-secret"},
     ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"): {"categories": ["UTILITY"], "source": "web form"},
     # An answer that is not in the history: the owner gets 404 like anyone else (tests/unit/test_ratings.py rates one).
-    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings"): {"messageId": "wamid.OUT", "score": "down", "comment": "Too long"},
+    ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings"): {"ref": "0" * 24, "score": "down", "comment": "Too long"},
     ("POST", "/chat/{bot_id}/contacts/{contact_id}/messages"): {"type": "text", "text": "Hello"},
     ("POST", "/chat/{bot_id}/templates"): TEMPLATE,
     ("PUT", "/chat/{bot_id}/templates/{template_id}"): {"components": TEMPLATE["components"]},
@@ -101,7 +101,7 @@ def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, co
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 33 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 34 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.

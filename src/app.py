@@ -43,7 +43,7 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
-                        ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance)
+                        ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance, ctr_answers)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -135,6 +135,7 @@ ANALYST_ROUTES = {
     ("GET", "/client"),
     # Rating the answers of the bots and seeing the compliance of each (RF28, HIG-111).
     ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings"), ("GET", "/chat/{bot_id}/compliance"),
+    ("GET", "/chat/{bot_id}/compliance/answers"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -564,8 +565,8 @@ def get_send_status(bot_id: str, contact_id: str, request_id: str, principal: Pr
 def rate_answer(bot_id: str, contact_id: str, rating: RatingRequest, principal: Principal = Depends(get_principal)):
     """
         A person of the client rates an answer of the bot to that contact: good (`up`) or bad (`down`), and why if they
-        want (RF28). The answer is Meta's id of what was sent, as the conversation gives it. Rating it again changes
-        theirs. A machine credential does not rate: 403.
+        want (RF28). The answer is its `ref`, as the conversation gives it. Rating it again changes theirs. A machine
+        credential does not rate: 403.
     """
     return ctr_rate(TenantRepository(principal.client_id), bot_id, contact_id, rating, principal.actor,
                     principal.is_person)
@@ -579,6 +580,17 @@ def get_compliance(bot_id: str, since: datetime | None = None, principal: Princi
         most), from `since` if given. Only counts: no text of any conversation.
     """
     return ctr_compliance(TenantRepository(principal.client_id), bot_id, since)
+
+
+@app.get(path="/chat/{bot_id}/compliance/answers", tags=["Bot"], response_model=ResponseData)
+def get_answers_to_rate(bot_id: str, filter: str = "all", limit: int = 50,  # pylint: disable=redefined-builtin
+                        principal: Principal = Depends(get_principal)):
+    """
+        The last answers of a chatbot that the evaluator judged, newest first, to rate them (RF28): whose contact, when,
+        what the evaluator decided and how the people rated it, with its `ref`. `filter`: unrated, flagged (not
+        approved as it was, or rated bad) or all. No text, no number, no id of Meta.
+    """
+    return ctr_answers(TenantRepository(principal.client_id), bot_id, filter, limit)
 
 
 @app.put(path="/chat/{bot_id}/contacts/{contact_id}/consent", tags=["Contacts"], response_model=ResponseData)

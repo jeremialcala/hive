@@ -48,7 +48,9 @@ def test_a_person_writes_and_gets_the_answer_of_the_engine_through_every_piece(c
         return messages if len(messages) == 2 else None
     incoming, outgoing = until("the answer in the history", both, timeout=60)
     assert (incoming["direction"], incoming["text"]) == ("in", "Hola, ¿abren mañana?")
-    assert (outgoing["direction"], outgoing["text"], outgoing["inReplyTo"]) == ("out", REPLY, "wamid.E2E-IN-1")
+    # By opaque references: Meta's ids of WhatsApp carry the number (HIG-149).
+    assert (outgoing["direction"], outgoing["text"], outgoing["inReplyToRef"]) == ("out", REPLY, incoming["ref"])
+    assert "wamid" not in str(incoming) + str(outgoing)
 
     # And the chatbot is live: Meta reached it (HIG-75).
     assert hive.call("GET", f"/chat/{bot}/info")["status"] == "ACT"

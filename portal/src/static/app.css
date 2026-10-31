@@ -122,9 +122,12 @@ body {
 .pwa-del { background: var(--error-soft); color: var(--error-text); text-decoration: line-through; }
 .pwa-add { background: var(--success-soft); color: var(--success-text); }
 .pwa-main .hv-table-wrap, .pwa-card-table > div { overflow-x: auto; }
+.pwa-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.pwa-card-head.pwa-bare { padding: 0; border-bottom: 0; }
 
 @media (max-width: 64rem) {
   .pwa-two, .pwa-two-wide { grid-template-columns: minmax(0, 1fr); }
+  .pwa-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 48rem) {
