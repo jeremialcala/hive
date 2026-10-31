@@ -14,7 +14,8 @@ algo no vuelve, Thor avisa.
 1. **Docker arranca con el sistema** (`docker.service` está habilitado).
 2. **Docker levanta cada contenedor** que tiene `restart: unless-stopped`. Son todos los de Hive:
    - **El gateway:** `hive-api`, `hive-webhook`, `hive-ingest`, `hive-docs` y `hive-tunel`.
-   - **El motor:** `hive-classifier`, `hive-coordinator`, `hive-responder` y `hive-notifier`.
+   - **El motor:** `hive-classifier`, `hive-coordinator`, `hive-responder`, `hive-evaluator` (desde HIG-146) y
+     `hive-notifier`.
    - **El portal:** `hive-portal`.
 
    La infraestructura tiene además su unidad de arranque: `bifrost-arranque`, `andvari-arranque` y `hermod-arranque`.
@@ -36,7 +37,7 @@ Thor, de Yggdrasil, publica la salud de cada contenedor y de cada unidad que se 
 que es de root y está fuera del repositorio. Desde el 2026-10-30 incluye los de Hive:
 
 ```sh
-THOR_CONTENEDORES="andvari-openbao bifrost-nats hermod-rabbitmq hive-api hive-webhook hive-ingest hive-docs hive-tunel hive-portal hive-classifier hive-coordinator hive-responder hive-notifier"
+THOR_CONTENEDORES="andvari-openbao bifrost-nats hermod-rabbitmq hive-api hive-webhook hive-ingest hive-docs hive-tunel hive-portal hive-classifier hive-coordinator hive-responder hive-evaluator hive-notifier"
 ```
 
 `THOR_UNIDADES` incluye `hive-vigia.timer`. Un contenedor que no existe, o que no está sano, sale con `0`, y Mimir lanza

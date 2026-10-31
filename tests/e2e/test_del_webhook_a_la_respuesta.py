@@ -38,7 +38,7 @@ def test_a_person_writes_and_gets_the_answer_of_the_engine_through_every_piece(c
     assert sent["phoneId"] == PHONE_ID and sent["authorization"] == "Bearer EAAG-e2e-token"
     assert sent["body"]["text"] == {"body": REPLY, "preview_url": False}
     kinds = [call["kind"] for call in seen()["llm"][llm_before:]]
-    assert kinds.count("classifier") == 1 and kinds.count("responder") == 1
+    assert kinds.count("classifier") == 1 and kinds.count("responder") == 1 and kinds.count("evaluator") == 1
     assert all(call["authorization"] == f"Bearer {client['llm_key']}" for call in seen()["llm"])
 
     # The history has both, the answer as the answer to that message.
