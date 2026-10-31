@@ -13,6 +13,19 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El coordinador resume lo que sale del contexto** (HIG-143; ADR-0017 del gateway).
+  - **Cuándo:** cuando la conversación pasa de las 10 vueltas de la persona, al apuntar la respuesta del bot en
+    `MOTOR/coordinator-aprobada`, el 26B resume las vueltas que salen junto con el resumen que había. Va fuera del
+    camino del mensaje. Si el LLM falla, se queda el resumen anterior.
+  - **Dónde se guarda:** cifrado en el mismo valor del contexto.
+  - **Adónde va:** viaja en el pedido (`resumen`, `asyncapi-motor.yaml` 2.3.0), y el de respuesta lo pone en el
+    primer turno de usuario, como datos. Nunca en el `system`.
+  - **El coordinador necesita el LLM:** `LLM_URL` y `keys/llm-api-key`. El compose ya los monta; sin ellos no resume.
+  - **Pruebas:** `tests/unit/test_resumen.py` (19) y una del coordinador. Probado también contra el 26B, con una
+    conversación inventada en tres tandas: conserva lo que importa.
+- **El notificador pasa al historial lo que decidió el evaluador** (HIG-147). El `RespuestaEnviada` lleva
+  `evaluation`, con los nombres del contrato v2 del gateway. El evaluador mide lo que tarda cada juicio (`segundos`
+  en la `Evaluacion`, con `asyncapi-motor.yaml` 2.2.0). Pruebas: 3 del notificador, más las del evaluador.
 - **El evaluador: ninguna respuesta del modelo sale sin juzgarse** (HIG-146; ADR-0008 «Construido (E8)», ADR-0012).
   `python -m src.workers.evaluator` lee lo que propone el de respuesta y publica lo que se envía en
   `motor.aprobada.…`.

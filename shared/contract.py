@@ -125,6 +125,27 @@ class OutboundRequest(_Event):
     template: TemplateToSend | None = None
 
 
+class Evaluation(BaseModel):
+    """
+        What the engine's evaluator decided of an answer (ADR-0012 of the engine, HIG-147), without its text (RS07):
+            approved     it complied the first time
+            rewritten    it did not, and the rewritten one does
+            replaced     neither did, and the fixed text of "I cannot" went instead
+            fixed        a fixed text, which is not judged
+            unevaluated  it could not be judged, and the fixed text of "not available" went instead
+        `criterion` and `rule` are those of the last judgement that failed, if any; `rule` counts from 1, or is 0.
+    """
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verdict: Literal["approved", "rewritten", "replaced", "fixed", "unevaluated"]
+    criterion: Literal["none", "rule", "invented", "contact", "language", "tone", "format", "instructions",
+                       "role"] = "none"
+    rule: int = Field(default=0, ge=0, le=50)
+    model: str | None = Field(default=None, max_length=100)
+    # How long the evaluator took to judge it, the last time it did.
+    seconds: float | None = Field(default=None, ge=0, le=600)
+
+
 class SentReply(_Event):
     """RespuestaEnviada: what the notifier sent and Meta accepted, for the history of the conversation."""
     contactId: UUID
@@ -140,6 +161,8 @@ class SentReply(_Event):
     # Of a client's message: who asked for it, and the request it came from (ADR-0031).
     sentBy: str | None = Field(default=None, min_length=1, max_length=200)
     requestId: UUID | None = None
+    # Of an answer of the bot, what the evaluator decided (HIG-147). A message of the client is not judged.
+    evaluation: Evaluation | None = None
 
 
 class FailedSend(_Event):

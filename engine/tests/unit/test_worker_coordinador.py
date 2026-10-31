@@ -83,6 +83,24 @@ def atender(mensaje, gateway=None, bifrost=None, max_deliver=4):
     return asyncio.run(Coordinar(gateway, bifrost, max_deliver)(mensaje)), gateway, bifrost
 
 
+def test_el_pedido_lleva_el_resumen_de_lo_anterior_que_da_la_memoria():
+    """HIG-143: con el contexto, las vueltas y el resumen de lo que ya salió de ellas."""
+    from src.domain.memoria import Recuerdo  # pylint: disable=import-outside-toplevel
+
+    class Memoria:
+        async def recuerdo(self, _sobre):
+            return Recuerdo(vueltas=VUELTAS, resumen="Ana pidió una cita para el martes.")
+
+        async def apuntar_persona(self, _sobre):
+            pass
+
+    bifrost = Bifrost()
+    asyncio.run(Coordinar(Gateway(), bifrost, 4, Memoria())(Mensaje(clasificado())))
+
+    pedido = MensajePedido.model_validate(bifrost.publicado[0].sobre).pedido
+    assert pedido.vueltas == VUELTAS and pedido.resumen == "Ana pidió una cita para el martes."
+
+
 def test_un_mensaje_que_sigue_se_pide_con_claude_la_persona_y_las_vueltas():
     resultado, gateway, bifrost = atender(Mensaje(clasificado()))
 
@@ -116,7 +134,7 @@ def test_un_mensaje_que_no_sigue_se_pide_con_su_texto_fijo_sin_preguntar_al_gate
 
     assert resultado is Resultado.CONFIRMADO and gateway.preguntas == []
     pedido = bifrost.publicado[0].sobre["pedido"]
-    assert pedido == {"respuesta": respuesta, "persona": None, "vueltas": [], "reescribir": None}
+    assert pedido == {"respuesta": respuesta, "persona": None, "vueltas": [], "reescribir": None, "resumen": None}
 
 
 @pytest.mark.parametrize("entrega", [1, 2, 3])

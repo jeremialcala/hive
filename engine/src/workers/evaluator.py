@@ -88,16 +88,18 @@ class Evaluar:
             return await self._fijo(sobre, particion, "no_disponible", Evaluacion(veredicto="no_evaluada"))
         anterior = pedido.reescribir
         if juicio.cumple:
-            evaluacion = (Evaluacion(veredicto="aprobada", modelo=juicio.modelo) if anterior is None else
+            evaluacion = (Evaluacion(veredicto="aprobada", modelo=juicio.modelo, segundos=juicio.segundos)
+                          if anterior is None else
                           Evaluacion(veredicto="reescrita", criterio=anterior.criterio, regla=anterior.regla,
-                                     modelo=juicio.modelo))
+                                     modelo=juicio.modelo, segundos=juicio.segundos))
             return await self._aprobar(sobre, particion, sobre.respuesta, evaluacion)
         if anterior is None:
             return await self._reescribir(sobre, particion, pedido, juicio)
         log.warning("Tampoco cumple la respuesta reescrita del bot %s (%s): sale «no puedo»", sobre.botId,
                     juicio.criterio)
         return await self._fijo(sobre, particion, "no_puedo", Evaluacion(
-            veredicto="cambiada", criterio=juicio.criterio, regla=juicio.regla, modelo=juicio.modelo))
+            veredicto="cambiada", criterio=juicio.criterio, regla=juicio.regla, modelo=juicio.modelo,
+            segundos=juicio.segundos))
 
     async def _fijo(self, sobre: MensajeRespondido, particion: str, cual: str, evaluacion: Evaluacion) -> Resultado:
         return await self._aprobar(sobre, particion, Contestacion(texto=TEXTOS_FIJOS[cual], fuente="fijo"),

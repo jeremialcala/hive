@@ -52,7 +52,7 @@ def resolver(puntero):
 
 
 def test_es_la_version_2_del_sobre():
-    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.1.0")
+    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.3.0")
     assert SCHEMAS["Sobre"]["properties"]["schemaVersion"]["const"] == ESQUEMA
 
 
@@ -174,7 +174,7 @@ class ModeloQueResponde:
     def __init__(self, redaccion):
         self._redaccion = redaccion
 
-    async def redactar(self, _persona, _vueltas, _texto, reescribir=None):
+    async def redactar(self, _persona, _vueltas, _texto, reescribir=None, resumen=None):
         return self._redaccion
 
 

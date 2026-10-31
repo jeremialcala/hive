@@ -85,10 +85,12 @@ services:
     command: ["python", "-m", "src.workers.coordinator"]
     env_file: [/srv/infra/bifrost/credenciales/coordinator.env]
     environment:
-      <<: [*andvari, *gateway]
+      # Y el LLM, para resumir lo que sale del contexto (HIG-143).
+      <<: [*andvari, *gateway, *llm]
       OTEL_SERVICE_NAME: engine-coordinator
       ENGINE_ROLE_ID: ${COORDINATOR_ROLE_ID:?COORDINATOR_ROLE_ID is required}
     volumes:
+      - ./keys/llm-api-key:/run/llm/api-key:ro
       - ./keys/coordinator-secret-id:/run/andvari/secret-id:ro
       - ./keys/gateway-public.json:/run/gateway/gateway-public.json:ro
       - /srv/infra/andvari/tls/ca.crt:/run/andvari/ca.crt:ro

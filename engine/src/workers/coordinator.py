@@ -37,7 +37,7 @@ from shared import bus, tracing
 from shared.contract import CONFIGURED_SUBJECT, BotConfigured
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
-from src.domain.memoria import Memoria
+from src.domain.memoria import Memoria, Recuerdo
 from src.domain.models.sobre import (RESPUESTA_POR_MOTIVO, MensajeAprobado, MensajeClasificado, MensajePedido,
                                      Pedido, subject_pedido)
 from src.domain.ports.contexto import Contexto, ContextoNoDisponible
@@ -45,6 +45,8 @@ from src.domain.ports.fuente_del_bot import FuenteDelBot, FuenteNoDisponible, No
 from src.infrastructure.bifrost.contexto import ContextoEnBifrost
 from src.infrastructure.gateway import ApiDelGateway
 from src.infrastructure.gateway.api import clave_publica_del_gateway
+from src.infrastructure.llm.cliente import ClienteLlm, leer_clave
+from src.infrastructure.llm.resumidor import LlmResumidor
 from src.workers.runtime import Descartado, Resultado, ejecutar, entregas, leer_del_motor, publicador
 from src.workers.settings import CoordinatorSettings
 
@@ -70,11 +72,11 @@ class Coordinar:
         # Sin ella (las pruebas que no la necesitan), las vueltas se piden al gateway en cada mensaje.
         self._memoria = memoria
 
-    async def _vueltas(self, sobre: MensajeClasificado):
+    async def _recuerdo(self, sobre: MensajeClasificado) -> Recuerdo:
         if self._memoria is not None:
-            return await self._memoria.vueltas(sobre)
-        return await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid, sobre.messageId,
-                                          sobre.receivedAt)
+            return await self._memoria.recuerdo(sobre)
+        return Recuerdo(vueltas=await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid,
+                                                          sobre.messageId, sobre.receivedAt))
 
     def _ultima(self, mensaje) -> bool:
         return 0 < self._max_deliver <= entregas(mensaje)
@@ -98,7 +100,7 @@ class Coordinar:
             return Pedido(respuesta=RESPUESTA_POR_MOTIVO[sobre.clasificacion.motivo])
         try:
             persona = await self._fuente.persona(sobre.clientId, sobre.botId)
-            vueltas = await self._vueltas(sobre)
+            recuerdo = await self._recuerdo(sobre)
         except NoEncontrado as e:
             log.warning("El bot %s o su contacto ya no existen (%s): el mensaje se descarta", sobre.botId, e)
             return Resultado.DESCARTADO
@@ -110,7 +112,7 @@ class Coordinar:
             log.error("Sin lo necesario del gateway para un mensaje del bot %s en la última entrega: %s",
                       sobre.botId, e)
             return Pedido(respuesta="no_disponible")
-        return Pedido(respuesta="modelo", persona=persona, vueltas=vueltas)
+        return Pedido(respuesta="modelo", persona=persona, vueltas=recuerdo.vueltas, resumen=recuerdo.resumen)
 
     async def _coordinar(self, mensaje, sobre: MensajeClasificado, particion: str) -> Resultado:
         pedido = await self._pedido(mensaje, sobre)
@@ -234,12 +236,26 @@ def almacen(settings: CoordinatorSettings) -> EngineKeyStore:
                           settings.andvari_ca_file)
 
 
+def resumidor(settings: CoordinatorSettings) -> LlmResumidor | None:
+    """El LLM que resume lo que sale de las vueltas (HIG-143), si está configurado; si no, no se resume."""
+    if not (settings.llm_url and settings.llm_api_key_file):
+        log.warning("Sin LLM_URL ni LLM_API_KEY_FILE: lo que salga de las vueltas no se resumirá")
+        return None
+    cliente = ClienteLlm(settings.llm_url, leer_clave(settings.llm_api_key_file), settings.llm_model,
+                         settings.coordinator_resumen_timeout)
+    return LlmResumidor(cliente, settings.coordinator_resumen_max_tokens)
+
+
 async def preparar_respuestas(settings: CoordinatorSettings, conexion, store: EngineKeyStore | None = None):
-    """El consumidor de lo aprobado: apunta en el contexto lo que se le envió a la persona."""
+    """
+        El consumidor de lo aprobado: apunta en el contexto lo que se le envió a la persona y, si salen vueltas, las
+        resume (HIG-143). Va en un bucle aparte del de los mensajes: nadie espera al resumen.
+    """
     async def cerrar() -> None:
         return None
 
-    return Respondido(Memoria(None, ContextoEnBifrost(conexion.jetstream(), store or almacen(settings)))), cerrar
+    memoria = Memoria(None, ContextoEnBifrost(conexion.jetstream(), store or almacen(settings)), resumidor(settings))
+    return Respondido(memoria), cerrar
 
 
 async def preparar_supresiones(settings: CoordinatorSettings, conexion, store: EngineKeyStore | None = None):

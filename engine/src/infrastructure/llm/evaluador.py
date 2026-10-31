@@ -12,6 +12,7 @@
 """
 import json
 import logging
+import time
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -114,6 +115,7 @@ class LlmEvaluador(Evaluador):
         self.llm.prefijo = prefijo(system)
         mensajes = [{"role": "system", "content": system},
                     {"role": "user", "content": turno(vueltas, texto, respuesta)}]
+        inicio = time.monotonic()
         try:
             completado = await self.llm.preguntar(mensajes, self._max_tokens, esquema=ESQUEMA)
         except LlmNoDisponible as e:
@@ -130,4 +132,5 @@ class LlmEvaluador(Evaluador):
         motivo = veredicto.motivo.strip()[:MAX_MOTIVO] or "sin motivo"
         log.info("Juicio de %s: %s (%s), %s tokens de entrada", self.llm.modelo,
                  "cumple" if veredicto.cumple else "no cumple", criterio, completado.tokens_entrada)
-        return Juicio(cumple=veredicto.cumple, criterio=criterio, regla=regla, motivo=motivo, modelo=self.llm.modelo)
+        return Juicio(cumple=veredicto.cumple, criterio=criterio, regla=regla, motivo=motivo, modelo=self.llm.modelo,
+                      segundos=round(time.monotonic() - inicio, 3))

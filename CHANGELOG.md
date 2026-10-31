@@ -7,6 +7,27 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-31
+
+### Añadido
+- **El resumen de la conversación** (HIG-143; ADR-0017 0.3.0). Cuando la conversación pasa de las 10 vueltas de la
+  persona, el coordinador resume con el 26B lo que sale del contexto, fuera del camino del mensaje, y el de respuesta
+  lo recibe en su primer turno de usuario. El detalle está en el CHANGELOG del motor.
+- **Lo que decide el evaluador queda guardado con cada respuesta** (HIG-147; RF28).
+  - **El evento:** el `RespuestaEnviada` del notificador lleva `evaluation` en el contrato v2: veredicto
+    (`approved`, `rewritten`, `replaced`, `fixed` o `unevaluated`), criterio, regla, modelo y segundos, sin el texto
+    (RS07). Es opcional, así que un notificador de antes sigue cumpliendo el contrato.
+  - **Dónde se guarda:** la ingesta lo guarda dentro del documento del mensaje enviado. Caduca con él (12 meses), se
+    borra con el contacto, el bot y el cliente, y una reentrega no lo cuenta dos veces. Uno que no cumple el contrato
+    se deja fuera, y el mensaje se guarda igual.
+  - **Las métricas de cumplimiento:** `TenantRepository.compliance(bot, since)` cuenta los veredictos de un bot y los
+    criterios y reglas que fallaron. La ruta y la pantalla son de HIG-111.
+  - **Pruebas:** `tests/unit/test_compliance.py`, 13.
+
+### Cambiado
+- **ADR-0017, 0.3.0: el resumen de la conversación** (HIG-143). Lo que sale de las vueltas del contexto se resume con
+  el resumen que había y se guarda cifrado con él, y el de respuesta lo recibe en su primer turno de usuario.
+
 ## [0.11.0] - 2026-10-31
 
 ### Añadido
@@ -1441,7 +1462,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/jeremialcala/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0

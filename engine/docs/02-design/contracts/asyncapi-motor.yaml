@@ -1,6 +1,6 @@
 # Contrato AsyncAPI interno del motor: el sobre que se pasan sus workers por el stream MOTOR de Bifröst (ADR-0008,
 # punto 6). Estado: draft (E3 a E6, 2026-10-20; ADR-0010, 2026-10-21; el evaluador, HIG-146, 2026-10-31).
-# Versión: 2.1.0.
+# Versión: 2.3.0.
 #
 # Nace con su primer productor, el clasificador (E3 de docs/00-project/plan-de-los-workers.md), y crece con cada
 # worker: cada paso añade lo suyo al sobre. tests/contract/test_contrato_motor.py valida contra este fichero el
@@ -10,7 +10,7 @@
 asyncapi: 3.0.0
 info:
   title: Sobre interno del motor de respuestas
-  version: 2.1.0
+  version: 2.3.0
   description: >-
     Lo que se pasan los workers del motor entre sí. Ninguno guarda estado entre mensajes: todo lo que el siguiente
     necesita viaja en el sobre, y así cualquier réplica atiende cualquier mensaje. Los campos que vienen del gateway
@@ -391,6 +391,14 @@ components:
           description: La más antigua primero. Vacío si no es `modelo`.
           items:
             $ref: '#/components/schemas/Vuelta'
+        resumen:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 2000
+          description: >-
+            Lo anterior a las vueltas, resumido por el coordinador cuando salió de su contexto (HIG-143). El de
+            respuesta lo pone en el primer turno de usuario, como datos. Falta si no ha salido nada, o si las vueltas
+            vinieron del gateway. Dato personal.
         reescribir:
           description: >-
             Solo en el pedido del evaluador: la respuesta del modelo que no cumplía y por qué. El de respuesta la
@@ -490,6 +498,11 @@ components:
         modelo:
           type: [string, 'null']
           description: El modelo que juzgó, o nulo si no se juzgó.
+        segundos:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 600
+          description: Lo que tardó en juzgarla la última vez, o nulo si no la juzgó (HIG-147).
     MensajeAprobado:
       description: >-
         Lo que publica el evaluador para el notificador y el coordinador: lo clasificado, lo que de verdad se envía y

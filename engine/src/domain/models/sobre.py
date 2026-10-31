@@ -50,6 +50,8 @@ RESPUESTA_POR_MOTIVO = {"inyeccion": "no_puedo", "abuso": "no_puedo", "otro": "n
 # Las vueltas que el coordinador pasa como mucho: las 10 últimas de la persona y lo que vino después (RF15 del
 # gateway) caben de sobra.
 MAX_VUELTAS = 40
+# Lo que ocupa como mucho el resumen de lo anterior a las vueltas (HIG-143): unas pocas frases.
+MAX_RESUMEN = 2000
 
 
 def subject_clasificado(particion: str, bot_id, contact_id) -> str:
@@ -181,6 +183,8 @@ class Pedido(_Estricto):
     persona: Optional[Persona] = None
     vueltas: list[Vuelta] = Field(default_factory=list, max_length=MAX_VUELTAS)
     reescribir: Optional[Reescritura] = None
+    # Lo anterior a las vueltas, resumido por el coordinador (HIG-143). Dato personal, como las vueltas.
+    resumen: Optional[str] = Field(default=None, min_length=1, max_length=MAX_RESUMEN)
 
 
 class MensajePedido(MensajeClasificado):
@@ -225,6 +229,8 @@ class Evaluacion(_Estricto):
     criterio: Criterio = "ninguno"
     regla: int = Field(default=0, ge=0, le=50)
     modelo: Optional[str] = None
+    # Lo que tardó en juzgarla la última vez, o None si no la juzgó (HIG-147).
+    segundos: Optional[float] = Field(default=None, ge=0, le=600)
 
 
 class MensajeAprobado(MensajeClasificado):

@@ -72,7 +72,7 @@ class Juez(Evaluador):
     def __init__(self, cumple=True, criterio="ninguno", regla=0, falla=False):
         self.juicios, self._falla = [], falla
         self._juicio = Juicio(cumple=cumple, criterio=criterio, regla=regla, motivo="Promete un descuento.",
-                              modelo="gemma-4-26b-a4b")
+                              modelo="gemma-4-26b-a4b", segundos=1.1)
 
     async def juzgar(self, persona, vueltas, texto, respuesta):
         self.juicios.append((persona, vueltas, texto, respuesta))
@@ -99,6 +99,7 @@ def test_una_respuesta_que_cumple_sale_igual_y_sin_la_persona_ni_las_vueltas():
     sobre = aprobado(bifrost)
     assert resultado is Resultado.CONFIRMADO
     assert sobre.respuesta.texto == "Lo siento, no hacemos descuentos." and sobre.evaluacion.veredicto == "aprobada"
+    assert sobre.evaluacion.segundos == 1.1
     assert "pedido" not in bifrost.publicado[0].sobre and "No damos descuentos" not in json.dumps(
         bifrost.publicado[0].sobre)
     # Juzga con la persona y las vueltas que usó el de respuesta.

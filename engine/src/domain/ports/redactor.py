@@ -33,11 +33,12 @@ class Redactor(ABC):
 
     @abstractmethod
     async def redactar(self, persona: Persona, vueltas: list[Vuelta], texto: str,
-                       reescribir: Reescritura | None = None) -> Redaccion:
+                       reescribir: Reescritura | None = None, resumen: str | None = None) -> Redaccion:
         """
         :param persona: quién es el bot y sus reglas.
         :param vueltas: los mensajes anteriores, el más antiguo primero.
         :param texto: lo que la persona acaba de decir, ya saneado.
         :param reescribir: si el evaluador la devolvió, la respuesta anterior y por qué no cumplía (HIG-146).
+        :param resumen: lo anterior a las vueltas, resumido por el coordinador (HIG-143).
         :raises RedaccionFallida: si no hubo respuesta.
         """

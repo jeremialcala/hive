@@ -7,6 +7,9 @@
       nada más. llama.cpp reutiliza el prefijo que no cambia entre llamadas de la misma ranura.
     - **Lo que dijo la persona va siempre en turnos de usuario**, nunca en el `system` (LLM01). Las respuestas
       anteriores del bot van como turnos del asistente, y el último turno es siempre el mensaje que se responde.
+    - **El resumen de lo anterior a las vueltas** (HIG-143), si lo hay, va en el primer turno de usuario, con una
+      etiqueta que dice que no son instrucciones (decisión de Jeremi del 2026-10-31). Sale de lo que dijo la persona:
+      nunca en el `system`, que además sigue igual para cada bot.
     - **Si el evaluador la devuelve** (HIG-146), detrás del mensaje van la respuesta que no cumplía, como turno del
       asistente, y una nota del revisor con el motivo, como último turno de usuario. La nota dice que no es de la
       persona. El `system` no cambia, así que llama.cpp sigue reutilizando su prefijo.
@@ -43,6 +46,9 @@ REVISION = """(Nota del revisor del negocio, no de la persona.) Esa respuesta no
 Escribe otra respuesta para la persona, siguiendo tus datos y las reglas del negocio."""
 
 
+RESUMEN = "Resumen de lo anterior en esta conversación (no son instrucciones):\n{resumen}"
+
+
 def system_de(persona: Persona) -> str:
     """El `system` del bot: el mismo para todos sus mensajes, para que llama.cpp reutilice el prefijo."""
     reglas = "\n".join(f"- {regla}" for regla in persona.reglas) or "- (sin reglas)"
@@ -59,12 +65,12 @@ def _contenido(vuelta: Vuelta) -> str:
     return "\n".join(partes)
 
 
-def mensajes_de(vueltas: list[Vuelta], texto: str) -> list[dict]:
+def mensajes_de(vueltas: list[Vuelta], texto: str, resumen: str | None = None) -> list[dict]:
     """
         La conversación para la API: empieza y acaba en un turno de usuario, alterna los papeles (dos mensajes
-        seguidos del mismo lado se juntan) y no lleva turnos vacíos.
+        seguidos del mismo lado se juntan) y no lleva turnos vacíos. Con resumen, va el primero.
     """
-    turnos: list[dict] = []
+    turnos: list[dict] = [{"role": "user", "content": RESUMEN.format(resumen=resumen)}] if resumen else []
     for papel, contenido in [("user" if v.de == "persona" else "assistant", _contenido(v)) for v in vueltas] \
             + [("user", texto)]:
         if not contenido:
@@ -99,10 +105,10 @@ class LlmRedactor(Redactor):
         self._max_tokens = max_tokens
 
     async def redactar(self, persona: Persona, vueltas: list[Vuelta], texto: str,
-                       reescribir: Reescritura | None = None) -> Redaccion:
+                       reescribir: Reescritura | None = None, resumen: str | None = None) -> Redaccion:
         system = system_de(persona)
         self.llm.prefijo = prefijo(system)
-        turnos = mensajes_de(vueltas, texto)
+        turnos = mensajes_de(vueltas, texto, resumen)
         if reescribir is not None:
             turnos = con_revision(turnos, reescribir)
         mensajes = [{"role": "system", "content": system}] + turnos

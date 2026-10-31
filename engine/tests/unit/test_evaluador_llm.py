@@ -99,6 +99,7 @@ def test_una_respuesta_que_cumple(servidor):
     juicio = juzgar(servidor)
 
     assert (juicio.cumple, juicio.criterio, juicio.regla, juicio.modelo) == (True, "ninguno", 0, "gemma-4-26b-a4b")
+    assert 0 <= juicio.segundos < 5
 
 
 def test_una_que_no_cumple_dice_que_regla(servidor):
