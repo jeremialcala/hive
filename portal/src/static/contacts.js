@@ -29,7 +29,7 @@ export const REASONS = {
 const POLL_EVERY = 2000; // milliseconds
 const POLL_FOR = 90000;
 
-function when(moment) {
+export function when(moment) {
   return moment ? new Date(moment).toLocaleString("es", { dateStyle: "short", timeStyle: "short" }) : "";
 }
 
@@ -71,9 +71,10 @@ function sender(sentBy, person) {
   return "Enviado por el cliente";
 }
 
-function asThread(messages, person) {
+// The id of each message is its opaque reference (HIG-149): Meta's id of a WhatsApp message carries the number.
+export function asThread(messages, person) {
   return messages.map((message, index) => ({
-    id: message.messageId || String(index),
+    id: message.ref || String(index),
     role: message.direction === "in" || message.direction === "incoming" ? "customer"
       : message.origin === "client" ? "operator" : "bot",
     text: message.text || (message.attachments || []).join(", ") || "",

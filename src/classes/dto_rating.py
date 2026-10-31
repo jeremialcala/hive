@@ -8,11 +8,12 @@ MAX_COMMENT = 500
 class RatingRequest(BaseModel):
     """
         What a person of the client thinks of an answer of the bot (RF28, HIG-111): good (`up`) or bad (`down`), and
-        why if they want. The answer is said by Meta's id of what was sent, which the conversation gives.
+        why if they want. The answer is said by its reference, `ref` in the conversation: never Meta's id, which in
+        WhatsApp carries the contact's number (HIG-149).
     """
     model_config = ConfigDict(extra="forbid")
 
-    messageId: str = Field(min_length=1, max_length=200)
+    ref: str = Field(pattern=r"^[0-9a-f]{24}$")
     score: Literal["up", "down"]
     comment: str | None = Field(default=None, max_length=MAX_COMMENT)
 

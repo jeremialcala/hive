@@ -22,7 +22,9 @@ from repository import NotFound, TenantRepository
 
 from .answers import answer
 
-__all__ = ["ctr_rate", "ctr_compliance"]
+__all__ = ["ctr_rate", "ctr_compliance", "ctr_answers"]
+
+ANSWERS = ("unrated", "flagged", "all")
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -38,17 +40,28 @@ def ctr_rate(repo: TenantRepository, bot_id: str, contact_id: str, request: Rati
         contact = repo.get_contact(bot_id, contact_id)
         if not person:
             return answer(status.HTTP_403_FORBIDDEN, "Only a person rates an answer")
-        rating = repo.rate(contact, request.messageId, actor, request.score, request.comment)
+        rating = repo.rate(contact, request.ref, actor, request.score, request.comment)
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, "This answer of the chatbot was not found")
     except KeyServiceUnavailable as e:
         log.error(f"Key service unavailable: {e}")
         return answer(status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE)
-    # Who and whose, never the answer: Meta's id of a WhatsApp message carries the number.
+    # Who and whose, never the answer.
     log.warning(f"Audit: {actor} rated an answer to contact {contact._uuid} of chatbot {contact.botId}")
     return answer(status.HTTP_200_OK, data={"rating": {
-        "messageId": rating.messageId, "score": rating.score, "comment": request.comment,
+        "ref": request.ref, "score": rating.score, "comment": request.comment,
         "ratedBy": rating.ratedBy, "ratedAt": as_utc(rating.ratedAt)}})
+
+
+def ctr_answers(repo: TenantRepository, bot_id: str, which: str, limit: int) -> JSONResponse:
+    """The last answers of a chatbot that the evaluator judged, to rate them: with no text, number or Meta id."""
+    if which not in ANSWERS:
+        return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, f"filter is one of {', '.join(ANSWERS)}")
+    try:
+        bot = repo.get_bot(bot_id)
+    except NotFound:
+        return answer(status.HTTP_404_NOT_FOUND, "This chatbot was not found")
+    return answer(status.HTTP_200_OK, data={"answers": repo.recent_answers(bot.uuid, which, max(1, min(limit, 100)))})
 
 
 def ctr_compliance(repo: TenantRepository, bot_id: str, since: datetime | None) -> JSONResponse:

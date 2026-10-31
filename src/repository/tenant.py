@@ -4,6 +4,7 @@
     sends carries that client's id, so the isolation between clients does not depend on each caller remembering
     to check who owns what.
 """
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -706,17 +707,26 @@ class TenantRepository:
 
     # --- What the people of the client think of the answers (RF28, HIG-111) -------------------------------------------
 
-    def rate(self, contact: Contact, message_id: str, rated_by: str, score: str, comment: str | None) -> Rating:
+    def ref_of(self, bot_uuid: UUID, direction: str, message_id: str) -> str:
         """
-            A person's rating of an answer of the bot to that contact: theirs replaces the one they gave before.
-            Raises NotFound if the answer is not in the contact's history: only what the bot sent is rated.
+            The opaque reference of a message, which the people of the client see in place of Meta's id: the id of a
+            WhatsApp message carries the contact's number, in base64 (HIG-149). A hash cannot be turned back.
+        """
+        return hashlib.sha256(f"{self.client_id}:{bot_uuid}:{direction}:{message_id}".encode()).hexdigest()[:24]
+
+    def rate(self, contact: Contact, ref: str, rated_by: str, score: str, comment: str | None) -> Rating:
+        """
+            A person's rating of an answer of the bot to that contact, said by its opaque reference: theirs replaces
+            the one they gave before. Raises NotFound if no answer of the bot in the contact's history has it.
         """
         if contact.clientId != self.client_id:
             raise NotFound(contact._uuid)
-        answer = self._own(ConversationMessage, key=ConversationMessage.key_for(contact.botId, OUTGOING, message_id),
-                           contactId=contact._uuid, origin="engine").only("expiresAt").first()
+        answer = next((found for found in self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid,
+                                                     direction=OUTGOING, origin="engine").only("messageId", "expiresAt")
+                       if self.ref_of(contact.botId, OUTGOING, found.messageId) == ref), None)
         if answer is None:
-            raise NotFound(message_id)
+            raise NotFound(ref)
+        message_id = answer.messageId
         rating = Rating(key=Rating.key_for(contact.botId, message_id, rated_by), clientId=self.client_id,
                         botId=contact.botId, contactId=contact._uuid, messageId=message_id, score=score,
                         comment=self._cipher.encrypt("Rating.comment", comment) if comment else None,
@@ -729,15 +739,47 @@ class TenantRepository:
         return rating
 
     def ratings_of(self, contact: Contact) -> dict[str, list[dict]]:
-        """The ratings of the answers to that contact, by Meta's id of each answer, with each comment opened."""
+        """The ratings of the answers to that contact, by the reference of each answer, with each comment opened."""
         if contact.clientId != self.client_id:
             raise NotFound(contact._uuid)
         found: dict[str, list[dict]] = {}
         for rating in self._own(Rating, botId=contact.botId, contactId=contact._uuid).order_by("ratedAt"):
-            found.setdefault(rating.messageId, []).append({
+            found.setdefault(self.ref_of(contact.botId, OUTGOING, rating.messageId), []).append({
                 "score": rating.score, "ratedBy": rating.ratedBy,
                 "ratedAt": rating.ratedAt.replace(tzinfo=timezone.utc),
                 "comment": self._cipher.decrypt("Rating.comment", rating.comment) if rating.comment else None})
+        return found
+
+    def recent_answers(self, bot_uuid: UUID, which: str = "all", limit: int = 50) -> list[dict]:
+        """
+            The last answers of a chatbot that the evaluator judged, newest first, to rate them (RF28, HIG-149): whose
+            contact, when, what the evaluator decided and how the people rated it. No text, no number, no Meta id.
+            `which`: "unrated" (nobody rated it), "flagged" (the evaluator did not approve it as it was, or someone
+            rated it bad) or "all".
+        """
+        scores: dict[str, dict] = {}
+        for rating in self._own(Rating, botId=bot_uuid).only("messageId", "score").as_pymongo():
+            counted = scores.setdefault(rating["messageId"], {"up": 0, "down": 0})
+            counted[rating["score"]] = counted.get(rating["score"], 0) + 1
+        found = []
+        for answer in (self._own(ConversationMessage, botId=bot_uuid, direction=OUTGOING, origin="engine",
+                                 evaluation__exists=True)
+                       .order_by("-sentAt").only("messageId", "contactId", "sentAt", "evaluation")):
+            ratings = scores.get(answer.messageId, {"up": 0, "down": 0})
+            flagged = answer.evaluation.verdict in ("rewritten", "replaced", "unevaluated") or ratings["down"] > 0
+            if (which == "unrated" and (ratings["up"] or ratings["down"])) or (which == "flagged" and not flagged):
+                continue
+            found.append({"ref": self.ref_of(bot_uuid, OUTGOING, answer.messageId), "contactId": answer.contactId,
+                          "sentAt": answer.sentAt.replace(tzinfo=timezone.utc),
+                          "evaluation": answer.evaluation.to_mongo().to_dict(), "ratings": ratings,
+                          "flagged": flagged})
+            if len(found) == limit:
+                break
+        names = {contact._uuid: contact for contact in
+                 self._own(Contact, _uuid__in=list({each["contactId"] for each in found})).only("_uuid", "firstName")}
+        for each in found:
+            contact = names.get(each["contactId"])
+            each["contact"] = {"uuid": str(each.pop("contactId")), "firstName": contact.firstName if contact else None}
         return found
 
     def recent_history(self, contact: Contact, limit: int = 50) -> list[dict]:
@@ -746,7 +788,7 @@ class TenantRepository:
             raise NotFound(contact._uuid)
         last = list(self._own(ConversationMessage, botId=contact.botId, contactId=contact._uuid)
                     .order_by("-sentAt").limit(limit))
-        return self._opened(reversed(last))
+        return self._shown(contact.botId, reversed(last))
 
     def history(self, contact: Contact) -> list[dict]:
         """The contact's conversation, oldest first, with each text opened."""
@@ -768,6 +810,16 @@ class TenantRepository:
         if not starts:
             return []
         return self._opened(conversation.filter(sentAt__gte=starts[-1].sentAt).order_by("sentAt"))
+
+    def _shown(self, bot_uuid: UUID, messages) -> list[dict]:
+        """What a person of the client sees of each message: Meta's ids become opaque references (HIG-149)."""
+        shown = []
+        for message in self._opened(messages):
+            message_id, in_reply_to = message.pop("messageId"), message.pop("inReplyTo")
+            message["ref"] = self.ref_of(bot_uuid, message["direction"], message_id)
+            message["inReplyToRef"] = self.ref_of(bot_uuid, INCOMING, in_reply_to) if in_reply_to else None
+            shown.append(message)
+        return shown
 
     def _opened(self, messages) -> list[dict]:
         return [{"direction": message.direction, "messageId": message.messageId, "channel": message.channel,

@@ -89,8 +89,13 @@ def admin(http, repo, zitadel):
     return person(http, repo, zitadel, PersonRole.ADMIN, "admin-subject")
 
 
+def ref(bot, message_id="wamid.OUT", direction=OUTGOING):
+    """The reference the people see of a message, in place of Meta's id (HIG-149)."""
+    return TenantRepository(bot.clientId).ref_of(bot.uuid, direction, message_id)
+
+
 def rate(http, headers, bot, contact, message_id="wamid.OUT", score="down", comment=None):
-    body = {"messageId": message_id, "score": score, **({"comment": comment} if comment is not None else {})}
+    body = {"ref": ref(bot, message_id), "score": score, **({"comment": comment} if comment is not None else {})}
     return http.put(f"/chat/{bot.uuid}/contacts/{contact._uuid}/ratings", headers=headers, json=body)
 
 
@@ -114,14 +119,15 @@ def test_rating_again_changes_the_rating_of_that_person(http, repo, bot, ana, an
     rate(http, analyst[1], bot, ana, score="up")
 
     assert Rating.objects.count() == 1
-    assert repo.ratings_of(ana)["wamid.OUT"][0]["score"] == "up" and repo.ratings_of(ana)["wamid.OUT"][0]["comment"] is None
+    mine = repo.ratings_of(ana)[ref(bot)][0]
+    assert mine["score"] == "up" and mine["comment"] is None
 
 
 def test_two_people_rate_the_same_answer_each_their_own(http, repo, bot, ana, analyst, admin):
     rate(http, analyst[1], bot, ana, score="down")
     rate(http, admin[1], bot, ana, score="up")
 
-    assert sorted(r["score"] for r in repo.ratings_of(ana)["wamid.OUT"]) == ["down", "up"]
+    assert sorted(r["score"] for r in repo.ratings_of(ana)[ref(bot)]) == ["down", "up"]
 
 
 def test_the_comment_is_stored_encrypted(http, bot, ana, analyst):
@@ -152,11 +158,12 @@ def test_an_answer_to_another_contact_is_not_rated_through_this_one(http, repo, 
 
 
 @pytest.mark.parametrize("body", [
-    {"messageId": "wamid.OUT", "score": "meh"},
-    {"messageId": "wamid.OUT", "score": "up", "comment": "x" * 501},
-    {"messageId": "wamid.OUT", "score": "up", "comment": "a\x00b"},
-    {"messageId": "wamid.OUT", "score": "up", "extra": True},
-], ids=["unknown score", "comment too long", "control character", "unknown field"])
+    {"ref": "0" * 24, "score": "meh"},
+    {"ref": "0" * 24, "score": "up", "comment": "x" * 501},
+    {"ref": "0" * 24, "score": "up", "comment": "a\x00b"},
+    {"ref": "0" * 24, "score": "up", "extra": True},
+    {"messageId": "wamid.OUT", "score": "up"},
+], ids=["unknown score", "comment too long", "control character", "unknown field", "Meta's id"])
 def test_a_rating_off_the_contract_is_refused(http, bot, ana, analyst, body):
     response = http.put(f"/chat/{bot.uuid}/contacts/{ana._uuid}/ratings", headers=analyst[1], json=body)
 
@@ -200,11 +207,15 @@ def test_the_conversation_carries_the_evaluation_and_the_ratings_without_the_num
     response = http.get(f"/chat/{bot.uuid}/contacts/{ana._uuid}/conversation", headers=analyst[1])
 
     assert response.status_code == 200 and NUMBER not in response.text
-    messages = {m["messageId"]: m for m in response.json()["data"]["messages"]}
-    assert messages["wamid.OUT"]["evaluation"] == {"verdict": "rewritten", "criterion": "rule", "rule": 1,
-                                                   "model": "gemma", "seconds": 1.2}
-    assert [(r["score"], r["comment"]) for r in messages["wamid.OUT"]["ratings"]] == [("down", "Bien, pero largo")]
-    assert messages["wamid.IN"]["ratings"] == [] and messages["wamid.IN"]["evaluation"] is None
+    # Nor Meta's ids, which in WhatsApp carry the number (HIG-149): opaque references instead.
+    assert "wamid" not in response.text
+    messages = {m["ref"]: m for m in response.json()["data"]["messages"]}
+    out, incoming = messages[ref(bot)], messages[ref(bot, "wamid.IN", INCOMING)]
+    assert out["evaluation"] == {"verdict": "rewritten", "criterion": "rule", "rule": 1, "model": "gemma",
+                                 "seconds": 1.2}
+    assert out["inReplyToRef"] == incoming["ref"]
+    assert [(r["score"], r["comment"]) for r in out["ratings"]] == [("down", "Bien, pero largo")]
+    assert incoming["ratings"] == [] and incoming["evaluation"] is None
     # Opening it to rate leaves its line of audit, as reading it always did.
     assert f"Audit: person {analyst[0].uuid} read the conversation of contact {ana._uuid}" in logged()
 
@@ -239,3 +250,47 @@ def test_another_client_does_not_see_the_metrics(http, bot, ana, register):
     stranger = register("globex")
 
     assert http.get(f"/chat/{bot.uuid}/compliance", headers=stranger.auth).status_code == 404
+
+
+# --- The answers to rate (HIG-149) -----------------------------------------------------------------------------------
+
+def test_the_answers_to_rate_come_newest_first_without_text_number_nor_meta_id(http, repo, bot, ana, analyst):
+    repo.record_message(ana, OUTGOING, "wamid.LATER", "whatsapp", SENT + timedelta(minutes=5), text="Hasta luego.",
+                        origin="engine", evaluation={"verdict": "approved"})
+
+    response = http.get(f"/chat/{bot.uuid}/compliance/answers", headers=analyst[1])
+
+    assert response.status_code == 200
+    answers = response.json()["data"]["answers"]
+    assert [a["ref"] for a in answers] == [ref(bot, "wamid.LATER"), ref(bot)]
+    assert answers[1]["evaluation"]["verdict"] == "rewritten" and answers[1]["flagged"] is True
+    assert answers[0]["contact"] == {"uuid": str(ana._uuid), "firstName": "Ana"}
+    # Only what the bot sent and the evaluator judged: not what the client sent.
+    assert len(answers) == 2
+    for part in (NUMBER, "wamid", "Hasta luego", "de 9 a 18"):
+        assert part not in response.text
+
+
+@pytest.mark.parametrize("which,expected", [("unrated", ["wamid.LATER"]), ("flagged", ["wamid.OUT", "wamid.LATER"]),
+                                            ("all", ["wamid.LATER", "wamid.OUT"])])
+def test_the_answers_to_rate_can_be_filtered(http, repo, bot, ana, analyst, which, expected):
+    repo.record_message(ana, OUTGOING, "wamid.LATER", "whatsapp", SENT + timedelta(minutes=5), text="Ok.",
+                        origin="engine", evaluation={"verdict": "approved"})
+    # The answer that was rewritten is rated; the later one, approved, is rated bad only in the flagged case.
+    rate(http, analyst[1], bot, ana, score="up")
+    if which == "flagged":
+        rate(http, analyst[1], bot, ana, message_id="wamid.LATER", score="down")
+
+    answers = http.get(f"/chat/{bot.uuid}/compliance/answers", headers=analyst[1],
+                       params={"filter": which}).json()["data"]["answers"]
+
+    assert sorted(a["ref"] for a in answers) == sorted(ref(bot, message_id) for message_id in expected)
+
+
+def test_an_unknown_filter_is_refused(http, caller, bot):
+    assert http.get(f"/chat/{bot.uuid}/compliance/answers", headers=caller.auth,
+                    params={"filter": "everything"}).status_code == 422
+
+
+def test_another_client_does_not_see_the_answers(http, bot, ana, register):
+    assert http.get(f"/chat/{bot.uuid}/compliance/answers", headers=register("globex").auth).status_code == 404
