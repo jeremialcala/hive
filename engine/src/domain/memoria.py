@@ -8,7 +8,7 @@
       (una reentrega), sus vueltas son las de antes de él.
     - **Si no hay contexto, o no sirve,** las vueltas se piden al gateway, como hasta ahora, y con ellas se siembra
       un contexto que no había.
-    - **Al publicar el pedido** se apunta lo que dijo la persona; **al responder**, lo que contestó el bot. Solo sobre
+    - **Al publicar el pedido** se apunta lo que dijo la persona; **al enviar**, lo que contestó el bot. Solo sobre
       un contexto completo, aunque esté vacío (el de un contacto nuevo, HIG-144): uno al que le faltara lo anterior
       engañaría al modelo. Si otro coordinador escribió entre medias, se lee otra vez y se apunta encima.
     - **Si no se puede apuntar**, el contexto ya no está completo: se borra, y el mensaje siguiente lo siembra otra vez
@@ -22,7 +22,7 @@
 import logging
 from datetime import datetime, timezone
 
-from src.domain.models.sobre import MAX_VUELTAS, MensajeClasificado, MensajeRespondido, Vuelta
+from src.domain.models.sobre import MAX_VUELTAS, MensajeAprobado, MensajeClasificado, Vuelta
 from src.domain.ports.contexto import Apunte, Choque, Contexto, ContextoNoDisponible, Conversacion
 from src.domain.ports.fuente_del_bot import FuenteDelBot
 
@@ -94,7 +94,7 @@ class Memoria:
                         enviadaEn=sobre.receivedAt)
         await self._apuntar(sobre, Apunte(vuelta=vuelta, mensaje=sobre.messageId), "persona")
 
-    async def apuntar_bot(self, sobre: MensajeRespondido) -> None:
+    async def apuntar_bot(self, sobre: MensajeAprobado) -> None:
         """Lo que contestó el bot, cuando el de respuesta lo publica."""
         vuelta = Vuelta(de="bot", texto=sobre.respuesta.texto, enviadaEn=datetime.now(timezone.utc))
         await self._apuntar(sobre, Apunte(vuelta=vuelta, mensaje=sobre.messageId), "bot")

@@ -3,6 +3,7 @@
 """
 from .cliente import ClienteLlm, LlmNoDisponible
 from .clasificador import LlmClasificador
+from .evaluador import LlmEvaluador
 from .redactor import LlmRedactor
 
-__all__ = ["ClienteLlm", "LlmNoDisponible", "LlmClasificador", "LlmRedactor"]
+__all__ = ["ClienteLlm", "LlmNoDisponible", "LlmClasificador", "LlmEvaluador", "LlmRedactor"]

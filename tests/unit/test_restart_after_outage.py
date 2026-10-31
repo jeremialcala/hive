@@ -32,6 +32,6 @@ def test_the_runbook_names_every_container_thor_has_to_watch():
     runbook = RUNBOOK.read_text(encoding="utf-8")
     containers = {service["container_name"] for _, _, service in services()}
 
-    assert len(containers) == 10
+    assert len(containers) == 11
     for container in containers:
         assert f"`{container}`" in runbook and container in runbook.split("THOR_CONTENEDORES=")[1].split("\n")[0], container

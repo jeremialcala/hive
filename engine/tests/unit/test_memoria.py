@@ -14,7 +14,7 @@ import pytest
 
 from src.domain.memoria import GUARDADAS, PERSONAS, Memoria, antes_de, recortar
 from src.domain.models.sobre import (Clasificacion, Contestacion, ContactoDelCanal, Entrada, MensajeClasificado,
-                                     MensajeRespondido, Vuelta)
+                                     Evaluacion, MensajeAprobado, Vuelta)
 from src.domain.ports.contexto import Apunte, Choque, Contexto, ContextoNoDisponible, Conversacion
 from src.domain.ports.fuente_del_bot import FuenteDelBot
 from src.infrastructure.bifrost.contexto import ContextoEnBifrost, clave
@@ -35,8 +35,9 @@ def sobre(message_id="wamid.B", recibido=AHORA, texto="¿y el horario?") -> Mens
         entrada=Entrada(texto=texto), clasificacion=Clasificacion(permitido=True, motivo="ninguno"))
 
 
-def respondido(message_id="wamid.B", texto="De 9 a 18.") -> MensajeRespondido:
-    return MensajeRespondido(**sobre(message_id).model_dump(), respuesta=Contestacion(texto=texto, fuente="modelo"))
+def respondido(message_id="wamid.B", texto="De 9 a 18.") -> MensajeAprobado:
+    return MensajeAprobado(**sobre(message_id).model_dump(), respuesta=Contestacion(texto=texto, fuente="modelo"),
+                           evaluacion=Evaluacion(veredicto="aprobada"))
 
 
 class Gateway(FuenteDelBot):
@@ -313,7 +314,7 @@ def test_si_otro_coordinador_escribio_entre_medias_se_apunta_encima():
 # --- Los consumidores del coordinador -------------------------------------------------------------------------------
 
 class Mensaje:
-    def __init__(self, data: bytes, subject="motor.respuesta.3.b.c"):
+    def __init__(self, data: bytes, subject="motor.aprobada.3.b.c"):
         self.data, self.subject, self.headers = data, subject, {}
 
 
@@ -325,7 +326,7 @@ def test_la_respuesta_publicada_se_apunta_y_se_confirma():
     publicado = respondido()
 
     resultado = correr(Respondido(memoria)(Mensaje(publicado.model_dump_json().encode(),
-                                                    f"motor.respuesta.3.{BOT}.{CONTACTO}")))
+                                                    f"motor.aprobada.3.{BOT}.{CONTACTO}")))
 
     assert resultado is Resultado.CONFIRMADO and contexto.apuntes()[-1].vuelta.de == "bot"
 

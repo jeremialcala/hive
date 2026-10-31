@@ -43,7 +43,7 @@ PORTAL, ZITADEL = "http://localhost:15004", "http://zitadel.e2e.test:18090"
 ZITADEL_HOST = "zitadel.e2e.test"
 PHONE_ID = "100000000000001"
 BIFROST_USERS = ["admin", "webhook", "ingesta", "portal", "gestion", "classifier", "coordinator", "responder",
-                 "notifier"]
+                 "evaluator", "notifier"]
 ENGINE_ROLES = {"motor-claves": 'path "motor/data/clientes/+/+" { capabilities = ["create", "read"] }',
                 "motor-coordinator": 'path "motor/data/clientes/+/coordinator" { capabilities = ["read"] }',
                 "motor-notifier": 'path "motor/data/clientes/+/notifier" { capabilities = ["read"] }'}

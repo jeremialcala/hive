@@ -37,6 +37,7 @@ def respondido(**cambios) -> dict:
             "clasificacion": Clasificacion(permitido=True, motivo="ninguno", etiqueta="pregunta", confianza=0.9,
                                            modelo="gemma-4-26b-a4b").model_dump(),
             "respuesta": {"texto": "Sí, tenemos zapatos rojos.", "fuente": "modelo", "modelo": "gemma-4-26b-a4b"},
+            "evaluacion": {"veredicto": "aprobada", "criterio": "ninguno", "regla": 0, "modelo": "gemma-4-26b-a4b"},
             **cambios}
 
 
@@ -44,7 +45,7 @@ class Mensaje:
 
     def __init__(self, datos, entregas=1, subject=None):
         self.data = json.dumps(datos).encode()
-        self.subject = subject or f"motor.respuesta.7.{BOT}.{CONTACTO}"
+        self.subject = subject or f"motor.aprobada.7.{BOT}.{CONTACTO}"
         self.headers = {"traceparent": TRAZA}
         self.metadata = SimpleNamespace(num_delivered=entregas)
 
