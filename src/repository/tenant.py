@@ -12,7 +12,7 @@ from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
 from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
-                     MessageTemplate, OutboundRequest, Rule)
+                     MessageTemplate, OutboundRequest, Rating, Rule)
 from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING, OUTGOING, VERDICTS, MessageEvaluation
 from classes.entity_outbound import FAILED, SENT
@@ -40,7 +40,7 @@ HISTORY_RETENTION = timedelta(days=365)
 OF_A_BOT = (("contacts", Contact, "botId"), ("phones", ChatbotPhone, "bot_id"), ("rules", Rule, "botId"),
             ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"),
             ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"),
-            ("versions", BotVersion, "botId"))
+            ("versions", BotVersion, "botId"), ("ratings", Rating, "botId"))
 
 
 @dataclass(frozen=True)
@@ -200,7 +200,8 @@ class TenantRepository:
         """The contacts first, then their history: from then on no new message is stored for them."""
         return {"contacts": self._own(Contact, botId=bot_uuid, _uuid__in=list(contacts)).delete(),
                 "messages": self._own(ConversationMessage, botId=bot_uuid, contactId__in=list(contacts)).delete(),
-                "outbound": self._own(OutboundRequest, botId=bot_uuid, contactId__in=list(contacts)).delete()}
+                "outbound": self._own(OutboundRequest, botId=bot_uuid, contactId__in=list(contacts)).delete(),
+                "ratings": self._own(Rating, botId=bot_uuid, contactId__in=list(contacts)).delete()}
 
     def _add_to_bot(self, bot_id, document, field: str, seal=None):
         bot_uuid = self.get_bot(bot_id).uuid
@@ -691,9 +692,53 @@ class TenantRepository:
                 criteria[criterion] = criteria.get(criterion, 0) + 1
                 if criterion == "rule" and evaluation.get("rule"):
                     rules[evaluation["rule"]] = rules.get(evaluation["rule"], 0) + 1
+        ratings = {"up": 0, "down": 0}
+        rated = set()
+        rating_filters = {"botId": bot_uuid, **({"ratedAt__gte": since} if since is not None else {})}
+        for found in self._own(Rating, **rating_filters).only("score", "messageId").as_pymongo():
+            if found.get("score") in ratings:
+                ratings[found["score"]] += 1
+                rated.add(found["messageId"])
         return {"answers": sum(verdicts.values()), "verdicts": verdicts,
                 "criteria": dict(sorted(criteria.items(), key=lambda item: (-item[1], item[0]))),
-                "rules": dict(sorted(rules.items(), key=lambda item: (-item[1], item[0])))}
+                "rules": dict(sorted(rules.items(), key=lambda item: (-item[1], item[0]))),
+                "ratings": {**ratings, "answers": len(rated)}}
+
+    # --- What the people of the client think of the answers (RF28, HIG-111) -------------------------------------------
+
+    def rate(self, contact: Contact, message_id: str, rated_by: str, score: str, comment: str | None) -> Rating:
+        """
+            A person's rating of an answer of the bot to that contact: theirs replaces the one they gave before.
+            Raises NotFound if the answer is not in the contact's history: only what the bot sent is rated.
+        """
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        answer = self._own(ConversationMessage, key=ConversationMessage.key_for(contact.botId, OUTGOING, message_id),
+                           contactId=contact._uuid, origin="engine").only("expiresAt").first()
+        if answer is None:
+            raise NotFound(message_id)
+        rating = Rating(key=Rating.key_for(contact.botId, message_id, rated_by), clientId=self.client_id,
+                        botId=contact.botId, contactId=contact._uuid, messageId=message_id, score=score,
+                        comment=self._cipher.encrypt("Rating.comment", comment) if comment else None,
+                        ratedBy=rated_by, ratedAt=datetime.now(timezone.utc), expiresAt=answer.expiresAt)
+        rating.save()
+        if not self._own(Contact, _uuid=contact._uuid).count():
+            # The contact was deleted between finding it and storing this: nothing is left behind in its name.
+            rating.delete()
+            raise NotFound(contact._uuid)
+        return rating
+
+    def ratings_of(self, contact: Contact) -> dict[str, list[dict]]:
+        """The ratings of the answers to that contact, by Meta's id of each answer, with each comment opened."""
+        if contact.clientId != self.client_id:
+            raise NotFound(contact._uuid)
+        found: dict[str, list[dict]] = {}
+        for rating in self._own(Rating, botId=contact.botId, contactId=contact._uuid).order_by("ratedAt"):
+            found.setdefault(rating.messageId, []).append({
+                "score": rating.score, "ratedBy": rating.ratedBy,
+                "ratedAt": rating.ratedAt.replace(tzinfo=timezone.utc),
+                "comment": self._cipher.decrypt("Rating.comment", rating.comment) if rating.comment else None})
+        return found
 
     def recent_history(self, contact: Contact, limit: int = 50) -> list[dict]:
         """The last `limit` messages of the contact's conversation, oldest first, with each text opened."""
@@ -729,4 +774,7 @@ class TenantRepository:
                  "sentAt": message.sentAt.replace(tzinfo=timezone.utc), "intent": message.intent,
                  "inReplyTo": message.inReplyTo, "origin": message.origin, "sentBy": message.sentBy,
                  "text": self._cipher.decrypt("Message.text", message.text),
-                 "attachments": list(message.attachments)} for message in messages]
+                 "attachments": list(message.attachments),
+                 # What the evaluator decided of an answer of the bot (HIG-147), with no text.
+                 "evaluation": message.evaluation.to_mongo().to_dict() if message.evaluation else None}
+                for message in messages]

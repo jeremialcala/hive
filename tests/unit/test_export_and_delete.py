@@ -236,7 +236,7 @@ def test_the_number_never_travels_in_an_address():
     """An address is written down by every proxy on the way: whoever is looked for goes in the body."""
     routes = [route for route in app_module.app.routes if "contacts" in getattr(route, "path", "")]
 
-    assert len(routes) == 10
+    assert len(routes) == 11
     for route in routes:
         assert {parameter.name for parameter in route.dependant.query_params} <= {"offset", "limit"}
         assert {parameter.name for parameter in route.dependant.path_params} <= {"bot_id", "contact_id", "request_id"}
@@ -295,7 +295,7 @@ def test_a_deleted_contact_is_gone_and_the_others_stay(http, caller, people):
     deleted = erase(http, caller, f"/chat/{people}/contacts/{ana['uuid']}")
 
     assert deleted.status_code == 200
-    assert deleted.json()["data"] == {"uuid": ana["uuid"], "deleted": {"contacts": 1, "messages": 1, "outbound": 0}}
+    assert deleted.json()["data"] == {"uuid": ana["uuid"], "deleted": {"contacts": 1, "messages": 1, "outbound": 0, "ratings": 0}}
     assert ana["uuid"] not in dump()
     assert search(http, caller, waId=ANA_NUMBER).json()["data"] == []
     assert http.get(f"/chat/{people}/contacts/{ana['uuid']}", headers=caller.auth).status_code == 404
@@ -317,7 +317,7 @@ def test_deleting_a_contact_takes_every_copy_of_that_person_in_the_chatbot(http,
 
     deleted = erase(http, caller, f"/chat/{people}/contacts/{copies[0]['uuid']}")
 
-    assert deleted.json()["data"]["deleted"] == {"contacts": 2, "messages": 1, "outbound": 0}
+    assert deleted.json()["data"]["deleted"] == {"contacts": 2, "messages": 1, "outbound": 0, "ratings": 0}
     # What is left: the other two people of this chatbot, and the same person in the other one.
     assert [c["botId"] for c in search(http, caller, **who).json()["data"]] == [other]
     assert contacts_of(http, caller, people)["total"] == 2
@@ -401,7 +401,7 @@ def test_deleting_a_chatbot_deletes_everything_stored_for_it(http, caller, stran
     assert deleted.status_code == 200
     assert deleted.json()["data"] == {"uuid": people, "deleted": {"chatbots": 1, "contacts": 3, "phones": 1,
                                                                  "rules": 1, "intents": 1, "messages": 3,
-                                                                 "templates": 0, "outbound": 0, "versions": 3}}
+                                                                 "templates": 0, "outbound": 0, "versions": 3, "ratings": 0}}
     assert people not in dump()
     assert {bot: dump().count(bot) for bot in kept} == kept
     assert counts() == {"ChatBot": 2, "ChatbotPhone": 2, "Rule": 2, "Intent": 2, "Contact": 2}
@@ -437,7 +437,7 @@ def test_what_a_deletion_cut_short_left_behind_is_deleted_by_asking_again(http, 
 
     assert again.status_code == 200
     assert again.json()["data"]["deleted"] == {"chatbots": 0, "contacts": 3, "phones": 1, "rules": 1, "intents": 1,
-                                               "messages": 3, "templates": 0, "outbound": 0, "versions": 3}
+                                               "messages": 3, "templates": 0, "outbound": 0, "versions": 3, "ratings": 0}
     assert people not in dump()
     assert erase(http, caller, f"/bot/{people}").status_code == 404
 
@@ -534,7 +534,7 @@ def test_the_operator_deletes_a_client_with_everything_stored_for_it(http, opera
     assert deleted.status_code == 200
     assert deleted.json()["data"] == {"uuid": str(leaving.client_id), "deleted": {
         "chatbots": 2, "contacts": 4, "phones": 2, "rules": 2, "intents": 2, "messages": 4, "templates": 0,
-        "outbound": 0, "versions": 6, "people": 0}}
+        "outbound": 0, "versions": 6, "ratings": 0, "people": 0}}
     # Not a document of any kind names the client any more: its registry entry, its tokens, its data.
     assert str(leaving.client_id) not in dump()
     assert counts(clientId=stranger.client_id) == kept == counts()
@@ -677,7 +677,7 @@ def test_the_repository_of_another_client_deletes_nothing_of_this_one(caller, st
 
     assert TenantRepository(stranger.client_id).erase_all() == {
         "chatbots": 0, "contacts": 0, "phones": 0, "rules": 0, "intents": 0, "messages": 0, "templates": 0,
-        "outbound": 0, "versions": 0, "people": 0}
+        "outbound": 0, "versions": 0, "ratings": 0, "people": 0}
     assert counts() == before == counts(clientId=caller.client_id)
 
 

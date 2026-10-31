@@ -70,6 +70,7 @@ def ctr_conversation(repo: TenantRepository, bot_id: str, contact_id: str, actor
     try:
         contact = repo.get_contact(bot_id, contact_id)
         messages = repo.recent_history(contact, MESSAGES)
+        ratings = repo.ratings_of(contact)
         window = window_of(repo.last_incoming_at(contact))
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, "This contact was not found")
@@ -78,6 +79,9 @@ def ctr_conversation(repo: TenantRepository, bot_id: str, contact_id: str, actor
     if person:
         log.warning(f"Audit: {actor} read the conversation of contact {contact._uuid} of chatbot {contact.botId}")
     channel = "whatsapp" if contact.waIdIndex or contact.waId else "messenger" if contact.fbId else None
+    for message in messages:
+        # What the people of the client thought of each answer of the bot (RF28, HIG-111).
+        message["ratings"] = ratings.get(message["messageId"], []) if message["direction"] == "out" else []
     return answer(status.HTTP_200_OK, data={
         "contact": {"uuid": str(contact._uuid), "botId": str(contact.botId), "firstName": contact.firstName,
                     "lastName": contact.lastName, "channel": channel, "consent": consent_info(contact)},

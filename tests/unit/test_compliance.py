@@ -135,7 +135,8 @@ def test_the_metrics_count_each_verdict_and_what_failed(caller, repo, bot, ana):
 
     assert metrics == {"answers": 7,
                        "verdicts": {"approved": 2, "rewritten": 1, "replaced": 2, "fixed": 1, "unevaluated": 1},
-                       "criteria": {"rule": 2, "language": 1}, "rules": {2: 2}}
+                       "criteria": {"rule": 2, "language": 1}, "rules": {2: 2},
+                       "ratings": {"up": 0, "down": 0, "answers": 0}}
 
 
 def test_the_metrics_can_start_at_a_date(caller, repo, bot, ana):

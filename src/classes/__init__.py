@@ -15,6 +15,7 @@ from .entity_jwk import Jwk
 from .entity_chatbot_rules import Rule
 from .entity_intent import Intent, Action, ApiCall, ActionParameter
 from .entity_bot_version import BotVersion
+from .entity_rating import Rating
 
 from .dto_client_request import ClientRequest, OwnedKeyRequest, ServiceKeyRequest, SigningKeyRequest
 from .dto_bot_credentials import BotCredentialsRequest
@@ -29,6 +30,7 @@ from .dto_event import EventTransport
 from .dto_message_body import MessageBody
 from .dto_chatbot_rules_request import RuleRequest, RulesRequest
 from .dto_intent_request import (IntentRequest, ActionRequest, ApiCallRequest, ActionParameterRequest)
+from .dto_rating import RatingRequest
 
 # Let's bring Facebook Objects
 from .dto_facebook_request import FacebookRequest
