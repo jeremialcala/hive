@@ -52,7 +52,7 @@ def resolver(puntero):
 
 
 def test_es_la_version_2_del_sobre():
-    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.0.0")
+    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.1.0")
     assert SCHEMAS["Sobre"]["properties"]["schemaVersion"]["const"] == ESQUEMA
 
 
@@ -174,7 +174,7 @@ class ModeloQueResponde:
     def __init__(self, redaccion):
         self._redaccion = redaccion
 
-    async def redactar(self, _persona, _vueltas, _texto):
+    async def redactar(self, _persona, _vueltas, _texto, reescribir=None):
         return self._redaccion
 
 
@@ -203,6 +203,45 @@ def test_la_respuesta_cumple_el_contrato(respuesta, redaccion):
     validador("MensajeRespondido").validate(sobre)
     validador("Cabeceras").validate(cabeceras)
     assert subject == f"motor.respuesta.3.{bot}.{contacto}"
+
+
+class Juez:
+
+    def __init__(self, cumple):
+        self._cumple = cumple
+
+    async def juzgar(self, _persona, _vueltas, _texto, _respuesta):
+        from src.domain.ports.evaluador import Juicio  # pylint: disable=import-outside-toplevel
+        return Juicio(cumple=self._cumple, criterio="ninguno" if self._cumple else "regla",
+                      regla=0 if self._cumple else 1, motivo="Promete un descuento.", modelo="gemma-4-26b-a4b")
+
+
+@pytest.mark.parametrize("cumple, reescribir, nombre, paso", [
+    (True, None, "MensajeAprobado", "aprobada"),
+    (False, None, "MensajePedido", "pedido"),
+    (False, {"texto": "10 %", "motivo": "Descuento.", "criterio": "regla", "regla": 1}, "MensajeAprobado", "aprobada"),
+], ids=["aprobada", "pedido de reescritura", "cambiada por el texto fijo"])
+def test_lo_que_publica_el_evaluador_cumple_el_contrato(cumple, reescribir, nombre, paso):
+    from src.workers.evaluator import Evaluar  # pylint: disable=import-outside-toplevel
+    bot, contacto = uuid4(), uuid4()
+    persona = {"nombre": "Mine", "rol": "Sales", "tono": "helpful", "descripcion": "", "reglas": ["Sin descuentos"]}
+    respondido = {"schemaVersion": 2, "botId": str(bot), "clientId": str(uuid4()), "messageId": "wamid.A",
+                  "channel": "whatsapp", "receivedAt": "2026-10-20T09:00:00+00:00", "orderKey": f"{bot}.{contacto}",
+                  "contact": {"uuid": str(contacto), "waId": "12025550143"},
+                  "entrada": {"texto": "¿descuento?", "adjuntos": []},
+                  "clasificacion": Clasificacion(permitido=True, motivo="ninguno", etiqueta="pregunta",
+                                                 confianza=0.9, modelo="gemma-4-26b-a4b").model_dump(),
+                  "respuesta": {"texto": "Te dejo un 10 %.", "fuente": "modelo", "modelo": "gemma-4-26b-a4b"},
+                  "pedido": {"respuesta": "modelo", "persona": persona, "vueltas": [], "reescribir": reescribir}}
+    validador("MensajeRespondido").validate(respondido)
+    bifrost = Bifrost()
+
+    asyncio.run(Evaluar(Juez(cumple), bifrost, 4)(Mensaje(respondido, f"motor.respuesta.3.{bot}.{contacto}")))
+
+    (subject, sobre, cabeceras), = bifrost.publicado
+    validador(nombre).validate(sobre)
+    validador("Cabeceras").validate(cabeceras)
+    assert subject == f"motor.{paso}.3.{bot}.{contacto}"
 
 
 # --- Lo que el notificador devuelve al gateway, según el contrato v2 de este ----------------------------------------
@@ -239,12 +278,13 @@ def test_lo_que_publica_el_notificador_cumple_el_contrato_v2_del_gateway():
                   "entrada": {"texto": "hola", "adjuntos": []},
                   "clasificacion": Clasificacion.sin_veredicto("sin_texto").model_dump(),
                   "respuesta": {"texto": "Por ahora solo puedo leer mensajes de texto.", "fuente": "fijo",
-                                "modelo": None}}
-    validador("MensajeRespondido").validate(respondido)
+                                "modelo": None},
+                  "evaluacion": {"veredicto": "fija", "criterio": "ninguno", "regla": 0, "modelo": None}}
+    validador("MensajeAprobado").validate(respondido)
     bifrost = Bifrost()
 
     asyncio.run(Notificar(Tokens(), Meta(), Registro(), bifrost, 5)(
-        Mensaje(respondido, f"motor.respuesta.3.{bot}.{contacto}")))
+        Mensaje(respondido, f"motor.aprobada.3.{bot}.{contacto}")))
 
     (subject, evento, cabeceras), = bifrost.publicado
     assert subject == f"engine.reply.sent.{bot}"

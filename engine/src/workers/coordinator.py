@@ -19,7 +19,7 @@
     - **El contexto de cada conversación** vive en el bucket `contexto` de Bifröst, cifrado con la clave `contexto`
       de Andvari (ADR-0017 del gateway, HIG-19, src/domain/memoria.py). Las vueltas salen de ahí; si no están, o no
       sirven para el mensaje, se piden al gateway como antes. El coordinador apunta en él lo que dijo la persona, y
-      con su consumidor `MOTOR/coordinator-respuesta`, lo que contestó el bot.
+      con su consumidor `MOTOR/coordinator-aprobada`, lo que se le envió: lo que aprobó el evaluador (HIG-146).
     - **Lo que el gateway suprime** lo borra del contexto: el consumidor `SUPRESIONES/coordinator` purga las
       conversaciones del contacto, el bot o el cliente borrados. Si un aviso se pierde, el bucket lo olvida en 24 horas.
 
@@ -38,8 +38,8 @@ from shared.contract import CONFIGURED_SUBJECT, BotConfigured
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
 from src.domain.memoria import Memoria
-from src.domain.models.sobre import (RESPUESTA_POR_MOTIVO, MensajeClasificado, MensajePedido, MensajeRespondido, Pedido,
-                                     subject_pedido)
+from src.domain.models.sobre import (RESPUESTA_POR_MOTIVO, MensajeAprobado, MensajeClasificado, MensajePedido,
+                                     Pedido, subject_pedido)
 from src.domain.ports.contexto import Contexto, ContextoNoDisponible
 from src.domain.ports.fuente_del_bot import FuenteDelBot, FuenteNoDisponible, NoEncontrado
 from src.infrastructure.bifrost.contexto import ContextoEnBifrost
@@ -53,7 +53,8 @@ log = logging.getLogger(__name__)
 NOMBRE = Worker.COORDINATOR.value
 STREAM, CONSUMIDOR = "MOTOR", NOMBRE
 # Lo que contestó el bot, para el contexto; y lo que suprimió el gateway (bifrost: consumidores del coordinador).
-CONSUMIDOR_RESPUESTAS = f"{NOMBRE}-respuesta"
+# Desde el evaluador (HIG-146), lo que se envía; el de antes, `coordinator-respuesta`, leía lo propuesto.
+CONSUMIDOR_RESPUESTAS = f"{NOMBRE}-aprobada"
 SUPRESIONES = "SUPRESIONES"
 
 
@@ -140,7 +141,7 @@ class Respondido:
 
     async def __call__(self, mensaje) -> Resultado:
         try:
-            sobre, _ = leer_del_motor(mensaje, MensajeRespondido, "respuesta")
+            sobre, _ = leer_del_motor(mensaje, MensajeAprobado, "aprobada")
         except Descartado as e:
             log.warning("Una respuesta de %s se descarta: %s", STREAM, e)
             return Resultado.DESCARTADO
@@ -234,7 +235,7 @@ def almacen(settings: CoordinatorSettings) -> EngineKeyStore:
 
 
 async def preparar_respuestas(settings: CoordinatorSettings, conexion, store: EngineKeyStore | None = None):
-    """El consumidor de las respuestas: apunta en el contexto lo que contestó el bot."""
+    """El consumidor de lo aprobado: apunta en el contexto lo que se le envió a la persona."""
     async def cerrar() -> None:
         return None
 

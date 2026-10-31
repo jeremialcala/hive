@@ -2,7 +2,7 @@
 """
     El de respuesta (E5 de engine/docs/00-project/plan-de-los-workers.md). Lee cada pedido del stream `MOTOR` con el
     consumidor `responder`, escribe la contestación y la publica en
-    `motor.respuesta.{partición}.{botId}.{contactId}`, para el notificador.
+    `motor.respuesta.{partición}.{botId}.{contactId}`, para el evaluador.
 
         python -m src.workers.responder
 
@@ -13,7 +13,11 @@
     - **Si el modelo no contesta**, o su respuesta se corta o viene vacía, el mensaje queda en espera y Bifröst lo
       entrega otra vez. En la última entrega contesta el texto fijo de «no disponible».
 
-    El sobre que publica no lleva la persona ni las vueltas: el notificador solo necesita el texto y a quién.
+    - **Si el evaluador la devuelve** (`reescribir`, HIG-146), la escribe otra vez con la respuesta anterior y el
+      motivo. Se publica con otro `Nats-Msg-Id`, para que Bifröst no la tome por la primera.
+
+    Con el modelo, el sobre que publica lleva el pedido: el evaluador juzga con la persona y las vueltas que se usaron.
+    El notificador no lo ve: lee lo que aprueba el evaluador, sin ellas.
 """
 import asyncio
 import logging
@@ -22,6 +26,7 @@ from shared import bus, tracing
 from shared.workers import Worker
 from src.domain.models.sobre import Contestacion, MensajePedido, MensajeRespondido, subject_respuesta
 from src.domain.ports.redactor import RedaccionFallida, Redactor
+from src.domain.textos_fijos import TEXTOS_FIJOS
 from src.infrastructure.llm import ClienteLlm, LlmRedactor
 from src.infrastructure.llm import caliente
 from src.infrastructure.llm.cliente import leer_clave
@@ -32,14 +37,6 @@ log = logging.getLogger(__name__)
 
 NOMBRE = Worker.RESPONDER.value
 STREAM, CONSUMIDOR = "MOTOR", NOMBRE
-
-# Los textos fijos, en el idioma de los bots de hoy. Cuando un bot pueda tener los suyos, saldrán de su
-# configuración.
-TEXTOS_FIJOS = {
-    "no_puedo": "Lo siento, con eso no puedo ayudarte.",
-    "solo_texto": "Por ahora solo puedo leer mensajes de texto. ¿Me lo escribes?",
-    "no_disponible": "Ahora mismo no puedo responderte. Inténtalo de nuevo en un rato, por favor.",
-}
 
 
 class Responder:
@@ -77,7 +74,8 @@ class Responder:
             log.error("Un pedido del bot %s con el modelo no trae la persona o el texto", sobre.botId)
             return Contestacion(texto=TEXTOS_FIJOS["no_disponible"], fuente="fijo")
         try:
-            redaccion = await self._redactor.redactar(pedido.persona, pedido.vueltas, sobre.entrada.texto)
+            redaccion = await self._redactor.redactar(pedido.persona, pedido.vueltas, sobre.entrada.texto,
+                                                      reescribir=pedido.reescribir)
         except RedaccionFallida as e:
             if not self._ultima(mensaje):
                 log.warning("Sin respuesta para un mensaje del bot %s, se intentará otra vez: %s", sobre.botId, e)
@@ -95,13 +93,16 @@ class Responder:
         if isinstance(contestacion, Resultado):
             return contestacion
         lo_clasificado = sobre.model_dump(exclude={"pedido"})
-        salida = MensajeRespondido(**lo_clasificado, respuesta=contestacion)
+        # El pedido solo hace falta para juzgar lo que escribió el modelo.
+        pedido = sobre.pedido if contestacion.fuente == "modelo" else None
+        salida = MensajeRespondido(**lo_clasificado, respuesta=contestacion, pedido=pedido)
         subject = subject_respuesta(particion, sobre.botId, sobre.contact.uuid)
         traza = tracing.traceparent()
         headers = {"traceparent": traza} if traza else {}
+        reescrita = ":reescrita" if sobre.pedido.reescribir is not None else ""
         try:
             await self._publisher.publish(subject, salida.model_dump_json().encode(),
-                                          f"respuesta:{sobre.botId}:{sobre.messageId}", headers)
+                                          f"respuesta:{sobre.botId}:{sobre.messageId}{reescrita}", headers)
         except bus.BusUnavailable as e:
             log.error("La respuesta a un mensaje del bot %s no se pudo publicar: %s", sobre.botId, e)
             return Resultado.EN_ESPERA

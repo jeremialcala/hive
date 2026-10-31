@@ -227,6 +227,31 @@ código. El orden está en `engine/docs/00-project/plan-de-los-workers.md`.
 - **Messenger e Instagram** se descartan hasta el E10.
 - **El bucle común** pasa a cada worker su conexión con Bifröst al arrancar: el notificador abre con ella el bucket.
 
+## Construido (E8, el evaluador, 2026-10-31)
+
+- **El quinto worker:** `python -m src.workers.evaluator` (HIG-146), con el modelo que eligió la
+  [ADR-0012](ADR-0012-modelo-del-evaluador.md): el mismo Gemma 4 26B, en su propia ranura de `hive-llm`.
+  - Lee `motor.respuesta.…` con el consumidor `MOTOR/evaluator`, un mensaje en vuelo.
+  - Publica lo que se envía en `motor.aprobada.{partición}.{botId}.{contactId}`, con `Nats-Msg-Id =
+    aprobada:{botId}:{messageId}`.
+  - El notificador y el coordinador leen lo aprobado con consumidores nuevos, `MOTOR/notifier-aprobada` y
+    `MOTOR/coordinator-aprobada`.
+- **Qué hace con cada respuesta** (decisiones de Jeremi del 2026-10-31):
+  - **un texto fijo** pasa sin juzgarse;
+  - **la del modelo, si cumple** la persona y las reglas del bot, sale igual;
+  - **si no cumple, la devuelve una vez al de respuesta.** Publica un pedido en `motor.pedido.…` con `reescribir`:
+    la respuesta, el motivo, el criterio y la regla. El `Nats-Msg-Id` acaba en `:reescrita`, y así lo lleva también la
+    respuesta nueva. Si la reescrita tampoco cumple, sale el texto fijo de «no puedo»;
+  - **si no puede juzgarla, falla cerrado:** espera y, en la última entrega, sale el de «no disponible». Nada sale
+    sin evaluar.
+- **Con qué juzga:** la persona y las vueltas que usó el de respuesta, que ahora viajan en su sobre. Así el evaluador
+  no necesita el gateway, ni Andvari, ni una clave propia. El sobre aprobado no las lleva, así que el notificador
+  recibe lo mismo que antes.
+- **Cada sobre aprobado dice qué se decidió**, sin el texto: `aprobada`, `reescrita`, `cambiada`, `fija` o
+  `no_evaluada`, con el criterio y la regla que fallaron. Es para las métricas de cumplimiento (HIG-147).
+- **El contrato** pasa a la 2.1.0: el canal `aprobada`, `reescribir` en el pedido y el pedido en la respuesta.
+- **Los textos fijos** están en `src/domain/textos_fijos.py`: los comparten el de respuesta y el evaluador.
+
 ## Condiciones de revisión
 
 - El caudal pide más de un mensaje en vuelo: entonces, un consumidor por grupo de particiones.

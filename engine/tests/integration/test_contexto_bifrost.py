@@ -62,7 +62,7 @@ def bifrost(url):
         await js.add_stream(StreamConfig(name="SUPRESIONES", subjects=["gateway.contact.erased", "gateway.bot.erased",
                                                                        "gateway.client.erased"], max_age=7 * 24 * 3600))
         await js.add_consumer("MOTOR", ConsumerConfig(
-            durable_name="coordinator-respuesta", filter_subject="motor.respuesta.>", ack_policy=AckPolicy.EXPLICIT,
+            durable_name="coordinator-aprobada", filter_subject="motor.aprobada.>", ack_policy=AckPolicy.EXPLICIT,
             ack_wait=30, deliver_policy=DeliverPolicy.NEW, max_ack_pending=1, max_deliver=3, backoff=[30, 60]))
         await js.add_consumer("SUPRESIONES", ConsumerConfig(
             durable_name="coordinator", ack_policy=AckPolicy.EXPLICIT, ack_wait=30, deliver_policy=DeliverPolicy.ALL,
@@ -155,7 +155,7 @@ def test_el_coordinador_se_ata_a_sus_dos_consumidores_extra(bifrost):
         return (await respuestas.consumer_info()).config.filter_subject, \
             (await supresiones.consumer_info()).config.max_deliver
 
-    assert asyncio.run(_como_coordinador(bifrost, trabajo)) == ("motor.respuesta.>", 6)
+    assert asyncio.run(_como_coordinador(bifrost, trabajo)) == ("motor.aprobada.>", 6)
 
 
 def test_el_coordinador_no_alcanza_otro_bucket(bifrost):

@@ -71,6 +71,14 @@ class ResponderSettings(LlmSettings):
     responder_timeout: float = Field(default=90.0, gt=0, le=100.0)
 
 
+class EvaluatorSettings(LlmSettings):
+    """El evaluador (ADR-0012)."""
+    # Un veredicto en JSON con una frase de motivo: unos 50 tokens medidos.
+    evaluator_max_tokens: int = Field(default=256, ge=128, le=1024)
+    # Por llamada: 1,2 s de p95 medido, y por debajo de los 30 s del ack_wait de MOTOR/evaluator.
+    evaluator_timeout: float = Field(default=20.0, gt=0, le=25.0)
+
+
 class NotifierSettings(AndvariSettings):
     """El notificador: la API del gateway, para los tokens de Meta, y la Graph API de Meta."""
     gateway_url: str = Field(min_length=8)

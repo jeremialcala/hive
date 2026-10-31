@@ -65,11 +65,12 @@ class Bifrost:
 class Modelo(Redactor):
 
     def __init__(self, respuesta=None):
-        self.pedidos = []
+        self.pedidos, self.reescrituras = [], []
         self._respuesta = respuesta or Redaccion(texto="Sí, tenemos zapatos rojos.", modelo="gemma-4-26b-a4b")
 
-    async def redactar(self, persona, vueltas, texto):
+    async def redactar(self, persona, vueltas, texto, reescribir=None):
         self.pedidos.append((persona, vueltas, texto))
+        self.reescrituras.append(reescribir)
         if isinstance(self._respuesta, Exception):
             raise self._respuesta
         return self._respuesta
@@ -94,11 +95,30 @@ def test_con_modelo_escribe_la_respuesta_y_la_publica_para_el_notificador():
     assert sobre.contact.waId == "12025550143" and sobre.messageId == "wamid.A"
 
 
-def test_el_sobre_para_el_notificador_no_lleva_la_persona_ni_las_vueltas():
+def test_la_respuesta_del_modelo_lleva_el_pedido_para_el_evaluador():
     _, _, bifrost = atender(Mensaje(pedido()))
 
-    sobre = bifrost.publicado[0].sobre
-    assert "pedido" not in sobre and "Be kind" not in json.dumps(sobre)
+    sobre = MensajeRespondido.model_validate(bifrost.publicado[0].sobre)
+    assert sobre.pedido.persona == PERSONA and sobre.pedido.vueltas == VUELTAS
+
+
+def test_un_texto_fijo_no_lleva_el_pedido():
+    _, _, bifrost = atender(Mensaje(pedido("no_puedo", persona=None, vueltas=[])))
+
+    assert bifrost.publicado[0].sobre["pedido"] is None
+
+
+def test_lo_que_devuelve_el_evaluador_se_escribe_otra_vez_con_el_motivo():
+    reescribir = {"texto": "Están a 35 USD.", "motivo": "El precio no es el de las reglas."}
+    datos = pedido()
+    datos["pedido"]["reescribir"] = reescribir
+
+    resultado, modelo, bifrost = atender(Mensaje(datos))
+
+    assert resultado is Resultado.CONFIRMADO and modelo.reescrituras[0].motivo == reescribir["motivo"]
+    # Otro Nats-Msg-Id: Bifröst no la toma por la primera respuesta.
+    assert bifrost.publicado[0].message_id == f"respuesta:{BOT}:wamid.A:reescrita"
+    assert bifrost.publicado[0].sobre["pedido"]["reescribir"] == {**reescribir, "criterio": "ninguno", "regla": 0}
 
 
 def test_la_traza_sigue_el_hilo_del_mensaje():

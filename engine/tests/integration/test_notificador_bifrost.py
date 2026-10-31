@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
     El notificador contra un NATS JetStream de verdad, con los permisos que Bifröst da a su usuario
-    (nats-test.conf): se ata al consumidor `MOTOR/notifier`, mira y apunta en el bucket `enviados` lo que envía,
+    (nats-test.conf): se ata al consumidor `MOTOR/notifier-aprobada` (HIG-146), mira y apunta en el bucket `enviados` lo que envía,
     publica lo enviado en `engine.reply.sent.{botId}` (stream RESPUESTAS) y solo entonces confirma. Meta y el gateway
     los sustituyen dobles.
 
@@ -60,7 +60,7 @@ def bifrost(url):
                                          retention=RetentionPolicy.WORK_QUEUE, max_age=24 * 3600,
                                          duplicate_window=120))
         await js.add_consumer("MOTOR", ConsumerConfig(
-            durable_name="notifier", filter_subject="motor.respuesta.>", ack_policy=AckPolicy.EXPLICIT,
+            durable_name="notifier-aprobada", filter_subject="motor.aprobada.>", ack_policy=AckPolicy.EXPLICIT,
             ack_wait=1, deliver_policy=DeliverPolicy.ALL, max_ack_pending=1, max_deliver=5, backoff=[1, 1, 1, 1]))
         await js.create_key_value(KeyValueConfig(bucket="enviados", history=1, ttl=24 * 3600, max_value_size=1024))
         # Un bucket de otro worker, que el notificador no debe alcanzar.
@@ -95,7 +95,8 @@ def respondido(bot, contacto, message_id):
             "entrada": {"texto": "¿tienen zapatos rojos?", "adjuntos": []},
             "clasificacion": {"permitido": True, "motivo": "ninguno", "etiqueta": "pregunta", "confianza": 0.9,
                               "entidades": [], "modelo": "gemma-4-26b-a4b"},
-            "respuesta": {"texto": "Sí, tenemos zapatos rojos.", "fuente": "modelo", "modelo": "gemma-4-26b-a4b"}}
+            "respuesta": {"texto": "Sí, tenemos zapatos rojos.", "fuente": "modelo", "modelo": "gemma-4-26b-a4b"},
+            "evaluacion": {"veredicto": "aprobada", "criterio": "ninguno", "regla": 0, "modelo": "gemma-4-26b-a4b"}}
 
 
 def ajustes(url):
@@ -117,7 +118,7 @@ async def _notificar(url, meta, sobres, confirmados):
     await _como_admin(url, publicar)
 
     async def hecho(js):
-        return (await js.consumer_info("MOTOR", "notifier")).ack_floor.stream_seq >= confirmados
+        return (await js.consumer_info("MOTOR", CONSUMIDOR)).ack_floor.stream_seq >= confirmados
 
     settings = ajustes(url)
     conexion = await conectar(settings, "notifier")
@@ -149,7 +150,7 @@ async def _respuestas(js):
 def test_envia_apunta_publica_lo_enviado_y_no_envia_dos_veces_la_misma_respuesta(bifrost):
     bot, contacto = uuid4(), uuid4()
     sobre = respondido(bot, contacto, f"wamid.{uuid4().hex}")
-    subject = f"motor.respuesta.5.{bot}.{contacto}"
+    subject = f"motor.aprobada.5.{bot}.{contacto}"
     meta = Meta()
 
     # La misma respuesta dos veces, como si Bifröst la entregara otra vez tras un fallo.

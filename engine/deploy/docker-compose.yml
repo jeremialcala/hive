@@ -1,7 +1,7 @@
 # Hive's response engine as it runs on midgard (E7 of engine/docs/00-project/plan-de-los-workers.md). Copy to
 # /srv/apps/hive-engine/, next to its .env and its keys/ directory.
 #
-# The four workers of the skeleton, one container each, all from the same image (ADR-0008): each one says which it
+# The five workers of the skeleton, one container each, all from the same image (ADR-0008): each one says which it
 # is with its command. They pass each message along through Bifröst, and none serves a port.
 #
 #   * the image tag is never `latest`: ENGINE_IMAGE_TAG says which build runs, so a rollback is bringing the previous
@@ -11,8 +11,8 @@
 #   * Andvari: the coordinator and the notifier log in with their own AppRole, `motor-<worker>`, to read their key for
 #     each client. The role ids are not secret and come from .env; each secret id is a file in keys/, readable only
 #     by uid 10001, the image's user
-#   * the LLM: the classifier and the responder call Hive's llama.cpp on the LAN (ADR-0010), at LLM_URL of .env, with
-#     the key of keys/llm-api-key. Neither of them needs Andvari
+#   * the LLM: the classifier, the responder and the evaluator call Hive's llama.cpp on the LAN (ADR-0010, ADR-0012), at
+#     LLM_URL of .env, with the key of keys/llm-api-key. None of them needs Andvari
 #   * the gateway's management API is reached over the external `andvari` network, as host `hive-api` (until 2026-10-22, `bots-gateway`). The
 #     coordinator and the notifier sign their calls with the gateway's public key, keys/gateway-public.json, and the
 #     audience of .env, GATEWAY_AUDIENCE (ADR-0024)
@@ -114,6 +114,25 @@ services:
       <<: *alive
       test: ["CMD", "python", "-c",
              "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/responder-alive') > 60)"]
+
+  # El evaluador (HIG-146, ADR-0012): juzga cada respuesta con el LLM, en su ranura de hive-llm, antes de que se envíe.
+  # No necesita Andvari ni el gateway: la persona y las vueltas vienen en el sobre del de respuesta.
+  evaluator:
+    <<: *worker
+    container_name: hive-evaluator
+    command: ["python", "-m", "src.workers.evaluator"]
+    env_file: [/srv/infra/bifrost/credenciales/evaluator.env]
+    networks: [bifrost, saga]
+    environment:
+      <<: *llm
+      OTEL_SERVICE_NAME: engine-evaluator
+    volumes:
+      - ./keys/llm-api-key:/run/llm/api-key:ro
+      - /srv/infra/bifrost/tls/ca.crt:/run/bifrost/ca.crt:ro
+    healthcheck:
+      <<: *alive
+      test: ["CMD", "python", "-c",
+             "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/evaluator-alive') > 60)"]
 
   notifier:
     <<: *worker

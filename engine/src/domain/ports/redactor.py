@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from src.domain.models.sobre import Persona, Vuelta
+from src.domain.models.sobre import Persona, Reescritura, Vuelta
 
 
 class RedaccionFallida(Exception):
@@ -32,10 +32,12 @@ class Redactor(ABC):
     """Escribe la respuesta a un mensaje."""
 
     @abstractmethod
-    async def redactar(self, persona: Persona, vueltas: list[Vuelta], texto: str) -> Redaccion:
+    async def redactar(self, persona: Persona, vueltas: list[Vuelta], texto: str,
+                       reescribir: Reescritura | None = None) -> Redaccion:
         """
         :param persona: quién es el bot y sus reglas.
         :param vueltas: los mensajes anteriores, el más antiguo primero.
         :param texto: lo que la persona acaba de decir, ya saneado.
+        :param reescribir: si el evaluador la devolvió, la respuesta anterior y por qué no cumplía (HIG-146).
         :raises RedaccionFallida: si no hubo respuesta.
         """

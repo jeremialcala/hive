@@ -13,6 +13,24 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **El evaluador: ninguna respuesta del modelo sale sin juzgarse** (HIG-146; ADR-0008 «Construido (E8)», ADR-0012).
+  `python -m src.workers.evaluator` lee lo que propone el de respuesta y publica lo que se envía en
+  `motor.aprobada.…`.
+  - **Si cumple** la persona y las reglas del bot, sale igual. Un texto fijo pasa sin juzgarse.
+  - **Si no cumple,** el de respuesta la escribe otra vez con el motivo, y se juzga de nuevo. Si tampoco cumple, sale
+    el texto fijo de «no puedo».
+  - **Si no puede juzgarla,** falla cerrado: en la última entrega sale el de «no disponible».
+  - **El notificador y el coordinador** leen lo aprobado con consumidores nuevos, `notifier-aprobada` y
+    `coordinator-aprobada`. El coordinador apunta en el contexto lo que de verdad se envió.
+  - **El sobre de la respuesta lleva el pedido** (la persona y las vueltas), para que el evaluador no necesite ni el
+    gateway ni Andvari. El aprobado no lo lleva, y dice qué se decidió, sin el texto (para HIG-147).
+  - **El contrato `asyncapi-motor.yaml`** pasa a la 2.1.0.
+  - **Pruebas:**
+    - `test_worker_evaluador.py` (16), `test_evaluador_llm.py` (15) y los contratos;
+    - `test_evaluador_bifrost.py` (3), contra NATS con los permisos de Bifröst;
+    - el prompt del evaluador es byte a byte el que se midió en `evaluacion/`.
+  - **Necesita higerotech/bifrost** (el usuario `evaluator`, sus permisos y los tres consumidores) y el servicio
+    `evaluator` del compose.
 - **El modelo del evaluador, elegido con datos** (HIG-145; [ADR-0012](docs/02-design/adr/ADR-0012-modelo-del-evaluador.md)).
   El evaluador y el resumen usan el mismo Gemma 4 26B, en una tercera ranura de `hive-llm` (`--parallel 3`,
   `--ctx-size 24576`).
