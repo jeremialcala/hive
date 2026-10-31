@@ -7,6 +7,28 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-30
+
+### Añadido
+- **Un mensaje que Meta entrega otra vez no se responde dos veces, y está probado** (HIG-114, RNF04).
+  - **Lo que ya había:** la ingesta descarta un `messageId` que ya está en el historial, que dura 12 meses frente a los
+    7 días que reintenta Meta. El notificador no envía dos veces la misma respuesta.
+  - **El hueco que quedaba:** si la ingesta se caía entre publicar y guardar, y Bifröst le reentregaba el evento pasados
+    2 minutos, el mensaje se publicaba otra vez. `MENSAJES` descarta ahora la copia durante 24 horas
+    (higerotech/bifrost#10).
+  - **Pruebas:** la misma notificación, otra vez a las 6 horas y a los 6 días, no se publica; el historial la recuerda
+    más que los reintentos de Meta; una publicación repetida lleva el mismo `Nats-Msg-Id`.
+  - **En producción**, del 2026-10-19 al 30, ningún mensaje recibió dos respuestas.
+- **`EngineKeyStore` cifra y abre con una clave Transit de Andvari, derivada por cliente** (HIG-19): `encrypt` y
+  `decrypt`, para el contexto que el coordinador del motor guarda en Bifröst. Lo cifrado para un cliente no se abre
+  con el de otro, y un rol sin la política no llega: comprobado contra OpenBao en
+  `tests/integration/test_engine_key_store.py`.
+
+### Cambiado
+- **ADR-0017, 0.2.0: lo construido en HIG-19.** El contexto sin resumen (pasa a HIG-143), quién apunta cada vuelta,
+  cuándo no sirve el contexto, la supresión como purga por sujeto, la clave Transit `contexto` y los permisos de
+  Bifröst.
+
 ## [0.9.0] - 2026-10-30
 
 ### Añadido
@@ -1400,7 +1422,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jeremialcala/hive/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jeremialcala/hive/compare/v0.6.0...v0.7.0

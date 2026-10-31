@@ -189,7 +189,9 @@ código. El orden está en `engine/docs/00-project/plan-de-los-workers.md`.
 - **Lo que el esqueleto deja para después:**
   - el bucket `contexto` de ADR-0017 del gateway, con el resumen, su cifrado con Transit y la supresión por el bus.
     El coordinador pide las vueltas al gateway en cada mensaje, que es la fuente de verdad: son dos llamadas al
-    gateway, cada una con su consulta a Atlas (60 ms de ida y vuelta medidos desde midgard). Se mide en el E7;
+    gateway, cada una con su consulta a Atlas (60 ms de ida y vuelta medidos desde midgard). Se mide en el E7.
+    Hecho en HIG-19 (2026-10-30), sin el resumen, que pasa a HIG-143: ver «Construido (HIG-19)» en ADR-0017 del
+    gateway;
   - el enlace y las herramientas.
 
 ## Construido (E6, el notificador, 2026-10-20)

@@ -9,6 +9,7 @@
     and reads them back to finish an issue left halfway, and nothing else: a key that is kept is never written
     over, so a worker never loses the one it signs with.
 """
+import base64
 import time
 from uuid import UUID
 
@@ -88,6 +89,37 @@ class EngineKeyStore:
         if not isinstance(key, dict):
             raise KeyStoreUnavailable("unexpected answer")
         return key
+
+    # --- Transit: what a worker keeps encrypted with a key of Andvari, derived for each client (ADR-0017) -------------
+
+    @staticmethod
+    def _derived_for(client_id: UUID) -> str:
+        return base64.b64encode(str(client_id).encode("ascii")).decode("ascii")
+
+    def encrypt(self, key: str, client_id: UUID, plaintext: bytes) -> str:
+        """Encrypts with the Transit key `key`, derived for the client: the key never leaves Andvari."""
+        response = self._call("POST", f"transit/encrypt/{key}", {
+            "plaintext": base64.b64encode(plaintext).decode("ascii"), "context": self._derived_for(client_id)})
+        if response.status_code != 200:
+            raise KeyStoreUnavailable(f"encrypt refused: {response.status_code}")
+        try:
+            ciphertext = response.json()["data"]["ciphertext"]
+        except (ValueError, KeyError, TypeError):
+            raise KeyStoreUnavailable("unexpected answer") from None
+        if not isinstance(ciphertext, str) or not ciphertext.startswith("vault:"):
+            raise KeyStoreUnavailable("unexpected answer")
+        return ciphertext
+
+    def decrypt(self, key: str, client_id: UUID, ciphertext: str) -> bytes:
+        """Opens what `encrypt` gave for the same client. For another client it does not open: Andvari refuses."""
+        response = self._call("POST", f"transit/decrypt/{key}", {
+            "ciphertext": ciphertext, "context": self._derived_for(client_id)})
+        if response.status_code != 200:
+            raise KeyStoreUnavailable(f"decrypt refused: {response.status_code}")
+        try:
+            return base64.b64decode(response.json()["data"]["plaintext"], validate=True)
+        except (ValueError, KeyError, TypeError):
+            raise KeyStoreUnavailable("unexpected answer") from None
 
     def create(self, client_id: UUID, worker: str, key: dict) -> bool:
         """

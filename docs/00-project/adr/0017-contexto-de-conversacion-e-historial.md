@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-18
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 0.2.0
 * **ID:** ADR-0017
 * **Supersede:** — (amplía [ADR-0010](0010-clave-de-cifrado-de-datos-por-cliente.md) y
   [ADR-0014](0014-supresion-en-respaldos-por-caducidad.md) a un dato nuevo: el contenido de los mensajes)
@@ -189,3 +189,32 @@ erDiagram
 
 La retención del historial (12 meses por mensaje) y los adjuntos (solo el tipo) se decidieron el 2026-10-18, al
 aprobar el Gate 0 del refactor.
+
+## Construido (HIG-19, 2026-10-30)
+
+El coordinador guarda y usa el contexto (`engine/src/domain/memoria.py`, `engine/src/infrastructure/bifrost/contexto.py`).
+Lo que cambia respecto a la decisión:
+
+- **Sin resumen ni estado, por ahora.** El resumen pasa a HIG-143 (decisión de Jeremi del 2026-10-30). El valor
+  lleva solo las vueltas: las 10 últimas de la persona y lo que vino después, 40 como mucho, que es lo mismo que da
+  la ruta del historial (RF15). Cada vuelta lleva el identificador de Meta del mensaje de la persona al que
+  pertenece, y el valor una versión (`v: 1`), para que el resumen entre sin migrar nada.
+- **Quién escribe cada vuelta.** El coordinador apunta lo que dijo la persona al publicar el pedido. Lo que contestó
+  el bot lo genera el de respuesta, no el coordinador, así que el coordinador lo lee con un consumidor más,
+  `MOTOR/coordinator-respuesta` (desde lo nuevo), y lo apunta. Solo se apunta sobre un contexto que ya existe y que
+  tiene lo anterior: si no, el siguiente mensaje lo pide al gateway y siembra uno nuevo con lo que diga el historial.
+- **Cuándo no sirve el contexto.** Un mensaje que llega otra vez ve solo lo de antes de él. Uno que se atiende con
+  retraso, si el contexto ya tiene algo posterior, pide sus vueltas al gateway y no toca el contexto.
+- **Si Bifröst o Andvari fallan,** las vueltas se piden al gateway como antes y el log lo dice. El mensaje no espera
+  por el contexto.
+- **La supresión es una purga por sujeto, en una petición:** `$KV.contexto.<cliente>.<bot>.<contacto>` para un
+  contacto, `….<bot>.>` para un bot y `$KV.contexto.<cliente>.>` para un cliente. La lee un tercer consumidor,
+  `SUPRESIONES/coordinator`, que reentrega con espera creciente durante algo más de una hora. Si nunca se pudiera
+  borrar, el bucket lo olvida en 24 horas.
+- **La clave Transit `contexto`** vive en el motor `transit/` de Andvari, junto a la `clientes` del gateway, derivada
+  por cliente con el mismo contexto de derivación (el identificador del cliente en base64). La política
+  `motor-contexto` (cifrar y descifrar, nada más) se suma al rol `motor-coordinator`. Lo que cifra un cliente no lo
+  abre otro: Andvari responde 400, comprobado contra OpenBao 2.7.1 en `tests/integration/test_engine_key_store.py`.
+- **Los permisos de Bifröst:** el usuario `coordinator` lee, escribe y purga `KV_contexto` y lee sus dos consumidores
+  extra, y ningún otro bucket (higerotech/bifrost, `nats/bifrost.conf`). Comprobado contra NATS 2.14.8 en
+  `engine/tests/integration/test_contexto_bifrost.py`.

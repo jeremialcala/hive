@@ -230,6 +230,9 @@ class Conexion:
     def __init__(self):
         self.sujetos, self.bajas = [], 0
 
+    def jetstream(self):
+        return object()
+
     async def subscribe(self, sujeto, cb):
         self.sujetos.append(sujeto)
         conexion = self
