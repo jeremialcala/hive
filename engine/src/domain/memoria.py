@@ -16,15 +16,23 @@
       a un mensaje que el contexto no tiene o si un mensaje llega después de otros posteriores. Si tampoco se puede
       borrar, caduca en 24 horas.
 
+    - **El resumen** (HIG-143): lo que sale de las vueltas no se pierde. Al apuntar lo que contestó el bot, si eso
+      deja fuera vueltas antiguas, el LLM las resume junto con el resumen que había, y el resumen nuevo se guarda con
+      el contexto. Es fuera del camino del mensaje: lo hace el consumidor del coordinador que apunta lo aprobado. El
+      apunte de la persona deja hasta una vuelta de más, que recorta y resume el del bot. Si el LLM falla, se queda el
+      resumen que había.
+
     Nada de esto para un mensaje: si Bifröst o Andvari fallan, se usa el gateway y el log lo dice. El historial del
     gateway es la fuente de verdad; el contexto, una copia de trabajo que se rehace.
 """
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from src.domain.models.sobre import MAX_VUELTAS, MensajeAprobado, MensajeClasificado, Vuelta
 from src.domain.ports.contexto import Apunte, Choque, Contexto, ContextoNoDisponible, Conversacion
 from src.domain.ports.fuente_del_bot import FuenteDelBot
+from src.domain.ports.resumidor import Resumidor, ResumenFallido
 
 log = logging.getLogger(__name__)
 
@@ -38,11 +46,18 @@ INTENTOS = 3
 DEL_HISTORIAL = ""
 
 
-def recortar(apuntes: list[Apunte]) -> list[Apunte]:
-    """Desde la décima vuelta de la persona empezando por el final, y no más de GUARDADAS."""
+def recortar(apuntes: list[Apunte], personas: int = PERSONAS) -> list[Apunte]:
+    """Desde la vuelta `personas` de la persona empezando por el final, y no más de GUARDADAS."""
     de_la_persona = [at for at, apunte in enumerate(apuntes) if apunte.vuelta.de == "persona"]
-    desde = de_la_persona[-PERSONAS] if len(de_la_persona) > PERSONAS else 0
+    desde = de_la_persona[-personas] if len(de_la_persona) > personas else 0
     return apuntes[desde:][-GUARDADAS:]
+
+
+@dataclass(frozen=True)
+class Recuerdo:
+    """Lo que el coordinador pasa de una conversación: las vueltas y, si lo hay, el resumen de lo anterior a ellas."""
+    vueltas: list[Vuelta]
+    resumen: str | None = None
 
 
 def antes_de(conversacion: Conversacion, sobre: MensajeClasificado) -> list[Vuelta] | None:
@@ -59,16 +74,26 @@ def antes_de(conversacion: Conversacion, sobre: MensajeClasificado) -> list[Vuel
 class Memoria:
     """Las vueltas de cada conversación: del contexto si sirve, si no del gateway."""
 
-    def __init__(self, fuente: FuenteDelBot | None, contexto: Contexto):
+    def __init__(self, fuente: FuenteDelBot | None, contexto: Contexto, resumidor: Resumidor | None = None):
         # Sin fuente, solo apunta: el consumidor de las respuestas no pide vueltas.
         self._fuente = fuente
         self._contexto = contexto
+        # Sin resumidor, lo que sale de las vueltas se pierde: solo lo tiene el consumidor de lo aprobado.
+        self._resumidor = resumidor
 
     async def _leer(self, sobre: MensajeClasificado) -> Conversacion | None:
         return await self._contexto.leer(sobre.clientId, sobre.botId, sobre.contact.uuid)
 
     async def vueltas(self, sobre: MensajeClasificado) -> list[Vuelta]:
         """
+        :raises NoEncontrado, FuenteNoDisponible: como la fuente, si hubo que preguntarle.
+        """
+        return (await self.recuerdo(sobre)).vueltas
+
+    async def recuerdo(self, sobre: MensajeClasificado) -> Recuerdo:
+        """
+            Las vueltas y el resumen. El resumen solo viene con el contexto: las vueltas del gateway no lo tienen.
+
         :raises NoEncontrado, FuenteNoDisponible: como la fuente, si hubo que preguntarle.
         """
         conversacion = None
@@ -79,14 +104,14 @@ class Memoria:
         if conversacion is not None and conversacion.completa:
             vueltas = antes_de(conversacion, sobre)
             if vueltas is not None:
-                return vueltas
+                return Recuerdo(vueltas=vueltas, resumen=conversacion.resumen)
         vueltas = await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid, sobre.messageId,
                                              sobre.receivedAt)
         if conversacion is None or not conversacion.completa:
             # No había contexto, o no estaba completo: se siembra con lo que dice el historial, aunque no diga nada.
             await self._escribir(sobre, [Apunte(vuelta=vuelta, mensaje=DEL_HISTORIAL) for vuelta in vueltas],
                                  conversacion.revision if conversacion else 0, "sembrar")
-        return vueltas
+        return Recuerdo(vueltas=vueltas)
 
     async def apuntar_persona(self, sobre: MensajeClasificado) -> None:
         """Lo que dijo la persona, una vez publicado el pedido."""
@@ -124,10 +149,19 @@ class Memoria:
                 # respuesta del bot sea posterior es normal: la persona escribe dos veces seguidas.
                 await self._olvidar(sobre, "un mensaje atendido con retraso")
                 return
-            apuntes = recortar([*conversacion.apuntes, apunte])
+            nuevos = [*conversacion.apuntes, apunte]
+            resumen = conversacion.resumen
+            if apunte.vuelta.de == "persona":
+                # Una vuelta de más hasta que llegue la respuesta: el apunte del bot la recorta y la resume.
+                apuntes = recortar(nuevos, PERSONAS + 1)
+            else:
+                apuntes = recortar(nuevos)
+                salen = nuevos[:len(nuevos) - len(apuntes)]
+                if salen:
+                    resumen = await self._resumir(sobre, resumen, salen)
             try:
                 await self._contexto.guardar(sobre.clientId, sobre.botId, sobre.contact.uuid, apuntes,
-                                             conversacion.revision)
+                                             conversacion.revision, resumen)
                 return
             except Choque:
                 continue
@@ -135,6 +169,16 @@ class Memoria:
                 await self._olvidar(sobre, f"no se apuntó lo de la {quien}: {e}")
                 return
         await self._olvidar(sobre, f"no se apuntó lo de la {quien}: otro coordinador escribía a la vez")
+
+    async def _resumir(self, sobre: MensajeClasificado, anterior: str | None, salen: list[Apunte]) -> str | None:
+        """El resumen nuevo con lo que sale de las vueltas; el que había si no se puede hacer."""
+        if self._resumidor is None:
+            return anterior
+        try:
+            return await self._resumidor.resumir(anterior, [apunte.vuelta for apunte in salen])
+        except ResumenFallido as e:
+            log.warning("Sin resumen nuevo para el contexto del bot %s, se queda el que había: %s", sobre.botId, e)
+            return anterior
 
     async def _olvidar(self, sobre: MensajeClasificado, motivo: str) -> None:
         """Borra un contexto al que le falta algo: el mensaje siguiente lo siembra otra vez."""

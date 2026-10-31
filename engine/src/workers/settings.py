@@ -60,6 +60,13 @@ class CoordinatorSettings(AndvariSettings):
     # Por llamada. Son dos por mensaje: 20 s como mucho, por debajo de los 30 s del ack_wait de MOTOR/coordinator. Con 5
     # s, una lectura de 5,8 s medida en midgard se reintentaba 30 s después.
     coordinator_timeout: float = Field(default=10.0, gt=0, le=10.0)
+    # El LLM con el que resume lo que sale de las vueltas (HIG-143), en el consumidor de lo aprobado. Sin él no resume.
+    llm_url: str | None = None
+    llm_api_key_file: str | None = None
+    llm_model: str = "gemma-4-26b-a4b"
+    # Unas pocas frases: con 400 caben de sobra. Por debajo de los 30 s del ack_wait de MOTOR/coordinator-aprobada.
+    coordinator_resumen_max_tokens: int = Field(default=400, ge=128, le=1024)
+    coordinator_resumen_timeout: float = Field(default=25.0, gt=0, le=25.0)
 
 
 class ResponderSettings(LlmSettings):

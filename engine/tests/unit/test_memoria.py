@@ -57,7 +57,7 @@ class EnMemoria(Contexto):
     """El bucket, en memoria: una conversación por clave, con su revisión. Las de `ilegibles` no se entienden."""
 
     def __init__(self, caido=False):
-        self.claves, self.caido, self.olvidos, self.ilegibles = {}, caido, [], set()
+        self.claves, self.caido, self.olvidos, self.ilegibles, self.resumenes = {}, caido, [], set(), {}
         # Para probar los fallos al escribir: Bifröst o Andvari caídos solo al guardar, u otro que siempre gana.
         self.no_guarda, self.siempre_choca = False, False
 
@@ -70,15 +70,16 @@ class EnMemoria(Contexto):
             return None
         if clave in self.ilegibles:
             return Conversacion(apuntes=[], revision=guardado[1], completa=False)
-        return Conversacion(apuntes=list(guardado[0]), revision=guardado[1])
+        return Conversacion(apuntes=list(guardado[0]), revision=guardado[1], resumen=self.resumenes.get(clave))
 
-    async def guardar(self, client_id, bot_id, contact_id, apuntes, revision):
+    async def guardar(self, client_id, bot_id, contact_id, apuntes, revision, resumen=None):
         if self.caido or self.no_guarda:
             raise ContextoNoDisponible("TimeoutError")
         actual = self.claves.get((client_id, bot_id, contact_id))
         if self.siempre_choca or (actual[1] if actual else 0) != revision:
             raise Choque()
         self.claves[(client_id, bot_id, contact_id)] = (list(apuntes), revision + 1)
+        self.resumenes[(client_id, bot_id, contact_id)] = resumen
         self.ilegibles.discard((client_id, bot_id, contact_id))
         return revision + 1
 

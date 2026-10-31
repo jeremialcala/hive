@@ -65,12 +65,13 @@ class Bifrost:
 class Modelo(Redactor):
 
     def __init__(self, respuesta=None):
-        self.pedidos, self.reescrituras = [], []
+        self.pedidos, self.reescrituras, self.resumenes = [], [], []
         self._respuesta = respuesta or Redaccion(texto="Sí, tenemos zapatos rojos.", modelo="gemma-4-26b-a4b")
 
-    async def redactar(self, persona, vueltas, texto, reescribir=None):
+    async def redactar(self, persona, vueltas, texto, reescribir=None, resumen=None):
         self.pedidos.append((persona, vueltas, texto))
         self.reescrituras.append(reescribir)
+        self.resumenes.append(resumen)
         if isinstance(self._respuesta, Exception):
             raise self._respuesta
         return self._respuesta

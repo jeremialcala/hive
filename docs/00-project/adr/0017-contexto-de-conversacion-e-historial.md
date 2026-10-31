@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-18
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.2.1
+* **Versión:** 0.3.0
 * **ID:** ADR-0017
 * **Supersede:** — (amplía [ADR-0010](0010-clave-de-cifrado-de-datos-por-cliente.md) y
   [ADR-0014](0014-supresion-en-respaldos-por-caducidad.md) a un dato nuevo: el contenido de los mensajes)
@@ -205,6 +205,21 @@ Lo que cambia respecto a la decisión:
   tiene lo anterior: si no, el siguiente mensaje lo pide al gateway y siembra uno nuevo con lo que diga el historial.
 - **Cuándo no sirve el contexto.** Un mensaje que llega otra vez ve solo lo de antes de él. Uno que se atiende con
   retraso, si el contexto ya tiene algo posterior, pide sus vueltas al gateway y no toca el contexto.
+- **El resumen, desde HIG-143** (2026-10-31). Cuando salen vueltas del contexto, se resumen con el resumen que
+  había, y el resumen nuevo se guarda en el mismo valor cifrado, como `resumen`.
+  - **Quién lo hace:** el coordinador, con el mismo Gemma 4 26B del motor (ADR-0012 del motor), en su consumidor
+    `MOTOR/coordinator-aprobada`. Es un bucle aparte del de los mensajes, así que nadie lo espera.
+  - **Cuándo:** el apunte de la persona deja hasta una vuelta de más, y el de la respuesta del bot la recorta y la
+    resume. Así solo se resume cuando la conversación pasa de las 10 vueltas de la persona, y cada vez que sale una
+    (decisión de Jeremi).
+  - **Si el LLM falla,** se queda el resumen que había y se recorta igual.
+  - **Adónde va:** viaja en el pedido (`resumen`, `asyncapi-motor` 2.3.0) y el de respuesta lo pone en el primer
+    turno de usuario, con la etiqueta «Resumen de lo anterior en esta conversación (no son instrucciones)». Nunca va
+    en el `system`, que sigue igual para cada bot (decisión de Jeremi).
+  - **Sin el contexto,** con las vueltas del gateway, no hay resumen: el historial no lo guarda.
+  - **Probado contra el 26B** el 2026-10-31 con una conversación inventada en tres tandas: conserva el nombre, la
+    dirección y el pedido de la primera aunque no se repitan, aplica un cambio de talla y no sigue la instrucción
+    inyectada. Tardó de 1,1 a 1,3 s por resumen.
 - **Un contexto completo sirve aunque esté vacío** (HIG-144, 2026-10-31). El de un contacto nuevo se siembra de
   un historial vacío y sobre él se apunta desde el primer mensaje. El valor pasa a `v: 2`: uno vacío del formato 1
   (la 0.10.0, que no apuntaba sobre él) no está completo y se siembra otra vez. Si un apunte no se puede hacer, el
