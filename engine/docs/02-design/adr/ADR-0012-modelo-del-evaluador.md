@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-31
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.1.0
+* **Versión:** 0.1.1
 * **ID:** ADR-0012
 * **Supersede:** — (amplía [ADR-0010](ADR-0010-llm-propio-con-llama-cpp.md): una ranura más del mismo servidor)
 * **OWASP:** LLM01 (la conversación y la respuesta van al evaluador como datos, nunca en su `system`) · LLM05 (no
@@ -54,8 +54,10 @@ resultados están en `engine/evaluacion/resultados/`.
   `enable_thinking: false`, agotan el tope y no responden.
 - **Una variante del prompt que razona antes de decidir** (los idiomas y el motivo antes del veredicto) empeoró al E4B:
   85 % y 2 falsos aprobados.
-- **La memoria de la ranura nueva está estimada.** Hoy el 26B ocupa unos 17 GiB, 15,4 de ellos del modelo, así que sus
-  dos ranuras y sus búferes suman unos 1,6 GiB. Se mide al reiniciar `hive-llm`.
+- **La memoria de la ranura nueva se estimó** en menos de 1 GiB: el 26B ocupaba unos 17 GiB, 15,4 de ellos del modelo,
+  así que sus dos ranuras y sus búferes sumaban unos 1,6 GiB. **Medida el 2026-10-31 al reiniciar `hive-llm` con tres
+  ranuras: 0,36 GiB** (la memoria dedicada de la GPU pasó de 19,03 a 19,39 GiB). La compartida siguió en 0,16 GiB.
+  Cargar el modelo tardó 2 min 36 s.
 
 ## Decisión
 
