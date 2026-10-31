@@ -910,7 +910,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.11.0
+  version: 0.11.0+develop
 openapi: 3.1.0
 paths:
   /bot:

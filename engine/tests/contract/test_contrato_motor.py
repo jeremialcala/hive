@@ -52,7 +52,7 @@ def resolver(puntero):
 
 
 def test_es_la_version_2_del_sobre():
-    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.1.0")
+    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.2.0")
     assert SCHEMAS["Sobre"]["properties"]["schemaVersion"]["const"] == ESQUEMA
 
 

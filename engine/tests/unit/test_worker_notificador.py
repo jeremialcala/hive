@@ -145,6 +145,22 @@ def test_envia_el_texto_al_numero_de_la_persona_y_publica_lo_enviado_para_el_his
     assert lo.registro.apuntados[(BOT, "wamid.A")].message_id == "wamid.ENVIADO"
 
 
+@pytest.mark.parametrize("evaluacion, evaluation", [
+    ({"veredicto": "aprobada", "criterio": "ninguno", "regla": 0, "modelo": "gemma-4-26b-a4b", "segundos": 1.26},
+     {"verdict": "approved", "criterion": "none", "rule": 0, "model": "gemma-4-26b-a4b", "seconds": 1.26}),
+    ({"veredicto": "cambiada", "criterio": "regla", "regla": 3, "modelo": "gemma-4-26b-a4b", "segundos": 0.9},
+     {"verdict": "replaced", "criterion": "rule", "rule": 3, "model": "gemma-4-26b-a4b", "seconds": 0.9}),
+    ({"veredicto": "no_evaluada", "criterio": "ninguno", "regla": 0, "modelo": None},
+     {"verdict": "unevaluated", "criterion": "none", "rule": 0, "model": None, "seconds": None}),
+], ids=["aprobada", "cambiada", "no evaluada"])
+def test_lo_enviado_lleva_lo_que_decidio_el_evaluador_sin_el_texto(evaluacion, evaluation):
+    """HIG-147: la ingesta del gateway lo guarda con el mensaje, para las métricas de cumplimiento."""
+    _, lo = atender(Mensaje(respondido(evaluacion=evaluacion)))
+
+    (publicado,) = lo.bifrost.publicado
+    assert publicado.evento["evaluation"] == evaluation
+
+
 def test_la_traza_sigue_el_hilo_del_mensaje():
     _, lo = atender(Mensaje(respondido()))
 

@@ -31,13 +31,15 @@ from collections import Counter
 from datetime import datetime, timezone
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from classes import ChatBot, Contact, MessageBody, QueueMessage, Settings
 from classes.entity_outbound import APPROVED
 from classes.entity_conversation_message import INCOMING, OUTGOING
 from crypto.key_service import KeyServiceUnavailable
 from repository import NotFound, TenantRepository, database_failed
 from shared import bus, tracing
-from shared.contract import FailedSend, identified_subject, what_was_said
+from shared.contract import Evaluation, FailedSend, identified_subject, what_was_said
 from utils import describe
 
 from .amqp_broker import BrokerUnavailable, send_message_to_queue
@@ -304,6 +306,23 @@ async def ingest_reply(event: dict, trace: str | None = None) -> dict:
         return stored
 
 
+def _evaluation(event: dict) -> dict | None:
+    """
+        What the evaluator decided, as the contract says (`Evaluation`, HIG-147). One that does not follow it is left
+        out, and the log says so: the answer went, and the history keeps it all the same.
+    """
+    found = event.get("evaluation")
+    if found is None:
+        return None
+    try:
+        return Evaluation.model_validate(found).model_dump()
+    except ValidationError as e:
+        # Its errors carry the values: only how many.
+        log.warning(f"An answer came with an evaluation that does not follow the contract ({e.error_count()} "
+                    "errors): stored without it")
+        return None
+
+
 def _store_reply(event: dict) -> dict:
     if not isinstance(event, dict) or event.get("schemaVersion") != SCHEMA_VERSION:
         raise Unprocessable("not an answer of version 2")
@@ -325,9 +344,10 @@ def _store_reply(event: dict) -> dict:
     try:
         origin = "client" if event.get("origin") == "client" else "engine"
         sent_by = _text(event.get("sentBy")) if origin == "client" else None
+        evaluation = _evaluation(event) if origin == "engine" else None
         stored = repo.record_message(contact, OUTGOING, message_id, channel, sent_at, text=event.get("text"),
                                      attachments=attachments, in_reply_to=event.get("inReplyTo"), origin=origin,
-                                     sent_by=sent_by)
+                                     sent_by=sent_by, evaluation=evaluation)
         if origin == "client" and event.get("requestId"):
             # What the client asked for went: the request says so, and the PWA reads it (HIG-87).
             repo.outbound_sent(UUID(event["requestId"]), message_id, sent_at)

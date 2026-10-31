@@ -14,7 +14,7 @@ from mongoengine.errors import NotUniqueError, SaveConditionError
 from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
                      MessageTemplate, OutboundRequest, Rule)
 from classes.entity_contact import Consent
-from classes.entity_conversation_message import INCOMING
+from classes.entity_conversation_message import INCOMING, OUTGOING, VERDICTS, MessageEvaluation
 from classes.entity_outbound import FAILED, SENT
 from crypto.fields import ClientCipher, normalize_email
 from enums import PersonRole, PersonStatus, Status
@@ -644,7 +644,7 @@ class TenantRepository:
     def record_message(self, contact: Contact, direction: str, message_id: str, channel: str, sent_at: datetime,
                        text: str | None = None, attachments: tuple = (), intent: str | None = None,
                        in_reply_to: str | None = None, origin: str | None = None,
-                       sent_by: str | None = None) -> bool:
+                       sent_by: str | None = None, evaluation: dict | None = None) -> bool:
         """
             Stores one message of the contact's conversation, with its text encrypted. False if it was already
             stored: storing it twice changes nothing, and does not tell whoever sent it again apart.
@@ -657,7 +657,7 @@ class TenantRepository:
             botId=contact.botId, contactId=contact._uuid, direction=direction, messageId=message_id,
             channel=channel, sentAt=sent_at, text=self._cipher.encrypt("Message.text", text),
             attachments=list(attachments), intent=intent, inReplyTo=in_reply_to, origin=origin, sentBy=sent_by,
-            createdAt=now,
+            evaluation=MessageEvaluation(**evaluation) if evaluation else None, createdAt=now,
             expiresAt=now + HISTORY_RETENTION)
         try:
             message.save(force_insert=True)
@@ -668,6 +668,32 @@ class TenantRepository:
             message.delete()
             raise NotFound(contact._uuid)
         return True
+
+    def compliance(self, bot_uuid: UUID, since: datetime | None = None) -> dict:
+        """
+            The metrics of compliance of a chatbot (RF28, HIG-147): how many of its answers the evaluator approved,
+            had rewritten or replaced, and the criteria and rules that failed in them. Counted over what the history
+            keeps, 12 months at most, from `since` if given. Only identifiers and counts: no text is opened.
+        """
+        filters = {"botId": bot_uuid, "direction": OUTGOING, "evaluation__exists": True}
+        if since is not None:
+            filters["sentAt__gte"] = since
+        verdicts = dict.fromkeys(VERDICTS, 0)
+        criteria, rules = {}, {}
+        for found in self._own(ConversationMessage, **filters).only("evaluation").as_pymongo():
+            evaluation = found.get("evaluation") or {}
+            verdict = evaluation.get("verdict")
+            if verdict not in verdicts:
+                continue
+            verdicts[verdict] += 1
+            criterion = evaluation.get("criterion") or "none"
+            if verdict in ("rewritten", "replaced") and criterion != "none":
+                criteria[criterion] = criteria.get(criterion, 0) + 1
+                if criterion == "rule" and evaluation.get("rule"):
+                    rules[evaluation["rule"]] = rules.get(evaluation["rule"], 0) + 1
+        return {"answers": sum(verdicts.values()), "verdicts": verdicts,
+                "criteria": dict(sorted(criteria.items(), key=lambda item: (-item[1], item[0]))),
+                "rules": dict(sorted(rules.items(), key=lambda item: (-item[1], item[0])))}
 
     def recent_history(self, contact: Contact, limit: int = 50) -> list[dict]:
         """The last `limit` messages of the contact's conversation, oldest first, with each text opened."""

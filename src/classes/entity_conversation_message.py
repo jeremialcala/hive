@@ -14,6 +14,21 @@ connect_database(settings)
 
 INCOMING, OUTGOING = "in", "out"
 
+VERDICTS = ("approved", "rewritten", "replaced", "fixed", "unevaluated")
+CRITERIA = ("none", "rule", "invented", "contact", "language", "tone", "format", "instructions", "role")
+
+
+class MessageEvaluation(EmbeddedDocument):
+    """
+        What the engine's evaluator decided of an answer of the bot (HIG-147, `Evaluation` of shared.contract), with
+        no text: it is not personal data. It lives inside the message, so it expires and is deleted with it.
+    """
+    verdict = StringField(required=True, choices=VERDICTS)
+    criterion = StringField(required=True, choices=CRITERIA, default="none")
+    rule = IntField(required=True, min_value=0, max_value=50, default=0)
+    model = StringField(max_length=100)
+    seconds = FloatField(min_value=0)
+
 
 
 class ConversationMessage(Document):
@@ -46,6 +61,8 @@ class ConversationMessage(Document):
     # Of a message sent: the bot answering, or the client writing on its own, and then who asked (ADR-0031).
     origin = StringField(choices=("engine", "client"))
     sentBy = StringField(max_length=200)
+    # Of an answer of the bot, what the evaluator decided (HIG-147). The metrics of compliance count these (RF28).
+    evaluation = EmbeddedDocumentField(MessageEvaluation)
     createdAt = DateTimeField(required=True, default=utc_now)
     # MongoDB deletes the message by itself at that time: 12 months at most (RNF05).
     expiresAt = DateTimeField(required=True)

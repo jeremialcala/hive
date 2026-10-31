@@ -34,10 +34,11 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from shared import bus, tracing
-from shared.contract import SCHEMA_VERSION, FailedSend, OutboundRequest, SentReply, failure_subject, reply_subject
+from shared.contract import (SCHEMA_VERSION, Evaluation, FailedSend, OutboundRequest, SentReply, failure_subject,
+                             reply_subject)
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
-from src.domain.models.sobre import MensajeAprobado
+from src.domain.models.sobre import Evaluacion, MensajeAprobado
 from src.domain.ports.envio import (
     CanalDeMeta, Envio, Enviados, EnvioFallido, EnvioRechazado, RegistroNoDisponible, TokenRechazado, TokensDelBot,
 )
@@ -54,6 +55,19 @@ log = logging.getLogger(__name__)
 
 # El código de Meta en el texto de un rechazo: «Meta 131047».
 CODIGO = re.compile(r"Meta (\d+)")
+
+# Lo que decidió el evaluador, con los nombres del contrato v2 del gateway (`Evaluation`, HIG-147).
+VEREDICTOS = {"aprobada": "approved", "reescrita": "rewritten", "cambiada": "replaced", "fija": "fixed",
+              "no_evaluada": "unevaluated"}
+CRITERIOS = {"ninguno": "none", "regla": "rule", "inventa": "invented", "contacto": "contact", "idioma": "language",
+             "tono": "tone", "formato": "format", "instrucciones": "instructions", "papel": "role"}
+
+
+def evaluation_de(evaluacion: Evaluacion) -> Evaluation:
+    """La decisión del evaluador, para el historial del gateway: sin el texto."""
+    return Evaluation(verdict=VEREDICTOS[evaluacion.veredicto], criterion=CRITERIOS[evaluacion.criterio],
+                      rule=evaluacion.regla, model=evaluacion.modelo, seconds=evaluacion.segundos)
+
 
 NOMBRE = Worker.NOTIFIER.value
 # Lo que aprueba el evaluador (HIG-146), con un consumidor nuevo: el de antes, `notifier`, leía `motor.respuesta.…`.
@@ -159,7 +173,8 @@ class Notificar:
     async def _publicar(self, sobre: MensajeAprobado, envio: Envio) -> Resultado:
         evento = SentReply(schemaVersion=SCHEMA_VERSION, botId=sobre.botId, clientId=sobre.clientId,
                            contactId=sobre.contact.uuid, channel=sobre.channel, inReplyTo=sobre.messageId,
-                           messageId=envio.message_id, sentAt=envio.sent_at, text=sobre.respuesta.texto)
+                           messageId=envio.message_id, sentAt=envio.sent_at, text=sobre.respuesta.texto,
+                           evaluation=evaluation_de(sobre.evaluacion))
         traza = tracing.traceparent()
         headers = {"traceparent": traza} if traza else {}
         try:

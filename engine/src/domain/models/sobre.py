@@ -225,6 +225,8 @@ class Evaluacion(_Estricto):
     criterio: Criterio = "ninguno"
     regla: int = Field(default=0, ge=0, le=50)
     modelo: Optional[str] = None
+    # Lo que tardó en juzgarla la última vez, o None si no la juzgó (HIG-147).
+    segundos: Optional[float] = Field(default=None, ge=0, le=600)
 
 
 class MensajeAprobado(MensajeClasificado):

@@ -21,6 +21,8 @@ class Juicio:
     regla: int
     motivo: str
     modelo: str
+    # Lo que tardó el juicio.
+    segundos: float = 0.0
 
 
 class Evaluador(ABC):
