@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-31
+
 ### Añadido
 - **El resumen de la conversación** (HIG-143; ADR-0017 0.3.0). Cuando la conversación pasa de las 10 vueltas de la
   persona, el coordinador resume con el 26B lo que sale del contexto, fuera del camino del mensaje, y el de respuesta
@@ -1460,7 +1462,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/jeremialcala/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0
