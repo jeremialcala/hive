@@ -40,6 +40,8 @@ class Conversacion:
     apuntes: list[Apunte] = field(default_factory=list)
     revision: int = 0
     completa: bool = True
+    # Lo que ya salió de los apuntes, resumido por el LLM (HIG-143). None mientras no ha salido nada.
+    resumen: str | None = None
 
 
 class Contexto(ABC):
@@ -54,9 +56,9 @@ class Contexto(ABC):
 
     @abstractmethod
     async def guardar(self, client_id: UUID, bot_id: UUID, contact_id: UUID, apuntes: list[Apunte],
-                      revision: int) -> int:
+                      revision: int, resumen: str | None = None) -> int:
         """
-        Guarda la conversación solo si sigue en la revisión `revision` (0: si no había ninguna).
+        Guarda la conversación, con su resumen, solo si sigue en la revisión `revision` (0: si no había ninguna).
 
         :return: la revisión nueva.
         :raises Choque: si otro la escribió entre medias.

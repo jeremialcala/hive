@@ -75,7 +75,7 @@ class Responder:
             return Contestacion(texto=TEXTOS_FIJOS["no_disponible"], fuente="fijo")
         try:
             redaccion = await self._redactor.redactar(pedido.persona, pedido.vueltas, sobre.entrada.texto,
-                                                      reescribir=pedido.reescribir)
+                                                      reescribir=pedido.reescribir, resumen=pedido.resumen)
         except RedaccionFallida as e:
             if not self._ultima(mensaje):
                 log.warning("Sin respuesta para un mensaje del bot %s, se intentará otra vez: %s", sobre.botId, e)

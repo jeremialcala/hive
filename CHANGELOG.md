@@ -7,6 +7,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Cambiado
+- **ADR-0017, 0.3.0: el resumen de la conversación** (HIG-143). Lo que sale de las vueltas del contexto se resume con
+  el resumen que había y se guarda cifrado con él, y el de respuesta lo recibe en su primer turno de usuario.
+
 ### Añadido
 - **Lo que decide el evaluador queda guardado con cada respuesta** (HIG-147; RF28).
   - **El evento:** el `RespuestaEnviada` del notificador lleva `evaluation` en el contrato v2: veredicto

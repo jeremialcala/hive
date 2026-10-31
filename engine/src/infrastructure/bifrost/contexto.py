@@ -5,9 +5,11 @@
         clave   <clientId>.<botId>.<contactId>       sin ningún dato personal
         valor   el texto cifrado por Andvari con la clave Transit `contexto`, derivada para el cliente
 
-    Lo que se cifra es {"v": 2, "apuntes": [{"de", "texto", "adjuntos", "enviadaEn", "mensaje"}]}: las últimas
-    vueltas. Todo lo que se escribe está completo, aunque esté vacío: una siembra del historial, o un apunte encima de
-    una completa (HIG-144). El formato 1 (la 0.10.0) no apuntaba sobre un contexto vacío, así que uno vacío de entonces
+    Lo que se cifra es {"v": 2, "apuntes": [{"de", "texto", "adjuntos", "enviadaEn", "mensaje"}], "resumen"}: las
+    últimas vueltas y el resumen de lo que ya salió de ellas (HIG-143), que falta mientras no ha salido nada.
+
+    Todo lo que se escribe está completo, aunque esté vacío: una siembra del historial, o un apunte encima de una
+    completa (HIG-144). El formato 1 (la 0.10.0) no apuntaba sobre un contexto vacío, así que uno vacío de entonces
     no está completo; uno con vueltas, sí.
 
     La clave de cifrado no sale de Andvari y solo la alcanza el rol del coordinador; Bifröst guarda el texto cifrado,
@@ -89,14 +91,18 @@ class ContextoEnBifrost(Contexto):
         except (ValueError, KeyError, TypeError, AttributeError, ValidationError):
             # Lo que no se entiende no es contexto: vacío, con su revisión para que se pueda escribir encima.
             return Conversacion(apuntes=[], revision=entrada.revision, completa=False)
+        resumen = datos.get("resumen")
         return Conversacion(apuntes=apuntes, revision=entrada.revision,
-                            completa=bool(apuntes) or datos["v"] == VERSION)
+                            completa=bool(apuntes) or datos["v"] == VERSION,
+                            resumen=resumen if isinstance(resumen, str) and resumen else None)
 
     async def guardar(self, client_id: UUID, bot_id: UUID, contact_id: UUID, apuntes: list[Apunte],
-                      revision: int) -> int:
+                      revision: int, resumen: str | None = None) -> int:
         datos = {"v": VERSION, "apuntes": [{"de": a.vuelta.de, "texto": a.vuelta.texto, "adjuntos": a.vuelta.adjuntos,
                                             "enviadaEn": a.vuelta.enviadaEn.isoformat(), "mensaje": a.mensaje}
                                            for a in apuntes]}
+        if resumen:
+            datos["resumen"] = resumen
         try:
             cifrado = await asyncio.to_thread(self._cifrado.encrypt, self._clave_de_cifrado, client_id,
                                               json.dumps(datos, ensure_ascii=False).encode("utf-8"))
