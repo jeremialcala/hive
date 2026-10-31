@@ -7,6 +7,45 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
+### Añadido
+- **Calificar las respuestas de los bots y ver su cumplimiento** (HIG-111, RF28). Las decisiones son de Jeremi del
+  2026-10-31.
+  - **`PUT /chat/{bot_id}/contacts/{contact_id}/ratings`:** el `cliente-admin` y el `cliente-analista` califican una
+    respuesta del bot con 👍/👎 y un comentario opcional de hasta 500 caracteres. La respuesta se indica por su `ref`
+    de la conversación, en el cuerpo (HIG-149).
+    - Cada persona tiene una calificación por respuesta, y calificar otra vez la cambia.
+    - Solo se califica lo que el bot envió y está en el historial del contacto.
+    - Una credencial de máquina recibe `403`.
+    - El log escribe quién calificó y de qué contacto, nunca qué.
+  - **Dónde se guarda (D9):** en la colección `ratings`, con el comentario cifrado con la clave del cliente. Se borra
+    con el contacto, el bot y el cliente, y caduca con la respuesta que califica.
+  - **`GET /chat/{bot_id}/compliance`:** las métricas de un bot. Incluye los veredictos del evaluador, los criterios y
+    reglas que fallan, los textos fijos y las calificaciones, con `since` opcional. Los textos fijos hacen de tarjeta
+    de guardrails hasta HIG-103.
+  - **La conversación** lleva la evaluación y las calificaciones de cada respuesta, sin el número.
+  - **La matriz rol × acción** (1.10.0) y la clasificación de datos (0.4.0) están al día. La pantalla de la PWA es
+    HIG-149.
+  - **Pruebas:** `tests/unit/test_ratings.py`, 21.
+- **La pestaña «Cumplimiento» de la PWA** (HIG-149, RF28), en la ficha de cada bot.
+  - **Las métricas:** el porcentaje de respuestas aprobadas, las corregidas (reescritas y sustituidas), los textos
+    fijos y las calificadas, en 7 días, 30 días o todo el historial.
+  - **Las respuestas para calificar:** sin calificar, marcadas o todas. Al abrir una se ve la conversación completa,
+    sin el número, con lo que decidió el evaluador de cada respuesta. Se califica con 👍/👎 y un comentario opcional.
+  - **`GET /chat/{bot_id}/compliance/answers`:** las últimas respuestas que juzgó el evaluador, de la más nueva a la
+    más vieja, con `filter` (`unrated`, `flagged` o `all`) y `limit` (hasta 100). Da el contacto, la fecha, el
+    veredicto y las calificaciones, sin texto, sin número y sin id de Meta. «Marcada» quiere decir que el evaluador
+    no la aprobó tal cual, o que alguien la calificó mal.
+  - **La matriz rol × acción** pasa a 1.11.0.
+
+### Seguridad
+- **La conversación ya no da los ids de Meta** (HIG-149). El id de un mensaje de WhatsApp (`wamid`) lleva el número
+  del contacto en base64, así que la conversación lo dejaba ver aunque no diera el número. Ahora cada mensaje lleva
+  `ref`, una referencia opaca (un hash del cliente, el bot, la dirección y el id), e `inReplyToRef` en lugar de
+  `inReplyTo`. Las calificaciones usan esa `ref`. La exportación del contacto (RF09) sigue dando los ids de Meta: son
+  sus datos.
+
 ## [0.12.0] - 2026-10-31
 
 ### Añadido
@@ -1462,7 +1501,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/jeremialcala/hive/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jeremialcala/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0

@@ -4,7 +4,8 @@
     and what came of each request to send.
 
     The conversation goes without the contact's number: the cliente-analista reads it too (RF28, the profile of the
-    role × action matrix), and each time a person reads one, the log says who and whose, the audit until RF18.
+    role × action matrix), and each time a person reads one, the log says who and whose, the audit until RF18. Nor
+    with Meta's ids, which in WhatsApp carry the number: each message has an opaque `ref` instead (HIG-149).
 
     What came of a send: accepted, once the bus held it; sent, once Meta took it and the history has it; or failed,
     with Meta's code and a reason the PWA explains (developers.facebook.com, «Error codes», read on 2026-10-29).
@@ -70,6 +71,7 @@ def ctr_conversation(repo: TenantRepository, bot_id: str, contact_id: str, actor
     try:
         contact = repo.get_contact(bot_id, contact_id)
         messages = repo.recent_history(contact, MESSAGES)
+        ratings = repo.ratings_of(contact)
         window = window_of(repo.last_incoming_at(contact))
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, "This contact was not found")
@@ -78,6 +80,9 @@ def ctr_conversation(repo: TenantRepository, bot_id: str, contact_id: str, actor
     if person:
         log.warning(f"Audit: {actor} read the conversation of contact {contact._uuid} of chatbot {contact.botId}")
     channel = "whatsapp" if contact.waIdIndex or contact.waId else "messenger" if contact.fbId else None
+    for message in messages:
+        # What the people of the client thought of each answer of the bot (RF28, HIG-111).
+        message["ratings"] = ratings.get(message["ref"], []) if message["direction"] == "out" else []
     return answer(status.HTTP_200_OK, data={
         "contact": {"uuid": str(contact._uuid), "botId": str(contact.botId), "firstName": contact.firstName,
                     "lastName": contact.lastName, "channel": channel, "consent": consent_info(contact)},

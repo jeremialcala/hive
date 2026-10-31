@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-30
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.9.0
+* **Versión:** 1.11.0
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -166,7 +166,7 @@ siempre el notificador, con límites por bot y por cliente (RS27); el camino lo 
 | Invitar usuarios al cliente; darlos de alta, de baja o bloquearlos; cambiar su rol | — | ✅ | ⛔ | — | RF16 (D1, D2), [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md) | ✅ `POST`, `GET /people`, `PUT`, `DELETE /people/{person_id}` |
 | Ver la auditoría de su cliente | ✅ nuevo, de la plataforma | ✅ nuevo, lectura | ⛔ nuevo | — | RF18, RF20; RS14, RS25 (D5, D9) | ⚠️ |
 | Definir guardrails y la acción ante una violación, sobre la base de la plataforma | — | ✅ nuevo | ⛔ nuevo | — | RF27, RS26 (D9) | ⚠️ |
-| Calificar respuestas, leyendo la conversación del contacto, y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | RF28 (D9; el evaluador de la ADR-0008 del motor) | ⚠️ |
+| Calificar respuestas, leyendo la conversación del contacto, y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | RF28 (D9; el evaluador de la ADR-0008 del motor) | ✅ `PUT /chat/{bot_id}/contacts/{contact_id}/ratings` (solo personas: una credencial de máquina recibe `403`) `GET /chat/{bot_id}/compliance` (HIG-111) y `GET /chat/{bot_id}/compliance/answers` (HIG-149) |
 | Ver trazas y eventos del bus, sin su contenido | ✅ nuevo | ⛔ | ⛔ | — | RF21, RS19 (ADR-0027, D9) | ⚠️ (hoy, en Tempo) |
 | Configurar el catálogo MCP de la plataforma: servidores, herramientas aprobadas por su huella y su clase | ✅ nuevo | ⛔ nuevo | ⛔ nuevo | — | RF32 (D7, D8, ADR-0032) | ⚠️ |
 | Cargar las llaves o credenciales de su cuenta, o conectarla por OAuth, para un servicio de terceros | ⛔ nuevo | ✅ nuevo | ⛔ nuevo | ✅ nuevo, solo el enlace las obtiene | RF33 (D8, ADR-0032) | ⚠️ |
@@ -221,6 +221,9 @@ Lo que hoy aplica el código, ruta por ruta (HIG-92). Una tabla para cada ruta d
 | `DELETE /chat/{bot_id}/contacts/{contact_id}/consent` | ✅ | ⛔ | ⛔ | ⛔ |
 | `PUT /chat/{bot_id}/contacts/{contact_id}/consent` | ✅ | ⛔ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/contacts/{contact_id}/conversation` | ✅ | ✅ | ⛔ | ⛔ |
+| `PUT /chat/{bot_id}/contacts/{contact_id}/ratings` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/compliance` | ✅ | ✅ | ⛔ | ⛔ |
+| `GET /chat/{bot_id}/compliance/answers` | ✅ | ✅ | ⛔ | ⛔ |
 | `POST /chat/{bot_id}/contacts/{contact_id}/messages` | ✅ | ✅ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}` | ✅ | ✅ | ⛔ | ⛔ |
 | `GET /chat/{bot_id}/contacts/{contact_id}/turns` | ⛔ | ⛔ | ✅ | ⛔ |

@@ -617,6 +617,37 @@ components:
       - text
       title: QuickReply
       type: object
+    RatingRequest:
+      additionalProperties: false
+      description: 'What a person of the client thinks of an answer of the bot (RF28, HIG-111): good (`up`) or bad
+        (`down`), and
+
+        why if they want. The answer is said by its reference, `ref` in the conversation: never Meta''s id, which
+        in
+
+        WhatsApp carries the contact''s number (HIG-149).'
+      properties:
+        comment:
+          anyOf:
+          - maxLength: 500
+            type: string
+          - type: 'null'
+          title: Comment
+        ref:
+          pattern: ^[0-9a-f]{24}$
+          title: Ref
+          type: string
+        score:
+          enum:
+          - up
+          - down
+          title: Score
+          type: string
+      required:
+      - ref
+      - score
+      title: RatingRequest
+      type: object
     ResponseData:
       properties:
         code:
@@ -910,7 +941,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.12.0
+  version: 0.13.0
 openapi: 3.1.0
 paths:
   /bot:
@@ -986,6 +1017,96 @@ paths:
       security:
       - OAuth2: []
       summary: List Bots
+      tags:
+      - Bot
+  /chat/{bot_id}/compliance:
+    get:
+      description: 'The compliance of a chatbot (RF28): how many of its answers the evaluator approved, had rewritten
+        or replaced,
+
+        the criteria and rules that failed, the fixed texts, and the people''s ratings. Over the history (12 months
+        at
+
+        most), from `since` if given. Only counts: no text of any conversation.'
+      operationId: get_compliance_chat__bot_id__compliance_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: since
+        required: false
+        schema:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Since
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Compliance
+      tags:
+      - Bot
+  /chat/{bot_id}/compliance/answers:
+    get:
+      description: 'The last answers of a chatbot that the evaluator judged, newest first, to rate them (RF28):
+        whose contact, when,
+
+        what the evaluator decided and how the people rated it, with its `ref`. `filter`: unrated, flagged (not
+
+        approved as it was, or rated bad) or all. No text, no number, no id of Meta.'
+      operationId: get_answers_to_rate_chat__bot_id__compliance_answers_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: query
+        name: filter
+        required: false
+        schema:
+          title: Filter
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Answers To Rate
       tags:
       - Bot
   /chat/{bot_id}/contacts:
@@ -1333,6 +1454,52 @@ paths:
       security:
       - OAuth2: []
       summary: Get Send Status
+      tags:
+      - Contacts
+  /chat/{bot_id}/contacts/{contact_id}/ratings:
+    put:
+      description: 'A person of the client rates an answer of the bot to that contact: good (`up`) or bad (`down`),
+        and why if they
+
+        want (RF28). The answer is its `ref`, as the conversation gives it. Rating it again changes theirs. A machine
+
+        credential does not rate: 403.'
+      operationId: rate_answer_chat__bot_id__contacts__contact_id__ratings_put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: contact_id
+        required: true
+        schema:
+          title: Contact Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatingRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Rate Answer
       tags:
       - Contacts
   /chat/{bot_id}/contacts/{contact_id}/turns:

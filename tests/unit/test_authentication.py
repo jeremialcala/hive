@@ -748,7 +748,7 @@ PLACEHOLDERS = {"bot_id": str(uuid4()), "intent_id": str(uuid4()), "client_id": 
 
 
 def test_the_webhook_health_and_token_routes_are_the_only_ones_without_a_token():
-    assert len(ROUTES) == 52
+    assert len(ROUTES) == 55
 
 
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer not-a-token"}], ids=["no token", "garbage"])
