@@ -4,8 +4,9 @@
 #
 #   cd engine/deploy/llm && docker compose up -d
 #
-#   * one model for both tasks, Gemma 4 26B A4B in MXFP4 (15.4 GiB, Apache 2.0), all of it on the GPU, with two
-#     slots: one for each worker, so a classification never waits behind an answer
+#   * one model for every task, Gemma 4 26B A4B in MXFP4 (15.4 GiB, Apache 2.0), all of it on the GPU, with three
+#     slots: the classifier, the responder, and the evaluator with the summary of the context (ADR-0012), so none of
+#     them waits behind another
 #   * the model is read from a Docker volume inside the WSL2 VM, hive-llm-modelos, not from C:\hive-llm: Windows'
 #     file bridge reads at about 100 MB/s, and under memory pressure it failed with "Out of memory". The copy in
 #     C:\hive-llm\modelos is the one downloaded with its SHA-256 checked, and it goes into the volume once (the
@@ -45,11 +46,12 @@ services:
       - "999"
       - --flash-attn
       - "on"
-      # Two slots of 8K tokens each: the classifier and the responder, at the same time.
+      # Three slots of 8K tokens each: the classifier, the responder and the evaluator (ADR-0012), at the same time.
+      # Each request goes to the slot whose prompt it shares most, so each keeps its own system prompt.
       - --parallel
-      - "2"
+      - "3"
       - --ctx-size
-      - "16384"
+      - "24576"
       # The chat template of the model itself.
       - --jinja
       - --no-webui

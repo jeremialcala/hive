@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-    El notificador (E6 de engine/docs/00-project/plan-de-los-workers.md). Lee cada respuesta del stream `MOTOR` con el
-    consumidor `notifier`, se la envía a la persona por WhatsApp y publica lo enviado en `engine.reply.sent.{botId}`
-    (stream `RESPUESTAS`), que la ingesta del gateway guarda en el historial (contrato v2, `RespuestaEnviada`).
+    El notificador (E6 de engine/docs/00-project/plan-de-los-workers.md). Lee cada respuesta aprobada por el evaluador
+    del stream `MOTOR`, con el consumidor `notifier-aprobada` (HIG-146), se la envía a la persona por WhatsApp y publica
+    lo enviado en `engine.reply.sent.{botId}` (stream `RESPUESTAS`), que la ingesta del gateway guarda en el historial
+    (contrato v2, `RespuestaEnviada`). Antes del evaluador leía `motor.respuesta.…` con el consumidor `notifier`.
 
         python -m src.workers.notifier
 
@@ -36,7 +37,7 @@ from shared import bus, tracing
 from shared.contract import SCHEMA_VERSION, FailedSend, OutboundRequest, SentReply, failure_subject, reply_subject
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
-from src.domain.models.sobre import MensajeRespondido
+from src.domain.models.sobre import MensajeAprobado
 from src.domain.ports.envio import (
     CanalDeMeta, Envio, Enviados, EnvioFallido, EnvioRechazado, RegistroNoDisponible, TokenRechazado, TokensDelBot,
 )
@@ -55,7 +56,8 @@ log = logging.getLogger(__name__)
 CODIGO = re.compile(r"Meta (\d+)")
 
 NOMBRE = Worker.NOTIFIER.value
-STREAM, CONSUMIDOR = "MOTOR", NOMBRE
+# Lo que aprueba el evaluador (HIG-146), con un consumidor nuevo: el de antes, `notifier`, leía `motor.respuesta.…`.
+STREAM, CONSUMIDOR = "MOTOR", f"{NOMBRE}-aprobada"
 # Lo que el cliente pide enviar (ADR-0031 del gateway): su stream y el consumidor del notificador en él.
 SALIENTES, CONSUMIDOR_SALIENTES = "SALIENTES", NOMBRE
 
@@ -81,7 +83,7 @@ class Notificar:
 
     async def __call__(self, mensaje) -> Resultado:
         try:
-            sobre, _ = leer_del_motor(mensaje, MensajeRespondido, "respuesta")
+            sobre, _ = leer_del_motor(mensaje, MensajeAprobado, "aprobada")
         except Descartado as e:
             log.warning("Un mensaje de %s se descarta: %s", STREAM, e)
             return Resultado.DESCARTADO
@@ -102,7 +104,7 @@ class Notificar:
             current.set(**{"gateway.outcome": resultado.value})
             return resultado
 
-    async def _notificar(self, sobre: MensajeRespondido) -> Resultado:
+    async def _notificar(self, sobre: MensajeAprobado) -> Resultado:
         if sobre.channel != "whatsapp":
             log.warning("La respuesta a un mensaje de %s del bot %s se descarta: ese canal llega en el E10",
                         sobre.channel, sobre.botId)
@@ -125,7 +127,7 @@ class Notificar:
                      sobre.botId)
         return await self._publicar(sobre, envio)
 
-    async def _enviar(self, sobre: MensajeRespondido) -> Envio | Resultado:
+    async def _enviar(self, sobre: MensajeAprobado) -> Envio | Resultado:
         try:
             token = await self._tokens.token_de_whatsapp(sobre.clientId, sobre.botId)
             try:
@@ -154,7 +156,7 @@ class Notificar:
             log.error("La respuesta a un mensaje del bot %s salió, pero no se pudo apuntar: %s", sobre.botId, e)
         return envio
 
-    async def _publicar(self, sobre: MensajeRespondido, envio: Envio) -> Resultado:
+    async def _publicar(self, sobre: MensajeAprobado, envio: Envio) -> Resultado:
         evento = SentReply(schemaVersion=SCHEMA_VERSION, botId=sobre.botId, clientId=sobre.clientId,
                            contactId=sobre.contact.uuid, channel=sobre.channel, inReplyTo=sobre.messageId,
                            messageId=envio.message_id, sentAt=envio.sent_at, text=sobre.respuesta.texto)

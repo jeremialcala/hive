@@ -14,7 +14,7 @@ import pytest
 
 from src.domain.memoria import GUARDADAS, PERSONAS, Memoria, antes_de, recortar
 from src.domain.models.sobre import (Clasificacion, Contestacion, ContactoDelCanal, Entrada, MensajeClasificado,
-                                     MensajeRespondido, Vuelta)
+                                     Evaluacion, MensajeAprobado, Vuelta)
 from src.domain.ports.contexto import Apunte, Choque, Contexto, ContextoNoDisponible, Conversacion
 from src.domain.ports.fuente_del_bot import FuenteDelBot
 from src.infrastructure.bifrost.contexto import ContextoEnBifrost, clave
@@ -35,8 +35,9 @@ def sobre(message_id="wamid.B", recibido=AHORA, texto="¿y el horario?") -> Mens
         entrada=Entrada(texto=texto), clasificacion=Clasificacion(permitido=True, motivo="ninguno"))
 
 
-def respondido(message_id="wamid.B", texto="De 9 a 18.") -> MensajeRespondido:
-    return MensajeRespondido(**sobre(message_id).model_dump(), respuesta=Contestacion(texto=texto, fuente="modelo"))
+def respondido(message_id="wamid.B", texto="De 9 a 18.") -> MensajeAprobado:
+    return MensajeAprobado(**sobre(message_id).model_dump(), respuesta=Contestacion(texto=texto, fuente="modelo"),
+                           evaluacion=Evaluacion(veredicto="aprobada"))
 
 
 class Gateway(FuenteDelBot):
@@ -53,30 +54,41 @@ class Gateway(FuenteDelBot):
 
 
 class EnMemoria(Contexto):
-    """El bucket, en memoria: una conversación por clave, con su revisión."""
+    """El bucket, en memoria: una conversación por clave, con su revisión. Las de `ilegibles` no se entienden."""
 
     def __init__(self, caido=False):
-        self.claves, self.caido, self.olvidos = {}, caido, []
+        self.claves, self.caido, self.olvidos, self.ilegibles = {}, caido, [], set()
+        # Para probar los fallos al escribir: Bifröst o Andvari caídos solo al guardar, u otro que siempre gana.
+        self.no_guarda, self.siempre_choca = False, False
 
     async def leer(self, client_id, bot_id, contact_id):
         if self.caido:
             raise ContextoNoDisponible("TimeoutError")
-        guardado = self.claves.get((client_id, bot_id, contact_id))
-        return None if guardado is None else Conversacion(apuntes=list(guardado[0]), revision=guardado[1])
+        clave = (client_id, bot_id, contact_id)
+        guardado = self.claves.get(clave)
+        if guardado is None:
+            return None
+        if clave in self.ilegibles:
+            return Conversacion(apuntes=[], revision=guardado[1], completa=False)
+        return Conversacion(apuntes=list(guardado[0]), revision=guardado[1])
 
     async def guardar(self, client_id, bot_id, contact_id, apuntes, revision):
-        if self.caido:
+        if self.caido or self.no_guarda:
             raise ContextoNoDisponible("TimeoutError")
         actual = self.claves.get((client_id, bot_id, contact_id))
-        if (actual[1] if actual else 0) != revision:
+        if self.siempre_choca or (actual[1] if actual else 0) != revision:
             raise Choque()
         self.claves[(client_id, bot_id, contact_id)] = (list(apuntes), revision + 1)
+        self.ilegibles.discard((client_id, bot_id, contact_id))
         return revision + 1
 
     async def olvidar(self, client_id, bot_id=None, contact_id=None):
         if self.caido:
             raise ContextoNoDisponible("TimeoutError")
         self.olvidos.append((client_id, bot_id, contact_id))
+        for suprimida in [c for c in self.claves if c[0] == client_id and bot_id in (None, c[1])
+                          and contact_id in (None, c[2])]:
+            del self.claves[suprimida]
 
     def apuntes(self):
         return self.claves[(CLIENTE, BOT, CONTACTO)][0]
@@ -100,8 +112,8 @@ def test_sin_contexto_se_piden_al_gateway_y_se_siembra():
 def test_con_contexto_no_se_pregunta_al_gateway():
     gateway, contexto = Gateway(), EnMemoria()
     memoria = Memoria(gateway, contexto)
-    correr(memoria.vueltas(sobre("wamid.A", AHORA - timedelta(minutes=6))))
-    correr(memoria.apuntar_persona(sobre("wamid.A", AHORA - timedelta(minutes=6), texto="primero")))
+    correr(memoria.vueltas(sobre("wamid.A", AHORA - timedelta(minutes=3))))
+    correr(memoria.apuntar_persona(sobre("wamid.A", AHORA - timedelta(minutes=3), texto="primero")))
 
     vueltas = correr(memoria.vueltas(sobre()))
 
@@ -144,10 +156,30 @@ def test_si_bifrost_o_andvari_fallan_se_pregunta_al_gateway_y_el_mensaje_sigue(c
 def test_un_contexto_que_no_se_entiende_se_siembra_otra_vez():
     contexto = EnMemoria()
     contexto.claves[(CLIENTE, BOT, CONTACTO)] = ([], 7)
+    contexto.ilegibles.add((CLIENTE, BOT, CONTACTO))
+    gateway = Gateway()
 
-    correr(Memoria(Gateway(), contexto).vueltas(sobre()))
+    correr(Memoria(gateway, contexto).vueltas(sobre()))
 
+    assert gateway.pedidas == 1
     assert len(contexto.apuntes()) == 2 and contexto.claves[(CLIENTE, BOT, CONTACTO)][1] == 8
+
+
+def test_un_contacto_nuevo_tiene_contexto_desde_el_primer_mensaje():
+    """HIG-144: el contexto sembrado de un historial vacío está completo, y sobre él se apunta."""
+    gateway, contexto = Gateway(vueltas=[]), EnMemoria()
+    memoria = Memoria(gateway, contexto)
+    # Lo que contesta el bot lleva la hora en que se apunta: el segundo mensaje llega después, como en producción.
+    ahora = datetime.now(timezone.utc)
+    primero = sobre("wamid.A", ahora - timedelta(minutes=1), texto="hola")
+
+    assert correr(memoria.vueltas(primero)) == []
+    correr(memoria.apuntar_persona(primero))
+    correr(memoria.apuntar_bot(respondido("wamid.A", texto="¡Hola! ¿En qué te ayudo?")))
+    vueltas = correr(memoria.vueltas(sobre("wamid.B", ahora + timedelta(minutes=1))))
+
+    assert gateway.pedidas == 1
+    assert [(v.de, v.texto) for v in vueltas] == [("persona", "hola"), ("bot", "¡Hola! ¿En qué te ayudo?")]
 
 
 def test_se_guardan_como_mucho_las_vueltas_que_se_pasan():
@@ -197,14 +229,65 @@ def test_sin_contexto_no_se_apunta_nada_que_engane_al_modelo():
     assert contexto.claves == {}
 
 
-def test_la_respuesta_a_un_mensaje_que_el_contexto_no_tiene_no_se_apunta():
-    contexto = EnMemoria()
-    memoria = Memoria(Gateway(), contexto)
+def test_la_respuesta_a_un_mensaje_que_el_contexto_no_tiene_lo_borra(caplog):
+    gateway, contexto = Gateway(), EnMemoria()
+    memoria = Memoria(gateway, contexto)
     correr(memoria.vueltas(sobre()))
 
     correr(memoria.apuntar_bot(respondido("wamid.OTRO")))
 
-    assert len(contexto.apuntes()) == 2
+    # Le falta algo: el mensaje siguiente lo siembra otra vez desde el gateway.
+    assert contexto.claves == {} and "una respuesta a un mensaje que no tenía" in caplog.text
+    correr(memoria.vueltas(sobre("wamid.C", AHORA + timedelta(minutes=1))))
+    assert gateway.pedidas == 2 and len(contexto.apuntes()) == 2
+
+
+def test_un_mensaje_atendido_con_retraso_borra_el_contexto_al_apuntarse():
+    contexto = EnMemoria()
+    memoria = Memoria(Gateway(), contexto)
+    correr(memoria.vueltas(sobre()))
+    correr(memoria.apuntar_persona(sobre()))
+
+    correr(memoria.apuntar_persona(sobre("wamid.VIEJO", AHORA - timedelta(minutes=2))))
+
+    # Al final, el orden mentiría.
+    assert contexto.claves == {}
+
+
+def test_dos_mensajes_seguidos_de_la_persona_no_borran_el_contexto():
+    # El segundo llega antes de que se apunte la respuesta al primero: la respuesta es posterior, y eso es normal.
+    contexto = EnMemoria()
+    memoria = Memoria(Gateway(), contexto)
+    correr(memoria.vueltas(sobre()))
+    correr(memoria.apuntar_persona(sobre()))
+    correr(memoria.apuntar_bot(respondido()))
+
+    correr(memoria.apuntar_persona(sobre("wamid.C", AHORA + timedelta(seconds=30), texto="¿y los sábados?")))
+
+    assert [a.vuelta.texto for a in contexto.apuntes()][-3:] == ["¿y el horario?", "De 9 a 18.", "¿y los sábados?"]
+
+
+@pytest.mark.parametrize("fallo", ["no_guarda", "siempre_choca"])
+def test_si_no_se_puede_apuntar_se_borra_el_contexto(fallo, caplog):
+    contexto = EnMemoria()
+    memoria = Memoria(Gateway(), contexto)
+    correr(memoria.vueltas(sobre()))
+    setattr(contexto, fallo, True)
+
+    correr(memoria.apuntar_persona(sobre()))
+
+    assert contexto.claves == {} and "borrado, se sembrará otra vez" in caplog.text
+
+
+def test_si_tampoco_se_puede_borrar_el_log_dice_que_caduca(caplog):
+    contexto = EnMemoria()
+    memoria = Memoria(Gateway(), contexto)
+    correr(memoria.vueltas(sobre()))
+    contexto.caido = True
+
+    correr(memoria.apuntar_persona(sobre()))
+
+    assert "caduca en 24 horas" in caplog.text and "¿y el horario?" not in caplog.text
 
 
 def test_si_otro_coordinador_escribio_entre_medias_se_apunta_encima():
@@ -231,7 +314,7 @@ def test_si_otro_coordinador_escribio_entre_medias_se_apunta_encima():
 # --- Los consumidores del coordinador -------------------------------------------------------------------------------
 
 class Mensaje:
-    def __init__(self, data: bytes, subject="motor.respuesta.3.b.c"):
+    def __init__(self, data: bytes, subject="motor.aprobada.3.b.c"):
         self.data, self.subject, self.headers = data, subject, {}
 
 
@@ -243,7 +326,7 @@ def test_la_respuesta_publicada_se_apunta_y_se_confirma():
     publicado = respondido()
 
     resultado = correr(Respondido(memoria)(Mensaje(publicado.model_dump_json().encode(),
-                                                    f"motor.respuesta.3.{BOT}.{CONTACTO}")))
+                                                    f"motor.aprobada.3.{BOT}.{CONTACTO}")))
 
     assert resultado is Resultado.CONFIRMADO and contexto.apuntes()[-1].vuelta.de == "bot"
 
@@ -391,7 +474,39 @@ def test_un_valor_que_no_se_entiende_se_lee_vacio_con_su_revision():
 
     leido = correr(contexto.leer(CLIENTE, BOT, CONTACTO))
 
-    assert (leido.apuntes, leido.revision) == ([], 5)
+    assert (leido.apuntes, leido.revision, leido.completa) == ([], 5, False)
+
+
+def _cifrado(datos: dict) -> bytes:
+    return f"vault:v1:{CLIENTE}:{json.dumps(datos).encode().hex()}".encode()
+
+
+APUNTE_GUARDADO = {"de": "persona", "texto": "hola", "adjuntos": [], "enviadaEn": AHORA.isoformat(),
+                   "mensaje": "wamid.A"}
+
+
+@pytest.mark.parametrize("version,apuntes,completa", [
+    (2, [], True),
+    (2, [APUNTE_GUARDADO], True),
+    # La 0.10.0 no apuntaba sobre un contexto vacío: uno vacío de entonces no tiene lo que vino después.
+    (1, [], False),
+    (1, [APUNTE_GUARDADO], True),
+], ids=["vacío del formato 2", "con vueltas del formato 2", "vacío del formato 1", "con vueltas del formato 1"])
+def test_cuando_esta_completo_lo_que_se_lee(version, apuntes, completa):
+    js = JetStream()
+    js.kv.valores[clave(CLIENTE, BOT, CONTACTO)] = (_cifrado({"v": version, "apuntes": apuntes}), 3)
+
+    leido = correr(ContextoEnBifrost(js, Andvari()).leer(CLIENTE, BOT, CONTACTO))
+
+    assert (len(leido.apuntes), leido.completa) == (len(apuntes), completa)
+
+
+def test_se_escribe_el_formato_2():
+    andvari = Andvari()
+
+    correr(ContextoEnBifrost(JetStream(), andvari).guardar(CLIENTE, BOT, CONTACTO, [], 0))
+
+    assert json.loads(andvari.cifrados[-1]) == {"v": 2, "apuntes": []}
 
 
 def test_antes_de_un_mensaje_nuevo_estan_todas():

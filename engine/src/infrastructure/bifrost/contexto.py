@@ -5,9 +5,13 @@
         clave   <clientId>.<botId>.<contactId>       sin ningún dato personal
         valor   el texto cifrado por Andvari con la clave Transit `contexto`, derivada para el cliente
 
-    Lo que se cifra es {"v": 1, "apuntes": [{"de", "texto", "adjuntos", "enviadaEn", "mensaje"}]}: las últimas
-    vueltas. La clave de cifrado no sale de Andvari y solo la alcanza el rol del coordinador; Bifröst guarda el texto
-    cifrado, que el usuario admin tampoco puede leer.
+    Lo que se cifra es {"v": 2, "apuntes": [{"de", "texto", "adjuntos", "enviadaEn", "mensaje"}]}: las últimas
+    vueltas. Todo lo que se escribe está completo, aunque esté vacío: una siembra del historial, o un apunte encima de
+    una completa (HIG-144). El formato 1 (la 0.10.0) no apuntaba sobre un contexto vacío, así que uno vacío de entonces
+    no está completo; uno con vueltas, sí.
+
+    La clave de cifrado no sale de Andvari y solo la alcanza el rol del coordinador; Bifröst guarda el texto cifrado,
+    que el usuario admin tampoco puede leer.
 
     Cada escritura renueva la caducidad de su clave: el bucket olvida una conversación 24 horas después de su último
     mensaje. Se escribe solo si la conversación sigue en la revisión que se leyó (compare-and-swap).
@@ -29,7 +33,9 @@ from src.domain.ports.contexto import Apunte, Choque, Contexto, ContextoNoDispon
 
 BUCKET = "contexto"
 CLAVE_DE_CIFRADO = "contexto"
-VERSION = 1
+VERSION = 2
+# El de la 0.10.0: se lee igual, pero uno vacío no está completo.
+VERSION_SIN_VACIOS = 1
 FALLOS_DE_BIFROST = (nats.errors.Error, OSError, TimeoutError)
 
 
@@ -72,18 +78,19 @@ class ContextoEnBifrost(Contexto):
         except KeyStoreUnavailable as e:
             raise ContextoNoDisponible(f"Andvari: {e}") from None
         except UnicodeDecodeError:
-            return Conversacion(apuntes=[], revision=entrada.revision)
+            return Conversacion(apuntes=[], revision=entrada.revision, completa=False)
         try:
             datos = json.loads(claro)
-            if datos.get("v") != VERSION:
+            if datos.get("v") not in (VERSION, VERSION_SIN_VACIOS):
                 raise ValueError("otra versión")
             apuntes = [Apunte(vuelta=Vuelta(de=a["de"], texto=a["texto"], adjuntos=a.get("adjuntos") or [],
                                             enviadaEn=datetime.fromisoformat(a["enviadaEn"])),
                               mensaje=a["mensaje"]) for a in datos["apuntes"]]
         except (ValueError, KeyError, TypeError, AttributeError, ValidationError):
             # Lo que no se entiende no es contexto: vacío, con su revisión para que se pueda escribir encima.
-            return Conversacion(apuntes=[], revision=entrada.revision)
-        return Conversacion(apuntes=apuntes, revision=entrada.revision)
+            return Conversacion(apuntes=[], revision=entrada.revision, completa=False)
+        return Conversacion(apuntes=apuntes, revision=entrada.revision,
+                            completa=bool(apuntes) or datos["v"] == VERSION)
 
     async def guardar(self, client_id: UUID, bot_id: UUID, contact_id: UUID, apuntes: list[Apunte],
                       revision: int) -> int:

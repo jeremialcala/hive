@@ -4,7 +4,7 @@
 * **Fecha:** 2026-10-18
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 0.2.0
+* **Versión:** 0.2.1
 * **ID:** ADR-0017
 * **Supersede:** — (amplía [ADR-0010](0010-clave-de-cifrado-de-datos-por-cliente.md) y
   [ADR-0014](0014-supresion-en-respaldos-por-caducidad.md) a un dato nuevo: el contenido de los mensajes)
@@ -205,6 +205,12 @@ Lo que cambia respecto a la decisión:
   tiene lo anterior: si no, el siguiente mensaje lo pide al gateway y siembra uno nuevo con lo que diga el historial.
 - **Cuándo no sirve el contexto.** Un mensaje que llega otra vez ve solo lo de antes de él. Uno que se atiende con
   retraso, si el contexto ya tiene algo posterior, pide sus vueltas al gateway y no toca el contexto.
+- **Un contexto completo sirve aunque esté vacío** (HIG-144, 2026-10-31). El de un contacto nuevo se siembra de
+  un historial vacío y sobre él se apunta desde el primer mensaje. El valor pasa a `v: 2`: uno vacío del formato 1
+  (la 0.10.0, que no apuntaba sobre él) no está completo y se siembra otra vez. Si un apunte no se puede hacer, el
+  contexto se borra para que el mensaje siguiente lo siembre del historial. Pasa cuando Bifröst o Andvari fallan,
+  cuando otro coordinador gana siempre, cuando una respuesta es a un mensaje que el contexto no tiene o cuando un
+  mensaje de la persona llega después de otro suyo posterior.
 - **Si Bifröst o Andvari fallan,** las vueltas se piden al gateway como antes y el log lo dice. El mensaje no espera
   por el contexto.
 - **La supresión es una purga por sujeto, en una petición:** `$KV.contexto.<cliente>.<bot>.<contacto>` para un

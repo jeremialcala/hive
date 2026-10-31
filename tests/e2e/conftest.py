@@ -79,7 +79,7 @@ def client(stack):
     acme.call("POST", f"/chat/{bot['uuid']}/rules", {"rules": ["Responde siempre en español"]})
 
     stack.ops("ops.engine_keys", made["uuid"], extra_env={"OPERATOR_CLIENT_ID": operator_id})
-    stack.compose("up", "-d", "classifier", "coordinator", "responder", "notifier")
+    stack.compose("up", "-d", "classifier", "coordinator", "responder", "evaluator", "notifier")
     time.sleep(5)
     stopped = {name: state for name, state in stack.running().items() if state != "running"}
     assert not stopped, f"Not running: {stopped}\n{stack.logs()}"

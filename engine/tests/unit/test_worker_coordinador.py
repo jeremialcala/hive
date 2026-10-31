@@ -116,7 +116,7 @@ def test_un_mensaje_que_no_sigue_se_pide_con_su_texto_fijo_sin_preguntar_al_gate
 
     assert resultado is Resultado.CONFIRMADO and gateway.preguntas == []
     pedido = bifrost.publicado[0].sobre["pedido"]
-    assert pedido == {"respuesta": respuesta, "persona": None, "vueltas": []}
+    assert pedido == {"respuesta": respuesta, "persona": None, "vueltas": [], "reescribir": None}
 
 
 @pytest.mark.parametrize("entrega", [1, 2, 3])

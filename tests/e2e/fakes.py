@@ -42,6 +42,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 REPLY = "Hola Ana, sí: abrimos mañana a las 9."
 VERDICT = {"permitido": True, "motivo": "ninguno", "etiqueta": "pregunta", "confianza": 0.9, "entidades": []}
+# What the evaluator says of the answer (HIG-146): it complies.
+JUDGEMENT = {"cumple": True, "criterio": "ninguno", "regla": 0, "motivo": "Cumple."}
 MESSAGES = re.compile(r"^/v\d{2}\.0/(\d+)/messages$")
 TEMPLATES = re.compile(r"^/v\d{2}\.0/(\d+)/message_templates$")
 
@@ -126,11 +128,13 @@ class Fakes(Answering):
                 templates[body["name"]]["status"] = "APPROVED"
             return reply(200, {})
         if self.path == "/v1/chat/completions":
-            classifying = "response_format" in body
+            # The classifier and the evaluator ask for a JSON schema, each its own; the responder, for text.
+            schema = ((body.get("response_format") or {}).get("json_schema") or {}).get("schema") or {}
+            kind = ("evaluator" if "cumple" in schema.get("properties", {}) else
+                    "classifier" if schema else "responder")
             with lock:
-                seen["llm"].append({"kind": "classifier" if classifying else "responder",
-                                    "authorization": authorization})
-            content = json.dumps(VERDICT) if classifying else REPLY
+                seen["llm"].append({"kind": kind, "authorization": authorization})
+            content = {"classifier": json.dumps(VERDICT), "evaluator": json.dumps(JUDGEMENT), "responder": REPLY}[kind]
             return reply(200, {"choices": [{"message": {"role": "assistant", "content": content},
                                             "finish_reason": "stop"}],
                                "usage": {"prompt_tokens": 10, "completion_tokens": 10}})

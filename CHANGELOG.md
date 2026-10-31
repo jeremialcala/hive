@@ -7,6 +7,25 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-31
+
+### Añadido
+- **El evaluador del motor: ninguna respuesta del modelo sale sin juzgarse** (HIG-146; ADR-0012 y «Construido (E8)» de
+  la ADR-0008 del motor).
+  - **El modelo:** el mismo Gemma 4 26B, en una tercera ranura de `hive-llm`. Se eligió con 41 casos medidos (HIG-145):
+    acertó el 100 %, frente al 90 % de Gemma 4 E4B. La ranura ocupa 0,36 GiB de la GPU.
+  - **Lo que no cumple** se reescribe una vez, y si tampoco cumple sale el texto fijo de «no puedo». Si no se puede
+    juzgar, falla cerrado con el de «no disponible».
+  - **El notificador y el coordinador** leen lo aprobado (`motor.aprobada`), con los consumidores de bifrost#12.
+  - **El detalle** está en el CHANGELOG del motor.
+
+### Corregido
+- **Un contacto nuevo tiene contexto desde el primer mensaje** (HIG-144). El detalle está en el CHANGELOG del motor.
+
+### Cambiado
+- **ADR-0017, 0.2.1:** un contexto completo sirve aunque esté vacío, y lo que no se puede apuntar lo borra
+  (HIG-144).
+
 ## [0.10.0] - 2026-10-30
 
 ### Añadido
@@ -1422,7 +1441,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jeremialcala/hive/compare/v0.7.0...v0.8.0

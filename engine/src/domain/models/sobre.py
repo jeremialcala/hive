@@ -10,8 +10,11 @@
     sobre roto, no un valor por defecto.
 
         motor.clasificado.{partición}.{botId}.{contactId}    MensajeClasificado, del clasificador al coordinador
-        motor.pedido.{partición}.{botId}.{contactId}         MensajePedido, del coordinador al de respuesta
-        motor.respuesta.{partición}.{botId}.{contactId}      MensajeRespondido, del de respuesta al notificador
+        motor.pedido.{partición}.{botId}.{contactId}         MensajePedido, del coordinador al de respuesta, y del
+                                                             evaluador cuando pide que se reescriba
+        motor.respuesta.{partición}.{botId}.{contactId}      MensajeRespondido, del de respuesta al evaluador
+        motor.aprobada.{partición}.{botId}.{contactId}       MensajeAprobado, del evaluador al notificador y al
+                                                             coordinador (HIG-146)
 """
 from datetime import datetime
 from typing import Literal, Optional
@@ -62,6 +65,11 @@ def subject_pedido(particion: str, bot_id, contact_id) -> str:
 def subject_respuesta(particion: str, bot_id, contact_id) -> str:
     """Dónde publica el de respuesta, en el stream MOTOR."""
     return f"motor.respuesta.{particion}.{bot_id}.{contact_id}"
+
+
+def subject_aprobada(particion: str, bot_id, contact_id) -> str:
+    """Dónde publica el evaluador lo que se envía, en el stream MOTOR."""
+    return f"motor.aprobada.{particion}.{bot_id}.{contact_id}"
 
 
 class _Estricto(BaseModel):
@@ -148,14 +156,31 @@ class Vuelta(_Estricto):
     enviadaEn: datetime
 
 
+# Lo que el evaluador mira de una respuesta (ADR-0012): `ninguno` si la cumple.
+Criterio = Literal["ninguno", "regla", "inventa", "contacto", "idioma", "tono", "formato", "instrucciones", "papel"]
+
+
+class Reescritura(_Estricto):
+    """
+        Lo que el evaluador pide cambiar: la respuesta que no cumplía y por qué (HIG-146). Se reescribe una sola vez.
+        El criterio y la regla viajan para que el veredicto final diga qué falló la primera vez.
+    """
+    texto: str = Field(min_length=1, max_length=4096)
+    motivo: str = Field(min_length=1, max_length=300)
+    criterio: Criterio = "ninguno"
+    regla: int = Field(default=0, ge=0, le=50)
+
+
 class Pedido(_Estricto):
     """
         Lo que el coordinador pide al de respuesta. Con `modelo`, la persona del bot y las vueltas anteriores, la más
-        antigua primero; con un texto fijo, ninguna de las dos: no hacen falta.
+        antigua primero; con un texto fijo, ninguna de las dos: no hacen falta. Con `reescribir`, lo pide el
+        evaluador: la respuesta anterior no cumplía.
     """
     respuesta: Respuesta
     persona: Optional[Persona] = None
     vueltas: list[Vuelta] = Field(default_factory=list, max_length=MAX_VUELTAS)
+    reescribir: Optional[Reescritura] = None
 
 
 class MensajePedido(MensajeClasificado):
@@ -174,7 +199,35 @@ class Contestacion(_Estricto):
 
 class MensajeRespondido(MensajeClasificado):
     """
-        Lo que publica el de respuesta: lo clasificado y la contestación. Sin la persona del bot ni las vueltas del
-        pedido: el notificador no las necesita, y son datos personales que no tienen por qué seguir viajando.
+        Lo que publica el de respuesta: lo clasificado y la contestación. Con el modelo, también el pedido: el
+        evaluador juzga la respuesta con la persona y las vueltas que vio el de respuesta (HIG-146). Solo lo lee el
+        evaluador: lo que llega al notificador es el MensajeAprobado, sin ellas.
     """
     respuesta: Contestacion
+    pedido: Optional[Pedido] = None
+
+
+# Lo que dice el evaluador de una respuesta del modelo (ADR-0012): `fija` cuando no la juzga, porque es un texto fijo.
+Veredicto = Literal["aprobada", "reescrita", "cambiada", "fija", "no_evaluada"]
+
+
+class Evaluacion(_Estricto):
+    """
+        Qué decidió el evaluador, sin el texto (RS07):
+            aprobada     cumplía a la primera
+            reescrita    no cumplía, se reescribió y la nueva cumple
+            cambiada     tampoco la reescrita cumplía, y sale el texto fijo de «no puedo»
+            fija         un texto fijo, que no se juzga
+            no_evaluada  el evaluador no pudo juzgarla, y sale el texto fijo de «no disponible» (falla cerrado)
+        `criterio` y `regla` son los del último juicio que no se cumplió, si lo hubo.
+    """
+    veredicto: Veredicto
+    criterio: Criterio = "ninguno"
+    regla: int = Field(default=0, ge=0, le=50)
+    modelo: Optional[str] = None
+
+
+class MensajeAprobado(MensajeClasificado):
+    """Lo que publica el evaluador: lo que de verdad se envía, y qué decidió. Sin la persona ni las vueltas."""
+    respuesta: Contestacion
+    evaluacion: Evaluacion

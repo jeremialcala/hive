@@ -40,7 +40,8 @@ El LLM corre fuera de midgard, en el equipo de la RTX 3090 de la LAN ([ADR-0010]
 | Clasificador | `credenciales/classifier.env` | — | El LLM, con `keys/llm-api-key` |
 | Coordinador | `credenciales/coordinator.env` | Rol `motor-coordinator`: su clave para cada cliente | La API del gateway |
 | De respuesta | `credenciales/responder.env` | — | El LLM, con `keys/llm-api-key` |
-| Notificador | `credenciales/notifier.env`, el bucket `enviados` y los consumidores `notifier-leido` y `notifier-escribiendo` (ADR-0011) | Rol `motor-notifier`: su clave para cada cliente | La API del gateway y `graph.facebook.com` |
+| Evaluador | `credenciales/evaluator.env` y el consumidor `evaluator` (HIG-146) | — | El LLM, con `keys/llm-api-key`, en su ranura de `hive-llm` (ADR-0012) |
+| Notificador | `credenciales/notifier.env`, el consumidor `notifier-aprobada` (HIG-146), el bucket `enviados` y los consumidores `notifier-leido` y `notifier-escribiendo` (ADR-0011) | Rol `motor-notifier`: su clave para cada cliente | La API del gateway y `graph.facebook.com` |
 
 Cada cliente con bots necesita las claves del motor (`ops.engine_keys` del gateway). La instancia de medición ya las
 tiene para su cliente.

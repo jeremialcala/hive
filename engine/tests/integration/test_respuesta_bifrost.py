@@ -63,7 +63,7 @@ def motor(url):
 
 class Modelo:
 
-    async def redactar(self, _persona, _vueltas, _texto):
+    async def redactar(self, _persona, _vueltas, _texto, reescribir=None):
         return Redaccion(texto="Sí, tenemos zapatos rojos.", modelo="gemma-4-26b-a4b")
 
 
