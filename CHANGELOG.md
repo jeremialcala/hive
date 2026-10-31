@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-31
+
 ### Añadido
 - **El evaluador del motor: ninguna respuesta del modelo sale sin juzgarse** (HIG-146; ADR-0012 y «Construido (E8)» de
   la ADR-0008 del motor).
@@ -1439,7 +1441,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jeremialcala/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jeremialcala/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jeremialcala/hive/compare/v0.7.0...v0.8.0
