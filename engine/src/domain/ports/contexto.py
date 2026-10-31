@@ -31,9 +31,15 @@ class Apunte:
 
 @dataclass(frozen=True)
 class Conversacion:
-    """Lo que hay de una conversación, la vuelta más antigua primero, y la revisión con que se leyó (0: no había)."""
+    """
+        Lo que hay de una conversación, la vuelta más antigua primero, y la revisión con que se leyó (0: no había).
+
+        `completa` dice si tiene todo lo de la conversación, aunque no tenga nada: una sembrada de un historial vacío
+        lo está. No lo está una que no se pudo entender, ni una vacía del formato 1, sobre la que no se apuntaba.
+    """
     apuntes: list[Apunte] = field(default_factory=list)
     revision: int = 0
+    completa: bool = True
 
 
 class Contexto(ABC):

@@ -9,8 +9,12 @@
     - **Si no hay contexto, o no sirve,** las vueltas se piden al gateway, como hasta ahora, y con ellas se siembra
       un contexto que no había.
     - **Al publicar el pedido** se apunta lo que dijo la persona; **al responder**, lo que contestó el bot. Solo sobre
-      un contexto que ya existe: uno al que le faltara lo anterior engañaría al modelo. Si otro coordinador escribió
-      entre medias, se lee otra vez y se apunta encima.
+      un contexto completo, aunque esté vacío (el de un contacto nuevo, HIG-144): uno al que le faltara lo anterior
+      engañaría al modelo. Si otro coordinador escribió entre medias, se lee otra vez y se apunta encima.
+    - **Si no se puede apuntar**, el contexto ya no está completo: se borra, y el mensaje siguiente lo siembra otra vez
+      desde el gateway. Pasa si Bifröst o Andvari fallan, si otro coordinador escribe todo el rato, si la respuesta es
+      a un mensaje que el contexto no tiene o si un mensaje llega después de otros posteriores. Si tampoco se puede
+      borrar, caduca en 24 horas.
 
     Nada de esto para un mensaje: si Bifröst o Andvari fallan, se usa el gateway y el log lo dice. El historial del
     gateway es la fuente de verdad; el contexto, una copia de trabajo que se rehace.
@@ -72,14 +76,14 @@ class Memoria:
             conversacion = await self._leer(sobre)
         except ContextoNoDisponible as e:
             log.warning("Sin el contexto del bot %s, se pide al gateway: %s", sobre.botId, e)
-        if conversacion is not None and conversacion.apuntes:
+        if conversacion is not None and conversacion.completa:
             vueltas = antes_de(conversacion, sobre)
             if vueltas is not None:
                 return vueltas
         vueltas = await self._fuente.vueltas(sobre.clientId, sobre.botId, sobre.contact.uuid, sobre.messageId,
                                              sobre.receivedAt)
-        if conversacion is None or not conversacion.apuntes:
-            # No había contexto, o no se entendía: se siembra con lo que dice el historial.
+        if conversacion is None or not conversacion.completa:
+            # No había contexto, o no estaba completo: se siembra con lo que dice el historial, aunque no diga nada.
             await self._escribir(sobre, [Apunte(vuelta=vuelta, mensaje=DEL_HISTORIAL) for vuelta in vueltas],
                                  conversacion.revision if conversacion else 0, "sembrar")
         return vueltas
@@ -100,9 +104,9 @@ class Memoria:
             try:
                 conversacion = await self._leer(sobre)
             except ContextoNoDisponible as e:
-                log.warning("No se apuntó en el contexto del bot %s lo de la %s: %s", sobre.botId, quien, e)
+                await self._olvidar(sobre, f"no se apuntó lo de la {quien}: {e}")
                 return
-            if conversacion is None or not conversacion.apuntes:
+            if conversacion is None or not conversacion.completa:
                 # Sin lo anterior, mejor nada: el mensaje siguiente lo pedirá al gateway y sembrará.
                 return
             ya = [each for each in conversacion.apuntes if each.mensaje == apunte.mensaje]
@@ -110,7 +114,15 @@ class Memoria:
                 # Ya está: una reentrega.
                 return
             if apunte.vuelta.de == "bot" and not ya:
-                # Responde a un mensaje que el contexto no tiene: lo dirá el historial.
+                # Responde a un mensaje que el contexto no tiene: le falta algo.
+                await self._olvidar(sobre, "una respuesta a un mensaje que no tenía")
+                return
+            if apunte.vuelta.de == "persona" and any(each.vuelta.de == "persona"
+                                                      and each.vuelta.enviadaEn > apunte.vuelta.enviadaEn
+                                                      for each in conversacion.apuntes):
+                # Llegó después de otros posteriores de la persona: apuntado al final, el orden mentiría. Que una
+                # respuesta del bot sea posterior es normal: la persona escribe dos veces seguidas.
+                await self._olvidar(sobre, "un mensaje atendido con retraso")
                 return
             apuntes = recortar([*conversacion.apuntes, apunte])
             try:
@@ -120,10 +132,20 @@ class Memoria:
             except Choque:
                 continue
             except ContextoNoDisponible as e:
-                log.warning("No se apuntó en el contexto del bot %s lo de la %s: %s", sobre.botId, quien, e)
+                await self._olvidar(sobre, f"no se apuntó lo de la {quien}: {e}")
                 return
-        log.warning("No se apuntó en el contexto del bot %s lo de la %s: otro coordinador escribía a la vez",
-                    sobre.botId, quien)
+        await self._olvidar(sobre, f"no se apuntó lo de la {quien}: otro coordinador escribía a la vez")
+
+    async def _olvidar(self, sobre: MensajeClasificado, motivo: str) -> None:
+        """Borra un contexto al que le falta algo: el mensaje siguiente lo siembra otra vez."""
+        try:
+            await self._contexto.olvidar(sobre.clientId, sobre.botId, sobre.contact.uuid)
+        except ContextoNoDisponible as e:
+            log.warning("El contexto del bot %s ya no está completo (%s) y no se pudo borrar; caduca en 24 horas: %s",
+                        sobre.botId, motivo, e)
+            return
+        log.warning("El contexto del bot %s ya no estaba completo (%s): borrado, se sembrará otra vez",
+                    sobre.botId, motivo)
 
     async def _escribir(self, sobre: MensajeClasificado, apuntes: list[Apunte], revision: int, que: str) -> None:
         try:
