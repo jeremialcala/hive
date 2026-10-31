@@ -12,6 +12,17 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 
 ## [Unreleased]
 
+### Corregido
+- **Un contacto nuevo tiene contexto desde el primer mensaje** (HIG-144). En la 0.10.0, el contexto sembrado de un
+  historial vacío no recibía apuntes, así que el segundo mensaje volvía a preguntar al gateway.
+  - **El formato:** el valor pasa a `v: 2`. Uno vacío del formato 1 se siembra otra vez, porque le falta lo que
+    vino después.
+  - **Lo que no se puede apuntar borra el contexto,** y el mensaje siguiente lo siembra del historial. Cubre a
+    Bifröst o Andvari caídos, a otro coordinador que gana siempre, una respuesta a un mensaje que el contexto no
+    tiene y un mensaje de la persona que llega después de otro suyo posterior. Dos mensajes seguidos de la persona
+    no lo borran. Si tampoco se puede borrar, el log lo dice y caduca en 24 horas.
+  - **Pruebas:** 11 nuevas en `tests/unit/test_memoria.py`.
+
 ### Añadido
 - **El coordinador recuerda cada conversación** (HIG-19; ADR-0017 del gateway). Hasta ahora pedía las vueltas al
   gateway en cada mensaje.

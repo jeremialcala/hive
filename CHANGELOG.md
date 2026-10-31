@@ -7,6 +7,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Cambiado
+- **ADR-0017, 0.2.1:** un contexto completo sirve aunque esté vacío, y lo que no se puede apuntar lo borra
+  (HIG-144).
+
 ## [0.10.0] - 2026-10-30
 
 ### Añadido
