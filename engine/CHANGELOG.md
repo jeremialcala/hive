@@ -12,6 +12,16 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 
 ## [Unreleased]
 
+### Añadido
+- **El modelo del evaluador, elegido con datos** (HIG-145; [ADR-0012](docs/02-design/adr/ADR-0012-modelo-del-evaluador.md)).
+  El evaluador y el resumen usan el mismo Gemma 4 26B, en una tercera ranura de `hive-llm` (`--parallel 3`,
+  `--ctx-size 24576`).
+  - **Lo medido el 2026-10-31,** con 41 casos inventados:
+    - el 26B acierta el 100 %, sin falsos aprobados y con 1,14 s de p50;
+    - Gemma 4 E4B acierta el 90 %, con un falso aprobado;
+    - Gemma 4 E2B acierta el 84 %, con dos.
+  - **Los casos y el script** están en `evaluacion/`, para medir otra vez al cambiar de modelo o de prompt.
+
 ### Corregido
 - **Un contacto nuevo tiene contexto desde el primer mensaje** (HIG-144). En la 0.10.0, el contexto sembrado de un
   historial vacío no recibía apuntes, así que el segundo mensaje volvía a preguntar al gateway.

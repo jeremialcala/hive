@@ -24,6 +24,7 @@ en `docs/02-design/adr/`.
 | [ADR-0009](adr/ADR-0009-claude-como-llm.md) | Claude, por la API de Anthropic, como LLM del motor | superseded por ADR-0010, salvo sus reglas |
 | [ADR-0010](adr/ADR-0010-llm-propio-con-llama-cpp.md) | El LLM de Hive: Gemma 4 26B A4B con llama.cpp en una RTX 3090 de la LAN | accepted |
 | [ADR-0011](adr/ADR-0011-leido-y-escribiendo.md) | Leído y «escribiendo…» en WhatsApp, desde el notificador | accepted |
+| [ADR-0012](adr/ADR-0012-modelo-del-evaluador.md) | El evaluador y el resumen usan el mismo Gemma 4 26B, en una tercera ranura | accepted |
 
 ## El contrato
 
