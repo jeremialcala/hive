@@ -94,4 +94,6 @@ def test_a_renewal_of_a_session_still_there_is_written(url):
         read = await sessions.load(session_id)
         return await sessions.renewed(session_id, {**read, "token": "new"})
 
-    assert asyncio.run(run())["token"] == "new"
+    renewed = asyncio.run(run())
+
+    assert renewed["token"] == "new"

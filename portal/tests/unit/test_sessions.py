@@ -96,8 +96,8 @@ def test_the_revision_a_session_was_read_at_is_never_sealed(store, sessions):
     session_id = asyncio.run(run())
 
     (name, value), = store.values.items()
-    assert "_revision" not in str(sessions._sealer.open(name, value))  # pylint: disable=protected-access
-    assert session_id
+    sealed = sessions._sealer.open(name, value)  # pylint: disable=protected-access
+    assert "_revision" not in sealed and sealed["token"] == "new" and session_id
 
 
 def test_the_memory_store_swaps_only_at_the_revision_it_was_read_at(store):
@@ -111,5 +111,7 @@ def test_the_memory_store_swaps_only_at_the_revision_it_was_read_at(store):
         deleted = await store.swap("k", b"d", gone)
         return fresh, stale, deleted
 
-    assert asyncio.run(run()) == (True, False, False)
+    swapped = asyncio.run(run())
+
+    assert swapped == (True, False, False)
     assert "k" not in store.values
