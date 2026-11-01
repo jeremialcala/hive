@@ -67,6 +67,11 @@ class Responder:
 
     async def _contestacion(self, mensaje, sobre: MensajePedido) -> Contestacion | Resultado:
         pedido = sobre.pedido
+        if pedido.respuesta == "tema":
+            # La respuesta que el cliente escribió para ese tema (HIG-103); sin ella, la de «no puedo».
+            tema = sobre.clasificacion.tema
+            return Contestacion(texto=tema.respuesta if tema and tema.respuesta else TEXTOS_FIJOS["no_puedo"],
+                                fuente="fijo")
         if pedido.respuesta != "modelo":
             return Contestacion(texto=TEXTOS_FIJOS[pedido.respuesta], fuente="fijo")
         if pedido.persona is None or not sobre.entrada.texto:

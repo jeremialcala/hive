@@ -1,10 +1,10 @@
 # Clasificación de datos
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18)
-* **Fecha:** 2026-10-28
+* **Fecha:** 2026-11-01
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project
-* **Versión:** 0.4.0
+* **Versión:** 0.5.0
 * **Owner de datos (DPO):** `<TODO: designar o confirmar que no aplica>`
 * **Regulación aplicable:** GDPR (Reglamento (UE) 2016/679), adoptado como modelo de diseño
 
@@ -31,6 +31,8 @@ Niveles: Público < Interno < Confidencial < Restringido.
 | Identificador de Messenger del contacto (`fbId`, PSID) | **Confidencial** (personal) | MongoDB; mensaje de la cola | En claro | Acceso solo del cliente dueño (RS01) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
 | Identificador de Instagram del contacto (IGSID) | **Confidencial** (personal) | Objetivo: MongoDB y el bus, como el PSID (RF13) | No existe todavía | Acceso solo del cliente dueño (RS01) | 12 meses sin actividad como máximo; antes si el cliente lo fija o borra el contacto |
 | Contenido de los mensajes | **Restringido** (personal; puede incluir categorías especiales del art. 9) | Hoy: el bus de eventos (stream `WEBHOOK`) y la cola `llm` hasta que se consumen; después, el motor de respuestas y su LLM. Desde I4a el gateway tiene el historial en MongoDB (colección `messages`), que escribe el worker de ingesta desde I4b. Objetivo (ADR-0017): además, el contexto del coordinador en un bucket de NATS | En claro en la cola. Fuera de los logs | Fuera de los logs y de las trazas (RS07, RS19); protegido en la cola y el bus (RS08); cifrado con la clave del cliente en el historial y en el contexto; de un adjunto, solo su tipo | 24 horas en la cola o el bus, salvo lo que llega de Meta sin procesar, 7 días como mucho; 12 meses por mensaje en el historial; 24 horas desde el último mensaje en el contexto |
+| Temas propios de un bot (RF27) | **Interno**: configuración del cliente, como sus reglas | El gateway, colección `guardrails`, y cada `MensajeIdentificado` de Bifröst (HIG-103) | Sus textos tienen los límites de una regla (RS11) | Los mismos | Se borran con el bot y el cliente; viven en las versiones del bot mientras exista |
+| Guardrail con el que chocó un mensaje (RF27) | **Interno**: la base con su motivo, o el id del tema y la acción; nunca el texto | El gateway, dentro de la `evaluation` de cada respuesta del historial (HIG-103) | Sin texto (RS07) | La misma | Caduca con el mensaje, a los 12 meses como mucho |
 | Calificaciones de las respuestas (RF28) | **Restringido** el comentario (puede repetir lo que dijo el contacto); interno el resto: la nota 👍/👎, quién calificó y cuándo | El gateway, colección `ratings` (HIG-111). La lee la PWA del cliente | El comentario, cifrado con la clave del cliente. Ni la nota ni el comentario van a los logs: el log solo dice quién calificó una respuesta de qué contacto | Se borra con el contacto, el bot y el cliente; caduca con la respuesta que califica, a los 12 meses como mucho |
 | Tokens de Meta del cliente (`facebookToken`, `whatsappToken`) y `appSecret` | **Restringido** (credencial) | MongoDB; el motor de respuestas necesita los tokens para enviar | Cifrados con la clave de datos del cliente; se cargan por la API y no se devuelven a quien los cargó. Los tokens solo se entregan al motor, con una clave por cliente y dejando rastro; el `appSecret` no se entrega a nadie | Cifrados en reposo, fuera de la API de gestión y accesibles solo para el motor con credencial de servicio (RS06) | Hasta la baja del bot |
 | Token de verificación del bot (`verifyToken`) | **Confidencial** (credencial) | MongoDB | Cifrado con la clave de datos del cliente; comparado en tiempo constante; solo lo lee su cliente | Igual que los tokens (RS06) | Hasta la baja del bot |

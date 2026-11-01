@@ -7,6 +7,32 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Guardrails por bot sobre la base de la plataforma** (HIG-103, RF27, RS26). Las decisiones son de Jeremi del
+  2026-11-01. La pantalla de la PWA es HIG-151.
+  - **La base de la plataforma**, que nadie desactiva: inyección de instrucciones, intentos de sacar datos de otros
+    contactos, del negocio o de la plataforma (nuevo motivo `datos` del clasificador), abuso, y falla cerrado. Ninguna
+    ruta la toca: es el `system` del clasificador.
+  - **Temas propios del bot**, hasta 20, con `GET`/`POST /chat/{bot_id}/guardrails` y `PUT`/`DELETE
+    /chat/{bot_id}/guardrails/{guardrail_id}`. Cada tema tiene nombre, descripción y una acción: `block`, que responde
+    con su texto fijo y no sigue, o `log`, que responde como siempre y lo registra. El texto tiene los límites de una
+    regla (RS11). Solo el `cliente-admin` y la credencial de máquina los cambian; el `cliente-analista` los ve.
+  - **Versionado:** cada cambio es una versión del bot (RF26) y se avisa al motor. Volver a una versión trae sus temas,
+    y una de antes de los guardrails vuelve sin ellos. Se borran con el bot y el cliente.
+  - **Cómo llegan al motor:** la ingesta los pone en el `MensajeIdentificado` (`guardrails`, campo opcional del
+    contrato v2), tal como estaban al llegar el mensaje. El clasificador no tiene credencial del gateway y así no la
+    necesita. `GET /chat/{bot_id}/rules` también los da.
+  - **El clasificador** los comprueba en la misma llamada: van al final del `system`, detrás de la base, con una
+    etiqueta corta (`t1`, `t2`…) que es lo único que el modelo devuelve de ellos. Lo que para la base no se registra en
+    ningún tema. Probado contra el 26B con diez casos: diez bien, con la misma latencia que sin temas (≈1,2 s).
+  - **El registro:** cada respuesta lleva en su `evaluation` el guardrail con el que chocó el mensaje (`guardrail`:
+    la base con su motivo, o el tema con su id y su acción), sin texto. `GET /chat/{bot_id}/compliance` los cuenta
+    (`guardrails`), y una respuesta con guardrail sale como marcada en `compliance/answers`.
+  - **La matriz rol × acción** (1.12.0), la clasificación de datos (0.5.0) y los contratos (AsyncAPI v2 y
+    `asyncapi-motor.yaml` 2.4.0) están al día.
+  - **Pruebas:** `tests/unit/test_guardrails.py` y las del contrato, la ingesta y el cumplimiento, en el gateway; en el
+    motor, las del clasificador, el de respuesta y el notificador.
+
 ## [0.13.1] - 2026-11-01
 
 ### Seguridad

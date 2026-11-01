@@ -52,7 +52,7 @@ def resolver(puntero):
 
 
 def test_es_la_version_2_del_sobre():
-    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.3.0")
+    assert (DOCUMENTO["asyncapi"], DOCUMENTO["info"]["version"]) == ("3.0.0", "2.4.0")
     assert SCHEMAS["Sobre"]["properties"]["schemaVersion"]["const"] == ESQUEMA
 
 
@@ -97,7 +97,7 @@ class Modelo:
     def __init__(self, respuesta):
         self._respuesta = respuesta
 
-    async def clasificar(self, _texto):
+    async def clasificar(self, _texto, _temas=()):
         if isinstance(self._respuesta, Exception):
             raise self._respuesta
         return self._respuesta

@@ -26,7 +26,8 @@ from auth.idp import IdentityProvider, IdpUnavailable
 from shared.auth.tokens import InvalidToken
 from classes import (BotCredentialsRequest, BotResponse, ChatbotPhoneRequest, ChatbotRequest, ClientRequest,
                      ConsentRequest, ContactSearchRequest, IntentRequest, OutboundMessageRequest, OwnedKeyRequest,
-                     PersonaRequest, PersonChangeRequest, PersonInviteRequest, RatingRequest, ResponseData,
+                     GuardrailRequest, PersonaRequest, PersonChangeRequest, PersonInviteRequest, RatingRequest,
+                     ResponseData,
                      RuleRequest,
                      RulesRequest, ServiceKeyRequest,
                      SigningKeyRequest, TemplateCreateRequest, TemplateEditRequest)
@@ -43,7 +44,8 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_remove_service_key, ctr_remove_signing_key, ctr_search_contacts, ctr_send_message,
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
-                        ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance, ctr_answers)
+                        ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance, ctr_answers,
+                        ctr_list_guardrails, ctr_add_guardrail, ctr_change_guardrail, ctr_delete_guardrail)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -136,6 +138,8 @@ ANALYST_ROUTES = {
     # Rating the answers of the bots and seeing the compliance of each (RF28, HIG-111).
     ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings"), ("GET", "/chat/{bot_id}/compliance"),
     ("GET", "/chat/{bot_id}/compliance/answers"),
+    # The guardrails of a chatbot: the base of the platform and its own topics (RF27, HIG-103), seen, never changed.
+    ("GET", "/chat/{bot_id}/guardrails"),
 }
 
 # Everything the engine reaches with some key. The keys registered before keys had a worker (ADR-0016) reach all
@@ -761,6 +765,50 @@ async def delete_chatbot_rule(bot_id: str, rule_id: str, repo: TenantRepository 
         one before brings the rule back.
     """
     response = await run_in_threadpool(ctr_delete_rule, repo, bot_id, rule_id, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+@app.get(path="/chat/{bot_id}/guardrails", tags=["Bot"], response_model=ResponseData)
+def get_guardrails(bot_id: str, repo: TenantRepository = Depends(get_repository)):
+    """
+        The guardrails of the chatbot (RF27): the base of the platform, always on, and the topics of its own, each with
+        what happens to a message on it: `block` (answered with its `reply`, it goes no further) or `log` (answered as
+        any other, and recorded with the answer).
+    """
+    return ctr_list_guardrails(repo, bot_id)
+
+
+@app.post(path="/chat/{bot_id}/guardrails", tags=["Bot"], response_model=ResponseData)
+async def add_guardrail(bot_id: str, guardrail: GuardrailRequest, repo: TenantRepository = Depends(get_repository),
+                        principal: Principal = Depends(get_principal)):
+    """
+        Adds a topic of its own to the chatbot (RF27), above the base of the platform: 20 at most. A topic that blocks
+        says what to reply. Each change is a version (RF26), and the engine's classifier reads it at once.
+    """
+    response = await run_in_threadpool(ctr_add_guardrail, repo, bot_id, guardrail, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+@app.put(path="/chat/{bot_id}/guardrails/{guardrail_id}", tags=["Bot"], response_model=ResponseData)
+async def change_guardrail(bot_id: str, guardrail_id: str, guardrail: GuardrailRequest,
+                           repo: TenantRepository = Depends(get_repository),
+                           principal: Principal = Depends(get_principal)):
+    """Changes a topic of the chatbot (RF27), with the same limits. It is a version (RF26). 409 if it already says it."""
+    response = await run_in_threadpool(ctr_change_guardrail, repo, bot_id, guardrail_id, guardrail, principal.actor)
+    await _configured(repo, bot_id, response)
+    return response
+
+
+@app.delete(path="/chat/{bot_id}/guardrails/{guardrail_id}", tags=["Bot"], response_model=ResponseData)
+async def delete_guardrail(bot_id: str, guardrail_id: str, repo: TenantRepository = Depends(get_repository),
+                           principal: Principal = Depends(get_principal)):
+    """
+        Deletes a topic of the chatbot (RF27). The base of the platform has no route: it is never deleted. It is a
+        version (RF26): going back to the one before brings the topic back.
+    """
+    response = await run_in_threadpool(ctr_delete_guardrail, repo, bot_id, guardrail_id, principal.actor)
     await _configured(repo, bot_id, response)
     return response
 

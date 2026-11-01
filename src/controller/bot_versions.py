@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-    The versions of a chatbot's configuration (RF26, ADR-0035): its persona, rules and intents. Every change writes one,
-    with who made it and when, and they are kept for as long as the chatbot is. The cliente-admin goes back to one,
-    which writes a new version: nothing is rewritten. The cliente-analista sees them and what changed, and does not go
+    The versions of a chatbot's configuration (RF26, ADR-0035): its persona, rules, intents and guardrails (HIG-103).
+    Every change writes one, with who made it and when, and they are kept for as long as the chatbot is. The
+    cliente-admin goes back to one, which writes a new version: nothing is rewritten. The cliente-analista sees them and what changed, and does not go
     back (ANALYST_ROUTES). The Meta credentials and the verifyToken are not in them.
 
     Going back checks the intents of the version again with the rules they are saved with today (RS16, AB29): a
@@ -23,8 +23,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from classes import BotVersion, IntentRequest, PersonaRequest, RuleRequest, Settings
+from classes import BotVersion, GuardrailRequest, IntentRequest, PersonaRequest, RuleRequest, Settings
 from classes.bot_text import RULES_PER_BOT
+from classes.dto_guardrail import GUARDRAILS_PER_BOT
 from classes.tool_clock import as_utc
 from repository import NotFound, TenantRepository, database_failed
 from shared import bus
@@ -126,6 +127,9 @@ def _what(refused: dict) -> str:
         parts.append(f"rules {', '.join(refused['rules'])}" if refused["rules"] else "how many rules there are")
     if "intents" in refused:
         parts.append(f"intents {', '.join(refused['intents'])}")
+    if "guardrails" in refused:
+        parts.append(f"guardrails {', '.join(refused['guardrails'])}" if refused["guardrails"]
+                     else "how many guardrails there are")
     return ", ".join(parts) + (" are" if len(parts) > 1 or "intents" in refused else " is")
 
 
@@ -148,7 +152,8 @@ def _by_uuid(items: list) -> dict:
 
 def differences(before: dict | None, after: dict) -> dict:
     """What changed from the configuration `before` to `after`: from nothing, for the first version."""
-    before = before or {"persona": {}, "rules": [], "intents": []}
+    before = complete(before or {"persona": {}, "rules": [], "intents": []})
+    after = complete(after)
     persona = {field: {"from": before["persona"].get(field), "to": value}
                for field, value in after["persona"].items() if before["persona"].get(field) != value}
     old_rules, new_rules = _by_uuid(before["rules"]), _by_uuid(after["rules"])
@@ -165,7 +170,21 @@ def differences(before: dict | None, after: dict) -> dict:
                             "fields": sorted(field for field in intent if intent[field] != old_intents[key].get(field))}
                            for key, intent in new_intents.items()
                            if key in old_intents and old_intents[key] != intent]}
-    return {"persona": persona, "rules": rules, "intents": intents}
+    old_guardrails, new_guardrails = _by_uuid(before["guardrails"]), _by_uuid(after["guardrails"])
+    guardrails = {"added": [{"uuid": key, "topic": each["topic"]} for key, each in new_guardrails.items()
+                            if key not in old_guardrails],
+                  "removed": [{"uuid": key, "topic": each["topic"]} for key, each in old_guardrails.items()
+                              if key not in new_guardrails],
+                  "changed": [{"uuid": key, "topic": each["topic"],
+                               "fields": sorted(field for field in each if each[field] != old_guardrails[key].get(field))}
+                              for key, each in new_guardrails.items()
+                              if key in old_guardrails and old_guardrails[key] != each]}
+    return {"persona": persona, "rules": rules, "intents": intents, "guardrails": guardrails}
+
+
+def complete(config: dict) -> dict:
+    """A configuration with every part: a version from before guardrails (HIG-103) had none."""
+    return {"guardrails": [], **config}
 
 
 def ctr_list_versions(repo: TenantRepository, bot_id: str, offset: int, limit: int) -> JSONResponse:
@@ -233,6 +252,11 @@ def _not_allowed(config: dict) -> dict:
     intents = [intent["uuid"] for intent in config["intents"] if not _allowed(IntentRequest, _as_request(intent))]
     if intents:
         refused["intents"] = intents
+    guardrails = [each["uuid"] for each in config.get("guardrails", [])
+                  if not _allowed(GuardrailRequest, _without_empty({key: value for key, value in each.items()
+                                                                    if key != "uuid"}))]
+    if guardrails or len(config.get("guardrails", [])) > GUARDRAILS_PER_BOT:
+        refused["guardrails"] = guardrails
     return refused
 
 
@@ -249,7 +273,7 @@ def ctr_restore_version(repo: TenantRepository, bot_id: str, number: str, author
         version = repo.get_version(bot_id, _number(number))
     except NotFound:
         return answer(status.HTTP_404_NOT_FOUND, VERSION_NOT_FOUND)
-    if repo.bot_config(bot_id) == version.config:
+    if repo.bot_config(bot_id) == complete(version.config):
         return answer(status.HTTP_409_CONFLICT, ALREADY_CURRENT)
     refused = _not_allowed(version.config)
     if refused:
@@ -258,7 +282,8 @@ def ctr_restore_version(repo: TenantRepository, bot_id: str, number: str, author
                     f"{_what(refused)} not allowed any more")
         names = [intent["name"] for intent in version.config["intents"] if intent["uuid"] in refused.get("intents", [])]
         return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, NOT_ALLOWED, data={
-            "persona": bool(refused.get("persona")), "rules": refused.get("rules", []), "intents": names})
+            "persona": bool(refused.get("persona")), "rules": refused.get("rules", []), "intents": names,
+            "guardrails": refused.get("guardrails", [])})
     try:
         with versioned(repo, bot_id, author, RESTORED, restored_from=version.version) as made:
             repo.apply_config(bot_id, version.config)

@@ -387,6 +387,40 @@ components:
       - text
       title: Footer
       type: object
+    GuardrailRequest:
+      additionalProperties: false
+      description: 'One topic: what it covers, and what happens to a message on it. A topic that blocks says what
+        to reply.'
+      properties:
+        action:
+          enum:
+          - block
+          - log
+          title: Action
+          type: string
+        description:
+          maxLength: 500
+          minLength: 1
+          title: Description
+          type: string
+        reply:
+          anyOf:
+          - maxLength: 500
+            minLength: 1
+            type: string
+          - type: 'null'
+          title: Reply
+        topic:
+          maxLength: 100
+          minLength: 1
+          title: Topic
+          type: string
+      required:
+      - topic
+      - description
+      - action
+      title: GuardrailRequest
+      type: object
     HTTPValidationError:
       properties:
         detail:
@@ -941,7 +975,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.13.1
+  version: 0.13.1+develop
 openapi: 3.1.0
 paths:
   /bot:
@@ -1582,6 +1616,157 @@ paths:
       summary: Set Chatbot Credentials
       tags:
       - Chat
+  /chat/{bot_id}/guardrails:
+    get:
+      description: 'The guardrails of the chatbot (RF27): the base of the platform, always on, and the topics of
+        its own, each with
+
+        what happens to a message on it: `block` (answered with its `reply`, it goes no further) or `log` (answered
+        as
+
+        any other, and recorded with the answer).'
+      operationId: get_guardrails_chat__bot_id__guardrails_get
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Guardrails
+      tags:
+      - Bot
+    post:
+      description: 'Adds a topic of its own to the chatbot (RF27), above the base of the platform: 20 at most. A
+        topic that blocks
+
+        says what to reply. Each change is a version (RF26), and the engine''s classifier reads it at once.'
+      operationId: add_guardrail_chat__bot_id__guardrails_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuardrailRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Add Guardrail
+      tags:
+      - Bot
+  /chat/{bot_id}/guardrails/{guardrail_id}:
+    delete:
+      description: 'Deletes a topic of the chatbot (RF27). The base of the platform has no route: it is never deleted.
+        It is a
+
+        version (RF26): going back to the one before brings the topic back.'
+      operationId: delete_guardrail_chat__bot_id__guardrails__guardrail_id__delete
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: guardrail_id
+        required: true
+        schema:
+          title: Guardrail Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Delete Guardrail
+      tags:
+      - Bot
+    put:
+      description: Changes a topic of the chatbot (RF27), with the same limits. It is a version (RF26). 409 if it
+        already says it.
+      operationId: change_guardrail_chat__bot_id__guardrails__guardrail_id__put
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      - in: path
+        name: guardrail_id
+        required: true
+        schema:
+          title: Guardrail Id
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuardrailRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Change Guardrail
+      tags:
+      - Bot
   /chat/{bot_id}/info:
     get:
       description: The card of a chatbot, with its verifyToken; a cliente-analista gets it without it (D6).

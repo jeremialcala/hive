@@ -226,3 +226,16 @@ def test_sin_la_clave_del_llm_no_arranca(tmp_path):
 def test_la_configuracion_no_deja_pasar_limites_que_romperian_el_ack_wait_o_la_respuesta(tmp_path, cambio):
     with pytest.raises(ValueError):
         ajustes(tmp_path / "llm-api-key", **cambio)
+
+
+
+def test_un_tema_que_bloquea_se_contesta_con_su_respuesta_sin_llamar_a_modelo():
+    """HIG-103: la respuesta que el cliente escribió para el tema."""
+    bloqueado = Clasificacion(permitido=False, motivo="tema", modelo="gemma-4-26b-a4b",
+                              tema={"id": "c0ffee00-0000-4000-8000-000000000001", "accion": "bloquear", "respuesta": "De eso no hablo."})
+
+    resultado, modelo, bifrost = atender(Mensaje(pedido("tema", persona=None, vueltas=[],
+                                                        clasificacion=bloqueado.model_dump(mode="json"))))
+
+    assert resultado is Resultado.CONFIRMADO and modelo.pedidos == []
+    assert bifrost.publicado[0].sobre["respuesta"] == {"texto": "De eso no hablo.", "fuente": "fijo", "modelo": None}

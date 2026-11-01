@@ -22,7 +22,7 @@ from shared import bus
 import controller.facebook as facebook
 import controller.ingestion as ingestion
 import ingest
-from classes import ChatBot, Contact, ConversationMessage
+from classes import ChatBot, Contact, ConversationMessage, Guardrail
 from controller.incoming import IncomingMessage
 from controller.webhook_event import webhook_event
 from repository import NotFound, TenantRepository
@@ -131,6 +131,29 @@ def test_a_message_is_identified_stored_and_published_for_the_engine(bot, bifros
     assert identified.subject == identified_subject(where, bot.uuid, contact._uuid)
     assert [envelope["messageId"] for envelope in queue] == ["wamid.A"]
     assert ConversationMessage.objects.get().contactId == contact._uuid
+
+
+def test_the_identified_message_carries_the_topics_of_the_chatbot_for_its_classifier(bot, repo, bifrost, queue):
+    """HIG-103: the classifier has no other way to the chatbot's configuration."""
+    blocks = repo.add_guardrail(bot.uuid, Guardrail(topic="Competidores", description="Otras tiendas.", action="block",
+                                                    reply="De eso no hablo."))
+    logs = repo.add_guardrail(bot.uuid, Guardrail(topic="Legales", description="Abogados.", action="log"))
+
+    ingest_now(event_of(bot, whatsapp_message("wamid.A"), whatsapp_message("wamid.B")))
+
+    for identified in bifrost.events:
+        assert identified.payload["guardrails"] == [
+            {"uuid": str(blocks.uuid), "topic": "Competidores", "description": "Otras tiendas.", "action": "block",
+             "reply": "De eso no hablo."},
+            {"uuid": str(logs.uuid), "topic": "Legales", "description": "Abogados.", "action": "log"}]
+        assert [error.message for error in IDENTIFIED.iter_errors(identified.payload)] == []
+        assert len(IdentifiedMessage.model_validate(identified.payload).guardrails) == 2
+
+
+def test_a_chatbot_without_topics_sends_none(bot, bifrost, queue):
+    ingest_now(event_of(bot, whatsapp_message("wamid.A")))
+
+    assert bifrost.events[0].payload["guardrails"] == []
 
 
 def test_the_trace_of_the_event_goes_on_with_the_message(bot, bifrost, queue):
