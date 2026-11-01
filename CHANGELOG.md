@@ -7,6 +7,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Cerrar sesión mientras se renueva el token ya no deja viva la cookie** (HIG-153). Lo reportó un proveedor.
+  - **El fallo:** una petición de la PWA que renovaba su token guardaba la sesión con un `put` incondicional. Si la
+    persona cerraba sesión mientras tanto, ese `put` volvía a crear la sesión que el logout había borrado, y la cookie
+    anterior servía otra vez.
+  - **El arreglo:** el portal vuelve a escribir una sesión solo si sigue en la revisión que leyó. Es un
+    compare-and-swap con `update(..., last=revision)` sobre el bucket `sesiones` de Bifröst, que cuenta el borrado
+    como una revisión propia. Vale para la renovación y para la escritura del último uso. Si dos peticiones renuevan
+    a la vez, se queda la primera y la sesión sigue.
+  - **Pruebas:** en memoria, a través del portal y contra NATS (`portal/tests`). La de regresión falla con el código
+    anterior.
+
 ## [0.16.0] - 2026-11-01
 
 ### Añadido
