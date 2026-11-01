@@ -68,3 +68,30 @@ def test_what_the_bucket_holds_is_sealed(url):
     values = asyncio.run(run())
 
     assert len(values) == 1 and b"the-id-token" not in values[0] and b"the-hive-token" not in values[0]
+
+
+def test_a_renewal_that_finishes_after_the_logout_does_not_bring_the_session_back(url):
+    """HIG-153, in the bucket: a deletion is a revision of its own, and the renewal's write is refused."""
+    async def run():
+        await _bucket(url)
+        sessions = Sessions(KvStore(url, "portal", "test", None, "_INBOX_portal"), Sealer(os.urandom(32)))
+        session_id = await sessions.create({"id_token": "the-id-token", "token": "old"})
+        read = await sessions.load(session_id)
+        await sessions.end(session_id)
+        renewed = await sessions.renewed(session_id, {**read, "token": "new"})
+        return renewed, await sessions.load(session_id)
+
+    renewed, after = asyncio.run(run())
+
+    assert renewed is None and after is None
+
+
+def test_a_renewal_of_a_session_still_there_is_written(url):
+    async def run():
+        await _bucket(url)
+        sessions = Sessions(KvStore(url, "portal", "test", None, "_INBOX_portal"), Sealer(os.urandom(32)))
+        session_id = await sessions.create({"id_token": "the-id-token", "token": "old"})
+        read = await sessions.load(session_id)
+        return await sessions.renewed(session_id, {**read, "token": "new"})
+
+    assert asyncio.run(run())["token"] == "new"

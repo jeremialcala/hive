@@ -128,8 +128,8 @@ def build(settings: Settings, sessions: Sessions, zitadel: Zitadel, idp: Identit
             await sessions.end(session_id)
             return None
         session.update(token=token, expires=expires)
-        await sessions.save(session_id, session)
-        return session
+        # Only if it is still the session that was read: a logout meanwhile keeps it ended (HIG-153).
+        return await sessions.renewed(session_id, session)
 
     def signed_out(code: int = 401) -> JSONResponse:
         response = JSONResponse(status_code=code, headers=NO_STORE,
