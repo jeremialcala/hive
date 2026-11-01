@@ -25,7 +25,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   - **Dónde vive:** en la colección `audit`, que caduca a los 12 meses y se borra con el cliente. Al borrar un
     contacto o un bot, sus ids se quedan en la auditoría hasta caducar, sin nada que los enlace ya con una persona.
   - **`GET /audit`:** la auditoría del cliente, de la más nueva a la más vieja, por páginas (hasta 200). Filtra por
-    `since`, `until`, `category`, `actor`, `action`, `resource` y `result`, y con `format=csv` da todo lo que coincide.
+    `since`, `until`, `category`, `actor`, `action`, `resource` y `result`. Con `format=csv` da lo que coincide, como
+    mucho las 50.000 entradas más nuevas; `X-Audit-Truncated` avisa si había más. Sin ese tope, un año de lecturas del
+    motor no cabría en la memoria del gateway.
     Es para el `cliente-admin` y la credencial de máquina del cliente; el `cliente-analista` y el motor reciben `403`.
   - **La matriz rol × acción** (1.13.0), la clasificación de datos (0.6.0) y el PRD (0.19.0) están al día.
   - **Pruebas:** `tests/unit/test_audit.py`, 18.

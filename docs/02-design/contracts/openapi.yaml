@@ -988,7 +988,9 @@ paths:
         `category` (config, people, keys, sends, data, engine), `actor`, `action`, `resource` (an id) and `result`
         (ok,
 
-        denied, failed). `format=csv` gives all that matches, as CSV. For the cliente-admin; not the cliente-analista.'
+        denied, failed). `format=csv` gives what matches as CSV, the newest 50,000 at most (X-Audit-Truncated says
+
+        when there were more). For the cliente-admin; not the cliente-analista.'
       operationId: get_audit_audit_get
       parameters:
       - in: query
