@@ -40,6 +40,9 @@ function score(ratings) {
 
 function Metrics({ metrics }) {
   const { answers, verdicts, ratings } = metrics;
+  // What the guardrails stopped (HIG-103): the base of the platform by why, and the topics of the chatbot's own.
+  const guardrails = metrics.guardrails || { blocked: 0, logged: 0, platform: {} };
+  const base = Object.values(guardrails.platform || {}).reduce((sum, n) => sum + n, 0);
   const approved = answers ? Math.round((verdicts.approved / answers) * 100) : 0;
   return html`
     <div class="pwa-metrics">
@@ -47,8 +50,8 @@ function Metrics({ metrics }) {
         hint=${`${verdicts.approved} de ${answers} respuestas evaluadas`} />
       <${MetricCard} label="Corregidas" value=${verdicts.rewritten + verdicts.replaced}
         hint=${`${verdicts.rewritten} reescritas · ${verdicts.replaced} sustituidas`} />
-      <${MetricCard} label="Textos fijos" value=${metrics.fixedTexts}
-        hint="Incluye lo que el clasificador bloqueó antes de responder" />
+      <${MetricCard} label="Bloqueados" value=${guardrails.blocked}
+        hint=${`${base} por la base · ${guardrails.blocked - base} por temas propios · ${guardrails.logged} registrados`} />
       <${MetricCard} label="Calificadas" value=${ratings.answers} unit=${`${ratings.up} ↑ · ${ratings.down} ↓`}
         hint="Respuestas que una persona del cliente calificó" />
     </div>`;

@@ -1,7 +1,7 @@
 // The card of a chatbot (HIG-121, the screens 05 to 08 of the canvas): its header with its state and version, and its
 // tabs: Identidad (the persona, RF23), Credenciales de Meta (masked, only to load or replace), Cerebro e intents (its
-// rules and intents, RF24), Versiones (RF26), Cumplimiento (RF28, HIG-149) and, as before, its Plantillas and
-// Contactos.
+// rules and intents, RF24), Guardrails (RF27, HIG-151), Versiones (RF26), Cumplimiento (RF28, HIG-149) and, as
+// before, its Plantillas and Contactos.
 //
 // Every change goes to hive-api, which makes it a version and tells the engine. A cliente-analista sees all of it and
 // changes nothing: the forms are read only and no button that would answer 403 is shown. hive-api decides.
@@ -9,6 +9,7 @@ import { api, curl, explain } from "./api.js";
 import { Templates } from "./templates.js";
 import { Contacts, Contact } from "./contacts.js";
 import { Compliance } from "./compliance.js";
+import { Guardrails } from "./guardrails.js";
 import { PageCall, go } from "./shell.js";
 
 const { useState, useEffect, useMemo } = window.React;
@@ -20,6 +21,7 @@ export const TABS = [
   { value: "identidad", label: "Identidad" },
   { value: "credenciales", label: "Credenciales de Meta" },
   { value: "cerebro", label: "Cerebro e intents" },
+  { value: "guardrails", label: "Guardrails" },
   { value: "versiones", label: "Versiones" },
   { value: "cumplimiento", label: "Cumplimiento" },
   { value: "plantillas", label: "Plantillas" },
@@ -618,6 +620,7 @@ export function BotCardPage({ where, admin, person, client }) {
       ${where.tab === "identidad" && config && html`<${Identity} botId=${where.bot} admin=${admin} config=${config} onSaved=${load} />`}
       ${where.tab === "credenciales" && html`<${Credentials} botId=${where.bot} admin=${admin} bot=${bot} onSaved=${load} />`}
       ${where.tab === "cerebro" && config && html`<${Brain} botId=${where.bot} admin=${admin} config=${config} intents=${intents} onSaved=${load} />`}
+      ${where.tab === "guardrails" && html`<${Guardrails} botId=${where.bot} admin=${admin} version=${version} onSaved=${load} />`}
       ${where.tab === "versiones" && html`<${Versions} botId=${where.bot} admin=${admin} current=${version} onRestored=${load} />`}
       ${where.tab === "cumplimiento" && html`<${Compliance} botId=${where.bot} person=${person} />`}
       ${where.tab === "plantillas" && html`<${Templates} botId=${where.bot} admin=${admin} />`}
