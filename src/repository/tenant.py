@@ -344,6 +344,13 @@ class TenantRepository:
     def list_guardrails(self, bot_id) -> list:
         return list(self._own(Guardrail, botId=self.get_bot(bot_id).uuid).order_by("createdAt"))
 
+    def guardrails_of(self, bot_uuid: UUID) -> list:
+        """
+            The topics of a chatbot already found to be the client's, as the ingestion has it: one trip to the
+            database, without looking the chatbot up again.
+        """
+        return list(self._own(Guardrail, botId=bot_uuid).order_by("createdAt"))
+
     def count_guardrails(self, bot_id) -> int:
         return self._own(Guardrail, botId=self.get_bot(bot_id).uuid).count()
 

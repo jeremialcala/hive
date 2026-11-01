@@ -274,7 +274,7 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
 
 def _guardrails(repo: TenantRepository, bot: ChatBot) -> list[dict]:
     return [{key: value for key, value in guardrail.info().items() if value is not None}
-            for guardrail in repo.list_guardrails(bot.uuid)]
+            for guardrail in repo.guardrails_of(bot.uuid)]
 
 
 async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, item: dict, received_at,
