@@ -7,6 +7,11 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **El estado de un envío ya no da el id de Meta** (HIG-150). `GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}`
+  respondía con `messageId`, el `wamid` de WhatsApp, que lleva el número del contacto en base64. Ahora da `ref`, la
+  misma referencia opaca que el mensaje tiene en la conversación (HIG-149), o `null` mientras no se ha enviado.
+
 ## [0.13.0] - 2026-10-31
 
 ### Añadido

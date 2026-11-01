@@ -556,7 +556,7 @@ def get_send_status(bot_id: str, contact_id: str, request_id: str, principal: Pr
     """
         What came of a request to send, for 24 hours: accepted (the bus holds it), sent (Meta took it) or failed, with
         Meta's code and why (window_closed, template_paused, template_disabled, template_parameters, marketing_limit,
-        no_token, gave_up...).
+        no_token, gave_up...). Once sent, `ref` is the message's reference in the conversation, never Meta's id.
     """
     return ctr_send_status(TenantRepository(principal.client_id), bot_id, contact_id, request_id)
 
