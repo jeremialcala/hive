@@ -493,6 +493,35 @@ components:
               description: '`<botId>.<contactId>`: la conversación a la que pertenece.'
             contact:
               $ref: '#/components/schemas/Contacto'
+            guardrails:
+              type: array
+              maxItems: 20
+              default: []
+              description: >-
+                Los temas propios del bot tal como estaban al llegar el mensaje (RF27, HIG-103): el clasificador no
+                tiene otro camino a la configuración del bot. Es configuración del cliente, no un dato personal.
+              items:
+                $ref: '#/components/schemas/TemaDelBot'
+    TemaDelBot:
+      type: object
+      required: [uuid, topic, description, action]
+      additionalProperties: false
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        topic:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        action:
+          enum: [block, log]
+        reply:
+          type: string
+          maxLength: 500
+          description: Lo que recibe la persona en lugar de una respuesta, solo con `block`.
     Contacto:
       type: object
       required: [uuid]
@@ -692,6 +721,30 @@ components:
           minimum: 0
           maximum: 600
           description: Lo que tardó el evaluador en juzgarla, la última vez.
+        guardrail:
+          description: >-
+            El guardrail con el que chocó el mensaje que responde (RF27, HIG-103), si chocó con alguno. Sin texto.
+          oneOf:
+            - $ref: '#/components/schemas/Guardrail'
+            - type: 'null'
+    Guardrail:
+      type: object
+      required: [source, action]
+      additionalProperties: false
+      description: >-
+        La base de la plataforma (`platform`, con `reason`) o un tema propio del bot (`topic`, con su id). `block`: la
+        respuesta es el texto fijo del tema, o el de «no puedo»; `log`: la respuesta es la de siempre y esto solo lo
+        registra. La base siempre bloquea.
+      properties:
+        source:
+          enum: [platform, topic]
+        reason:
+          enum: [injection, data, abuse, other, null]
+        topic:
+          type: [string, 'null']
+          format: uuid
+        action:
+          enum: [block, log]
     Supresion:
       type: object
       required: [schemaVersion, uuid, entity, clientId, erasedAt]

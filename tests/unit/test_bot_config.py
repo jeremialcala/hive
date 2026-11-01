@@ -329,7 +329,7 @@ def test_going_back_to_a_persona_or_a_rule_not_allowed_any_more_changes_nothing(
 
     rule = stored.config["rules"][0]["uuid"]
     assert response.status_code == 422
-    assert response.json()["data"] == {"persona": True, "rules": [rule], "intents": []}
+    assert response.json()["data"] == {"persona": True, "rules": [rule], "intents": [], "guardrails": []}
     assert repo.get_bot(bot).name == "Ana"
     assert f"the persona, rules {rule} are not allowed any more" in logged()
     assert "im_start" not in logged() and "no rules" not in logged()

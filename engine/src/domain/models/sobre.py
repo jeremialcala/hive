@@ -28,12 +28,14 @@ ESQUEMA = 2
 # La partición es la del evento del gateway, que nadie vuelve a calcular (ADR-0008, punto 2).
 PARTICION = r"^[0-9]{1,2}$"
 
-# Lo que decide el clasificador de la entrada. Los cuatro primeros los da el modelo; los demás, el worker:
+# Lo que decide el clasificador de la entrada. Los cinco primeros los da el modelo (la base de la plataforma,
+# RS26); los demás, el worker:
+#   tema        el mensaje trata un tema propio del bot que bloquea (RF27, HIG-103)
 #   rechazo     el modelo rechazó el mensaje (llama.cpp no lo dice aparte: queda para otro proveedor)
 #   error       no hubo veredicto válido tras todos los intentos
 #   sin_texto   el mensaje no trae texto que clasificar (una imagen sin pie, una ubicación...)
-Motivo = Literal["ninguno", "inyeccion", "abuso", "otro", "rechazo", "error", "sin_texto"]
-MOTIVOS_DEL_MODELO = ("ninguno", "inyeccion", "abuso", "otro")
+Motivo = Literal["ninguno", "inyeccion", "datos", "abuso", "otro", "tema", "rechazo", "error", "sin_texto"]
+MOTIVOS_DEL_MODELO = ("ninguno", "inyeccion", "datos", "abuso", "otro")
 
 # La intención, entre unas pocas genéricas mientras el clasificador no lea los intents del bot. Ningún texto libre
 # del modelo pasa de aquí (ADR-0009, punto 3).
@@ -43,9 +45,10 @@ ETIQUETAS = ("saludo", "pregunta", "pedido", "queja", "despedida", "otro")
 
 # Cómo se responde (E4, decisión de Jeremi del 2026-10-20): con el modelo, o con un texto fijo del de respuesta, sin
 # llamarlo, cuando el mensaje no sigue. Así la persona siempre recibe algo.
-Respuesta = Literal["modelo", "no_puedo", "solo_texto", "no_disponible"]
-RESPUESTA_POR_MOTIVO = {"inyeccion": "no_puedo", "abuso": "no_puedo", "otro": "no_puedo", "rechazo": "no_puedo",
-                        "sin_texto": "solo_texto", "error": "no_disponible"}
+# Con `tema`, el texto fijo es la respuesta que el cliente escribió para ese tema (HIG-103).
+Respuesta = Literal["modelo", "no_puedo", "solo_texto", "no_disponible", "tema"]
+RESPUESTA_POR_MOTIVO = {"inyeccion": "no_puedo", "datos": "no_puedo", "abuso": "no_puedo", "otro": "no_puedo",
+                        "rechazo": "no_puedo", "tema": "tema", "sin_texto": "solo_texto", "error": "no_disponible"}
 
 # Las vueltas que el coordinador pasa como mucho: las 10 últimas de la persona y lo que vino después (RF15 del
 # gateway) caben de sobra.
@@ -101,6 +104,30 @@ class Entidad(_Estricto):
     valor: str = Field(max_length=200)
 
 
+# Qué pasa con un mensaje que trata un tema propio del bot (RF27): se responde con su texto fijo y no sigue, o
+# sigue como cualquier otro y solo queda registrado con la respuesta.
+AccionDelTema = Literal["bloquear", "registrar"]
+
+
+class TemaDelBot(_Estricto):
+    """
+        Un tema propio del bot, como lo lee el clasificador (`guardrails` del MensajeIdentificado, HIG-103). Es
+        configuración del cliente, no un dato personal; el tema y su descripción van al `system` del clasificador.
+    """
+    id: UUID
+    tema: str = Field(min_length=1, max_length=100)
+    descripcion: str = Field(min_length=1, max_length=500)
+    accion: AccionDelTema
+    respuesta: Optional[str] = Field(default=None, min_length=1, max_length=500)
+
+
+class TemaTocado(_Estricto):
+    """El tema propio que trató el mensaje y qué se hace: con `bloquear`, la respuesta que recibe la persona."""
+    id: UUID
+    accion: AccionDelTema
+    respuesta: Optional[str] = Field(default=None, min_length=1, max_length=500)
+
+
 class Clasificacion(_Estricto):
     """
         El veredicto del clasificador. Fail-closed (ADR-0005, que ADR-0009 mantiene): solo `permitido` deja seguir
@@ -113,6 +140,8 @@ class Clasificacion(_Estricto):
     entidades: list[Entidad] = Field(default_factory=list, max_length=10)
     # El modelo que decidió, o None si no se le preguntó.
     modelo: Optional[str] = None
+    # El tema propio del bot que trató el mensaje, si trató alguno y la base de la plataforma no lo paró antes.
+    tema: Optional[TemaTocado] = None
 
     @classmethod
     def sin_veredicto(cls, motivo: Literal["rechazo", "error", "sin_texto"],

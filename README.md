@@ -249,6 +249,10 @@ El motor solo atiende los bots de un cliente para el que el operador dio de alta
 | `POST` | `/chat/{bot_id}/rules` | Añade una o varias reglas al bot (`RulesRequest.rules`: de 1 a 50, cada una de 1 a 1000 caracteres, con las mismas marcas prohibidas que la persona). Un bot tiene 50 reglas como mucho (`422 TOO_MANY_RULES`). Devuelve las añadidas, con su id. |
 | `PUT`  | `/chat/{bot_id}/rules/{rule_id}` | Cambia una regla (`RuleRequest.rule`, con los mismos límites). `409` si ya dice eso (RF24). |
 | `DELETE` | `/chat/{bot_id}/rules/{rule_id}` | Borra una regla. Vuelve, con el mismo id, al volver a la versión anterior (RF24, RF26). |
+| `GET`  | `/chat/{bot_id}/guardrails` | La base de la plataforma, siempre activa, y los temas propios del bot, cada uno con su acción: `block` (responde su texto fijo) o `log` (solo lo registra) (RF27). |
+| `POST` | `/chat/{bot_id}/guardrails` | Añade un tema propio, hasta 20 (`GuardrailRequest`: `topic`, `description`, `action` y, con `block`, `reply`). Es una versión (RF26). |
+| `PUT`  | `/chat/{bot_id}/guardrails/{guardrail_id}` | Cambia un tema, con los mismos límites. `409` si ya dice eso. |
+| `DELETE` | `/chat/{bot_id}/guardrails/{guardrail_id}` | Borra un tema. La base de la plataforma no tiene ruta: no se borra. |
 
 ### Contactos — etiqueta `Contacts`
 

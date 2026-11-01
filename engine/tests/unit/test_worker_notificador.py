@@ -147,11 +147,13 @@ def test_envia_el_texto_al_numero_de_la_persona_y_publica_lo_enviado_para_el_his
 
 @pytest.mark.parametrize("evaluacion, evaluation", [
     ({"veredicto": "aprobada", "criterio": "ninguno", "regla": 0, "modelo": "gemma-4-26b-a4b", "segundos": 1.26},
-     {"verdict": "approved", "criterion": "none", "rule": 0, "model": "gemma-4-26b-a4b", "seconds": 1.26}),
+     {"verdict": "approved", "criterion": "none", "rule": 0, "model": "gemma-4-26b-a4b", "seconds": 1.26,
+      "guardrail": None}),
     ({"veredicto": "cambiada", "criterio": "regla", "regla": 3, "modelo": "gemma-4-26b-a4b", "segundos": 0.9},
-     {"verdict": "replaced", "criterion": "rule", "rule": 3, "model": "gemma-4-26b-a4b", "seconds": 0.9}),
+     {"verdict": "replaced", "criterion": "rule", "rule": 3, "model": "gemma-4-26b-a4b", "seconds": 0.9,
+      "guardrail": None}),
     ({"veredicto": "no_evaluada", "criterio": "ninguno", "regla": 0, "modelo": None},
-     {"verdict": "unevaluated", "criterion": "none", "rule": 0, "model": None, "seconds": None}),
+     {"verdict": "unevaluated", "criterion": "none", "rule": 0, "model": None, "seconds": None, "guardrail": None}),
 ], ids=["aprobada", "cambiada", "no evaluada"])
 def test_lo_enviado_lleva_lo_que_decidio_el_evaluador_sin_el_texto(evaluacion, evaluation):
     """HIG-147: la ingesta del gateway lo guarda con el mensaje, para las métricas de cumplimiento."""
@@ -261,3 +263,24 @@ def test_el_log_no_lleva_el_texto_ni_el_numero_ni_el_token_ni_los_ids(caplog):
     assert caplog.records
     for prohibido in ("zapatos", NUMERO, "EAAG", "wamid", CUENTA):
         assert prohibido not in caplog.text
+
+
+
+@pytest.mark.parametrize("clasificacion, guardrail", [
+    (Clasificacion(permitido=False, motivo="inyeccion", modelo="m"),
+     {"source": "platform", "reason": "injection", "topic": None, "action": "block"}),
+    (Clasificacion(permitido=False, motivo="datos", modelo="m"),
+     {"source": "platform", "reason": "data", "topic": None, "action": "block"}),
+    (Clasificacion(permitido=False, motivo="tema", modelo="m",
+                   tema={"id": "c0ffee00-0000-4000-8000-000000000001", "accion": "bloquear", "respuesta": "No."}),
+     {"source": "topic", "reason": None, "topic": "c0ffee00-0000-4000-8000-000000000001", "action": "block"}),
+    (Clasificacion(permitido=True, motivo="ninguno", modelo="m", tema={"id": "c0ffee00-0000-4000-8000-000000000001", "accion": "registrar"}),
+     {"source": "topic", "reason": None, "topic": "c0ffee00-0000-4000-8000-000000000001", "action": "log"}),
+    (Clasificacion(permitido=False, motivo="sin_texto"), None),
+], ids=["inyeccion", "datos", "tema que bloquea", "tema que registra", "sin texto"])
+def test_lo_enviado_lleva_el_guardrail_del_mensaje_sin_su_texto(clasificacion, guardrail):
+    """HIG-103: la ingesta del gateway lo guarda con la respuesta, para las métricas de cumplimiento."""
+    _, lo = atender(Mensaje(respondido(clasificacion=clasificacion.model_dump(mode="json"))))
+
+    (publicado,) = lo.bifrost.publicado
+    assert publicado.evento["evaluation"]["guardrail"] == guardrail

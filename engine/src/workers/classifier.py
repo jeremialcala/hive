@@ -26,7 +26,7 @@ from shared import bus, tracing
 from shared.contract import IdentifiedMessage, what_was_said
 from shared.workers import Worker
 from src.domain.models.sobre import (
-    ESQUEMA, PARTICION, Clasificacion, ContactoDelCanal, Entrada, MensajeClasificado, subject_clasificado,
+    ESQUEMA, PARTICION, Clasificacion, ContactoDelCanal, Entrada, MensajeClasificado, TemaDelBot, subject_clasificado,
 )
 from src.domain.ports.clasificador_de_entrada import ClasificacionFallida, ClasificadorDeEntrada
 from src.infrastructure.adapters.sanitize import sanitizar_texto
@@ -71,6 +71,16 @@ def entrada(evento: IdentifiedMessage) -> Entrada:
     """Lo que dijo la persona, como lo lee el historial del gateway, saneado."""
     texto, adjuntos, _ = what_was_said(evento.channel, evento.message)
     return Entrada(texto=sanitizar_texto(texto), adjuntos=list(adjuntos)[:10])
+
+
+# Las acciones del contrato del gateway, con los nombres del motor.
+_ACCIONES = {"block": "bloquear", "log": "registrar"}
+
+
+def temas(evento: IdentifiedMessage) -> list[TemaDelBot]:
+    """Los temas propios del bot, que la ingesta pone en el evento tal como estaban al llegar el mensaje (HIG-103)."""
+    return [TemaDelBot(id=tema.uuid, tema=tema.topic, descripcion=tema.description, accion=_ACCIONES[tema.action],
+                       respuesta=tema.reply if tema.action == "block" else None) for tema in evento.guardrails]
 
 
 def cuenta_del_bot(evento: IdentifiedMessage) -> str | None:
@@ -129,7 +139,7 @@ class Clasificar:
             clasificacion = Clasificacion.sin_veredicto("sin_texto")
         else:
             try:
-                clasificacion = await self._clasificador.clasificar(lo_dicho.texto)
+                clasificacion = await self._clasificador.clasificar(lo_dicho.texto, temas(evento))
             except ClasificacionFallida as e:
                 if not self._ultima(mensaje):
                     log.warning("Sin veredicto para un mensaje del bot %s, se intentará otra vez: %s",
@@ -147,8 +157,10 @@ class Clasificar:
         except bus.BusUnavailable as e:
             log.error("El mensaje clasificado del bot %s no se pudo publicar: %s", evento.botId, e)
             return Resultado.EN_ESPERA
-        log.info("Mensaje del bot %s clasificado: %s, %s", evento.botId,
-                 "permitido" if clasificacion.permitido else "no sigue", clasificacion.motivo)
+        # El tema, por su id: es configuración del cliente, no lo que dijo la persona.
+        log.info("Mensaje del bot %s clasificado: %s, %s%s", evento.botId,
+                 "permitido" if clasificacion.permitido else "no sigue", clasificacion.motivo,
+                 f", tema {clasificacion.tema.id} ({clasificacion.tema.accion})" if clasificacion.tema else "")
         return Resultado.CONFIRMADO
 
 

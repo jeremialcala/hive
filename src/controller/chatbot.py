@@ -300,6 +300,9 @@ def ctr_get_chatbot_rules_from_uuid(repo: TenantRepository, _uuid: str, eventId:
                                   "rules": [rule.rule for rule in _rules],
                                   # With the id of each, for whoever edits or deletes one (RF24).
                                   "ruleList": [rule_info(rule) for rule in _rules],
+                                  # The topics of its own the engine's classifier keeps it away from, above the
+                                  # base of the platform (RF27, HIG-103).
+                                  "guardrails": [guardrail.info() for guardrail in repo.list_guardrails(_uuid)],
                                   # The version this is (RF26): the engine keeps it no longer than a notice of a
                                   # newer one (ADR-0035).
                                   "version": _chatbot.configVersion})

@@ -10,8 +10,11 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from uuid import uuid4
+
 import pytest
 
+from src.domain.models.sobre import TemaDelBot, TemaTocado
 from src.domain.ports.clasificador_de_entrada import ClasificacionFallida
 from src.infrastructure.llm import ClienteLlm, LlmClasificador
 from src.infrastructure.llm.clasificador import ESQUEMA, SYSTEM
@@ -175,3 +178,74 @@ def test_un_servidor_apagado_dice_solo_el_tipo_de_fallo():
         clasificar("http://127.0.0.1:1")
 
     assert "127.0.0.1" not in str(error.value)
+
+
+# --- Los temas propios del bot (RF27, HIG-103) -----------------------------------------------------------------------
+
+COMPETIDORES = TemaDelBot(id=uuid4(), tema="Competidores", descripcion="Preguntas sobre otras tiendas.",
+                          accion="bloquear", respuesta="De eso no puedo hablar.")
+LEGALES = TemaDelBot(id=uuid4(), tema="Reclamos legales", descripcion="Menciones de demandas o abogados.",
+                     accion="registrar")
+
+
+def con_temas(url, temas, texto="¿y en la otra tienda?"):
+    cliente = ClienteLlm(url, CLAVE, "gemma-4-26b-a4b", timeout=5)
+    return asyncio.run(LlmClasificador(cliente, 256).clasificar(texto, temas))
+
+
+def test_los_temas_van_detras_de_la_base_y_el_esquema_lleva_su_etiqueta(servidor):
+    con_temas(servidor, [COMPETIDORES, LEGALES])
+
+    ((_, cuerpo),) = Llama.peticiones
+    system = cuerpo["messages"][0]["content"]
+    # La base es el mismo prefijo en todos los bots, y el texto de la persona sigue solo en el turno de usuario.
+    assert system.startswith(SYSTEM) and cuerpo["messages"][1] == {"role": "user", "content": "¿y en la otra tienda?"}
+    assert "- t1: Competidores. Preguntas sobre otras tiendas." in system
+    assert "- t2: Reclamos legales. Menciones de demandas o abogados." in system
+    # La respuesta fija no va al modelo: solo la recibe la persona.
+    assert "De eso no puedo hablar" not in system
+    esquema = cuerpo["response_format"]["json_schema"]["schema"]
+    assert esquema["properties"]["tema"]["enum"] == ["ninguno", "t1", "t2"]
+    assert ESQUEMA["properties"]["tema"]["enum"] == ["ninguno"]
+
+
+def test_sin_temas_el_system_es_solo_la_base(servidor):
+    con_temas(servidor, [])
+
+    ((_, cuerpo),) = Llama.peticiones
+    assert cuerpo["messages"][0]["content"] == SYSTEM
+
+
+def test_un_tema_que_bloquea_para_el_mensaje_con_su_respuesta(servidor):
+    Llama.respuesta = completado(json.dumps({**VEREDICTO, "tema": "t1"}))
+
+    clasificacion = con_temas(servidor, [COMPETIDORES, LEGALES])
+
+    assert (clasificacion.permitido, clasificacion.motivo) == (False, "tema")
+    assert clasificacion.tema == TemaTocado(id=COMPETIDORES.id, accion="bloquear", respuesta="De eso no puedo hablar.")
+
+
+def test_un_tema_que_registra_deja_seguir_el_mensaje(servidor):
+    Llama.respuesta = completado(json.dumps({**VEREDICTO, "tema": "t2"}))
+
+    clasificacion = con_temas(servidor, [COMPETIDORES, LEGALES])
+
+    assert (clasificacion.permitido, clasificacion.motivo) == (True, "ninguno")
+    assert clasificacion.tema == TemaTocado(id=LEGALES.id, accion="registrar")
+
+
+@pytest.mark.parametrize("motivo", ["inyeccion", "datos", "abuso"])
+def test_lo_que_para_la_base_no_se_registra_en_ningun_tema(servidor, motivo):
+    Llama.respuesta = completado(json.dumps({**VEREDICTO, "permitido": False, "motivo": motivo, "tema": "t2"}))
+
+    clasificacion = con_temas(servidor, [COMPETIDORES, LEGALES])
+
+    assert (clasificacion.permitido, clasificacion.motivo, clasificacion.tema) == (False, motivo, None)
+
+
+@pytest.mark.parametrize("tema", ["t3", "t0", "competidores"])
+def test_un_tema_que_no_es_del_bot_es_una_respuesta_que_no_vale(servidor, tema):
+    Llama.respuesta = completado(json.dumps({**VEREDICTO, "tema": tema}))
+
+    with pytest.raises(ClasificacionFallida):
+        con_temas(servidor, [COMPETIDORES, LEGALES])

@@ -13,6 +13,20 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
 ## [Unreleased]
 
 ### Añadido
+- **Temas propios del bot en el clasificador** (HIG-103; RF27 y RS26 del gateway).
+  - **De dónde salen:** `guardrails` del `MensajeIdentificado`, que pone la ingesta del gateway. El clasificador no lee
+    el gateway.
+  - **Cómo se comprueban:** en la misma llamada, al final del `system` y detrás de la base, que sigue siendo el mismo
+    prefijo para todos los bots. El esquema añade `tema`, con `ninguno` o la etiqueta del tema (`t1`, `t2`…). Una
+    etiqueta que no es de ningún tema es una respuesta que no vale.
+  - **Qué pasa:** un tema que bloquea para el mensaje con el motivo `tema`, y el de respuesta contesta su texto fijo.
+    Uno que registra deja seguir el mensaje. Lo que para la base no se registra en ningún tema.
+  - **La base** añade el motivo `datos`: sacar datos de otras personas, del negocio o de la plataforma.
+  - **El notificador** pone en la `evaluation` de lo enviado el guardrail del mensaje, sin texto.
+  - **Contrato:** `asyncapi-motor.yaml` 2.4.0 (`Clasificacion.tema`, los motivos `datos` y `tema`, la respuesta
+    `tema`).
+  - **Probado contra el 26B** con diez casos: diez bien, mediana de 1,24 s; sin temas, 1,30 s.
+
 - **El coordinador resume lo que sale del contexto** (HIG-143; ADR-0017 del gateway).
   - **Cuándo:** cuando la conversación pasa de las 10 vueltas de la persona, al apuntar la respuesta del bot en
     `MOTOR/coordinator-aprobada`, el 26B resume las vueltas que salen junto con el resumen que había. Va fuera del

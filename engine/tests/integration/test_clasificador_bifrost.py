@@ -91,7 +91,7 @@ class Modelo(ClasificadorDeEntrada):
     def __init__(self, *respuestas):
         self._respuestas = list(respuestas)
 
-    async def clasificar(self, texto):
+    async def clasificar(self, texto, temas=()):
         respuesta = self._respuestas.pop(0)
         if isinstance(respuesta, Exception):
             raise respuesta

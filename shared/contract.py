@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = 2
 
@@ -74,6 +74,20 @@ class Contact(BaseModel):
     igsid: str | None = None
 
 
+class GuardrailTopic(BaseModel):
+    """
+        A topic of its own the chatbot is kept away from (RF27, HIG-103), as the classifier reads it: the client's
+        configuration, not personal data. `reply` only when it blocks.
+    """
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    uuid: UUID
+    topic: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+    action: Literal["block", "log"]
+    reply: str | None = Field(default=None, min_length=1, max_length=500)
+
+
 class IdentifiedMessage(_Event):
     """MensajeIdentificado: one per message, from the ingestion to the engine's classifier."""
     messageId: str = Field(min_length=1)
@@ -84,6 +98,9 @@ class IdentifiedMessage(_Event):
     receivedAt: datetime
     orderKey: str = Field(min_length=1)
     contact: Contact
+    # The topics of the chatbot's own, as they were when the message came in (HIG-103): the classifier has no other way
+    # to the chatbot's configuration. None for a chatbot without them, and from an ingestion of before.
+    guardrails: list[GuardrailTopic] = Field(default_factory=list, max_length=20)
 
 
 class SentAttachment(BaseModel):
@@ -125,6 +142,29 @@ class OutboundRequest(_Event):
     template: TemplateToSend | None = None
 
 
+class GuardrailHit(BaseModel):
+    """
+        A guardrail the message the answer replies to ran into (RF27, HIG-103), without its text (RS07): the base of
+        the platform (`platform`, with why) or a topic of the chatbot's own (`topic`, with its id). `block`: the answer
+        is that topic's fixed reply, or the fixed text of "I cannot"; `log`: the answer is the usual one, and this only
+        records it.
+    """
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source: Literal["platform", "topic"]
+    reason: Literal["injection", "data", "abuse", "other"] | None = None
+    topic: UUID | None = None
+    action: Literal["block", "log"]
+
+    @model_validator(mode="after")
+    def _one_or_the_other(self) -> "GuardrailHit":
+        if (self.source == "platform") != (self.reason is not None) or (self.source == "topic") != (self.topic is not None):
+            raise ValueError("The platform says why, a topic says which")
+        if self.source == "platform" and self.action != "block":
+            raise ValueError("The base of the platform always blocks")
+        return self
+
+
 class Evaluation(BaseModel):
     """
         What the engine's evaluator decided of an answer (ADR-0012 of the engine, HIG-147), without its text (RS07):
@@ -144,6 +184,8 @@ class Evaluation(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     # How long the evaluator took to judge it, the last time it did.
     seconds: float | None = Field(default=None, ge=0, le=600)
+    # The guardrail the message it answers ran into, if it did (HIG-103).
+    guardrail: GuardrailHit | None = None
 
 
 class SentReply(_Event):

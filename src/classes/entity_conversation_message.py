@@ -18,6 +18,14 @@ VERDICTS = ("approved", "rewritten", "replaced", "fixed", "unevaluated")
 CRITERIA = ("none", "rule", "invented", "contact", "language", "tone", "format", "instructions", "role")
 
 
+class MessageGuardrail(EmbeddedDocument):
+    """The guardrail the message an answer replies to ran into (HIG-103, `GuardrailHit` of shared.contract): no text."""
+    source = StringField(required=True, choices=("platform", "topic"))
+    reason = StringField(choices=("injection", "data", "abuse", "other"))
+    topic = StringField(max_length=36)
+    action = StringField(required=True, choices=("block", "log"))
+
+
 class MessageEvaluation(EmbeddedDocument):
     """
         What the engine's evaluator decided of an answer of the bot (HIG-147, `Evaluation` of shared.contract), with
@@ -28,6 +36,7 @@ class MessageEvaluation(EmbeddedDocument):
     rule = IntField(required=True, min_value=0, max_value=50, default=0)
     model = StringField(max_length=100)
     seconds = FloatField(min_value=0)
+    guardrail = EmbeddedDocumentField(MessageGuardrail)
 
 
 

@@ -34,11 +34,11 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from shared import bus, tracing
-from shared.contract import (SCHEMA_VERSION, Evaluation, FailedSend, OutboundRequest, SentReply, failure_subject,
-                             reply_subject)
+from shared.contract import (SCHEMA_VERSION, Evaluation, FailedSend, GuardrailHit, OutboundRequest, SentReply,
+                             failure_subject, reply_subject)
 from shared.engine_key_store import EngineKeyStore
 from shared.workers import Worker
-from src.domain.models.sobre import Evaluacion, MensajeAprobado
+from src.domain.models.sobre import Clasificacion, Evaluacion, MensajeAprobado
 from src.domain.ports.envio import (
     CanalDeMeta, Envio, Enviados, EnvioFallido, EnvioRechazado, RegistroNoDisponible, TokenRechazado, TokensDelBot,
 )
@@ -63,10 +63,25 @@ CRITERIOS = {"ninguno": "none", "regla": "rule", "inventa": "invented", "contact
              "tono": "tone", "formato": "format", "instrucciones": "instructions", "papel": "role"}
 
 
-def evaluation_de(evaluacion: Evaluacion) -> Evaluation:
-    """La decisión del evaluador, para el historial del gateway: sin el texto."""
+# Por qué paró la base de la plataforma un mensaje, con los nombres del contrato v2 (`GuardrailHit`, HIG-103).
+BASE = {"inyeccion": "injection", "datos": "data", "abuso": "abuse", "otro": "other"}
+
+
+def guardrail_de(clasificacion: Clasificacion) -> GuardrailHit | None:
+    """El guardrail con el que chocó el mensaje, si chocó con alguno: la base de la plataforma o un tema del bot."""
+    if not clasificacion.permitido and clasificacion.motivo in BASE:
+        return GuardrailHit(source="platform", reason=BASE[clasificacion.motivo], action="block")
+    if clasificacion.tema is not None:
+        return GuardrailHit(source="topic", topic=clasificacion.tema.id,
+                            action="block" if clasificacion.tema.accion == "bloquear" else "log")
+    return None
+
+
+def evaluation_de(evaluacion: Evaluacion, clasificacion: Clasificacion | None = None) -> Evaluation:
+    """La decisión del evaluador, para el historial del gateway, con el guardrail del mensaje: sin el texto."""
     return Evaluation(verdict=VEREDICTOS[evaluacion.veredicto], criterion=CRITERIOS[evaluacion.criterio],
-                      rule=evaluacion.regla, model=evaluacion.modelo, seconds=evaluacion.segundos)
+                      rule=evaluacion.regla, model=evaluacion.modelo, seconds=evaluacion.segundos,
+                      guardrail=guardrail_de(clasificacion) if clasificacion is not None else None)
 
 
 NOMBRE = Worker.NOTIFIER.value
@@ -174,7 +189,7 @@ class Notificar:
         evento = SentReply(schemaVersion=SCHEMA_VERSION, botId=sobre.botId, clientId=sobre.clientId,
                            contactId=sobre.contact.uuid, channel=sobre.channel, inReplyTo=sobre.messageId,
                            messageId=envio.message_id, sentAt=envio.sent_at, text=sobre.respuesta.texto,
-                           evaluation=evaluation_de(sobre.evaluacion))
+                           evaluation=evaluation_de(sobre.evaluacion, sobre.clasificacion))
         traza = tracing.traceparent()
         headers = {"traceparent": traza} if traza else {}
         try:
