@@ -7,6 +7,7 @@
     - a session that ended leads back to the login;
     - the browser never gets a token.
 """
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -460,3 +461,39 @@ def test_the_page_has_its_favicon_and_its_manifest_with_the_icons_of_the_app(htt
 
 def test_the_health_check(http):
     assert http.get("/health").json() == {"status": "ok"}
+
+
+def test_a_logout_while_the_token_is_renewed_keeps_the_session_ended(http, store, monkeypatch):
+    """HIG-153: the renewal used to write the session back after the logout had deleted it."""
+    FakeHive.lifetime = 30
+    sign_in(http)
+    exchange = Hive.exchange
+
+    def logout_meanwhile(self, *args, **kwargs):
+        answer = exchange(self, *args, **kwargs)
+        (name,) = [key for key in store.values if key.startswith("session.")]
+        asyncio.run(store.delete(name))                     # what /auth/logout does, at that moment
+        return answer
+
+    monkeypatch.setattr(Hive, "exchange", logout_meanwhile)
+
+    assert http.get("/api/people").status_code == 401
+    assert not [key for key in store.values if key.startswith("session.")]
+    assert http.get("/auth/session").status_code == 401
+
+
+def test_a_renewal_that_another_request_made_first_does_not_end_the_session(http, store, monkeypatch):
+    FakeHive.lifetime = 30
+    sign_in(http)
+    exchange = Hive.exchange
+
+    def renewed_meanwhile(self, *args, **kwargs):
+        answer = exchange(self, *args, **kwargs)
+        (name,) = [key for key in store.values if key.startswith("session.")]
+        asyncio.run(store.put(name, store.values[name]))    # another request wrote it first
+        return answer
+
+    monkeypatch.setattr(Hive, "exchange", renewed_meanwhile)
+
+    assert http.get("/api/people").status_code == 200
+    assert http.get("/auth/session").status_code == 200

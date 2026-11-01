@@ -7,6 +7,20 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-01
+
+### Seguridad
+- **Cerrar sesión mientras se renueva el token ya no deja viva la cookie** (HIG-153). Lo reportó un proveedor.
+  - **El fallo:** una petición de la PWA que renovaba su token guardaba la sesión con un `put` incondicional. Si la
+    persona cerraba sesión mientras tanto, ese `put` volvía a crear la sesión que el logout había borrado, y la cookie
+    anterior servía otra vez.
+  - **El arreglo:** el portal vuelve a escribir una sesión solo si sigue en la revisión que leyó. Es un
+    compare-and-swap con `update(..., last=revision)` sobre el bucket `sesiones` de Bifröst, que cuenta el borrado
+    como una revisión propia. Vale para la renovación y para la escritura del último uso. Si dos peticiones renuevan
+    a la vez, se queda la primera y la sesión sigue.
+  - **Pruebas:** en memoria, a través del portal y contra NATS (`portal/tests`). La de regresión falla con el código
+    anterior.
+
 ## [0.16.0] - 2026-11-01
 
 ### Añadido
@@ -1575,7 +1589,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/jeremialcala/hive/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/jeremialcala/hive/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jeremialcala/hive/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jeremialcala/hive/compare/v0.13.1...v0.14.0
