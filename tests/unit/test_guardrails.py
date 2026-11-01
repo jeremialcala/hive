@@ -105,11 +105,11 @@ def test_the_base_of_the_platform_is_always_there_and_has_no_route_to_take_it_ou
     assert [each["key"] for each in seen["platform"]] == ["injection", "data", "abuse", "fail_closed"]
     assert all(each["always"] for each in seen["platform"]) and seen["topics"] == [] and seen["limit"] == 20
     for key in ("injection", "fail_closed"):
-        assert http.delete(f"/chat/{bot}/guardrails/{key}", headers=caller.auth).status_code == 404
-        assert http.put(f"/chat/{bot}/guardrails/{key}", headers=caller.auth,
-                        json={**TOPIC, "action": "log"}).status_code == 404
-    assert http.post(f"/chat/{bot}/guardrails", headers=caller.auth,
-                     json={**TOPIC, "platform": False}).status_code == 422
+        deleted = http.delete(f"/chat/{bot}/guardrails/{key}", headers=caller.auth)
+        changed = http.put(f"/chat/{bot}/guardrails/{key}", headers=caller.auth, json={**TOPIC, "action": "log"})
+        assert (deleted.status_code, changed.status_code) == (404, 404)
+    turned_off = http.post(f"/chat/{bot}/guardrails", headers=caller.auth, json={**TOPIC, "platform": False})
+    assert turned_off.status_code == 422
 
 
 def test_a_topic_that_logs_needs_no_reply_and_keeps_none(http, caller, bot):
@@ -180,19 +180,23 @@ def test_a_version_from_before_guardrails_goes_back_without_them(http, caller, b
     add(http, caller, bot)
 
     # Version 1, the chatbot as it was created, kept no guardrails: going back to it takes them out.
-    assert http.post(f"/chat/{bot}/versions/1/restore", headers=caller.auth).status_code == 200
+    restored = http.post(f"/chat/{bot}/versions/1/restore", headers=caller.auth)
+    assert restored.status_code == 200
     assert guardrails_of(http, caller, bot)["topics"] == []
     # And it is the current one now: going back to it again changes nothing.
-    assert http.post(f"/chat/{bot}/versions/1/restore", headers=caller.auth).status_code == 409
+    again = http.post(f"/chat/{bot}/versions/1/restore", headers=caller.auth)
+    assert again.status_code == 409
 
 
 def test_another_client_does_not_see_nor_change_the_topics(http, caller, bot, register):
     topic = add(http, caller, bot).json()["data"]["uuid"]
     globex = register("globex")
 
-    assert http.get(f"/chat/{bot}/guardrails", headers=globex.auth).status_code == 404
-    assert http.put(f"/chat/{bot}/guardrails/{topic}", headers=globex.auth, json=LOGGED).status_code == 404
-    assert http.delete(f"/chat/{bot}/guardrails/{topic}", headers=globex.auth).status_code == 404
+    seen = http.get(f"/chat/{bot}/guardrails", headers=globex.auth)
+    changed = http.put(f"/chat/{bot}/guardrails/{topic}", headers=globex.auth, json=LOGGED)
+    deleted = http.delete(f"/chat/{bot}/guardrails/{topic}", headers=globex.auth)
+
+    assert (seen.status_code, changed.status_code, deleted.status_code) == (404, 404, 404)
     assert len(guardrails_of(http, caller, bot)["topics"]) == 1
 
 
