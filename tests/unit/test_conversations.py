@@ -212,9 +212,21 @@ def test_a_send_is_accepted_then_sent_when_the_history_has_it(http, caller, repo
 
     asyncio.run(ingest_reply(reply(caller, bot, ana, request_id)))
 
-    data = status_of(http, caller, bot, ana, request_id).json()["data"]
-    assert (data["status"], data["messageId"], data["failure"]) == ("sent", "wamid.SENT", None)
+    response = status_of(http, caller, bot, ana, request_id)
+    data = response.json()["data"]
+    assert (data["status"], data["failure"]) == ("sent", None)
     assert data["sentAt"] is not None
+    # Not Meta's id, which in WhatsApp carries the number (HIG-150): the reference the conversation gives it.
+    assert "wamid" not in response.text and "messageId" not in data
+    conversation = http.get(f"/chat/{bot.uuid}/contacts/{ana._uuid}/conversation", headers=caller.auth).json()["data"]
+    assert data["ref"] == next(m["ref"] for m in conversation["messages"] if m["direction"] == "out")
+
+
+def test_a_send_not_sent_yet_has_no_reference(http, caller, repo, bot, ana, bifrost):
+    wrote(repo, ana, hours_ago=1)
+    request_id = send(http, caller, bot, ana).json()["data"]["uuid"]
+
+    assert status_of(http, caller, bot, ana, request_id).json()["data"]["ref"] is None
 
 
 @pytest.mark.parametrize("code,reason,said", [

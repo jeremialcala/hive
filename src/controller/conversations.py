@@ -17,6 +17,7 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 
 from classes import Settings
+from classes.entity_conversation_message import OUTGOING
 from classes.tool_clock import as_utc
 from crypto.key_service import KeyServiceUnavailable
 from repository import NotFound, TenantRepository
@@ -105,7 +106,8 @@ def ctr_send_status(repo: TenantRepository, bot_id: str, contact_id: str, reques
     return answer(status.HTTP_200_OK, data={
         "uuid": str(request.uuid), "status": request.status, "kind": request.kind, "template": request.template,
         "createdAt": as_utc(request.createdAt), "sentAt": as_utc(request.sentAt) if request.sentAt else None,
-        "messageId": request.messageId,
+        # The reference of the message in the conversation, never Meta's id: in WhatsApp it carries the number.
+        "ref": repo.ref_of(contact.botId, OUTGOING, request.messageId) if request.messageId else None,
         "failure": {"code": request.failureCode, "reason": reason,
                     "at": as_utc(request.failedAt) if request.failedAt else None} if request.status == "failed"
         else None})
