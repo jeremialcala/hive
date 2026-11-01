@@ -136,10 +136,14 @@ def erase(http, caller, path):
 
 
 def dump() -> str:
-    """Everything in the database, as text: what a copy of it shows."""
+    """
+        Everything in the database, as text: what a copy of it shows. But the audit of the client (HIG-95): it keeps
+        the ids of what was deleted, with nothing that links them to a person, until it expires or the client goes
+        (decision of Jeremi of 2026-11-01). test_audit checks that it keeps nothing but ids.
+    """
     database = mongoengine.get_db()
-    return json.dumps({name: list(database[name].find({})) for name in database.list_collection_names()},
-                      default=str)
+    return json.dumps({name: list(database[name].find({})) for name in database.list_collection_names()
+                       if name != "audit"}, default=str)
 
 
 def counts(**filters) -> dict:
@@ -534,9 +538,13 @@ def test_the_operator_deletes_a_client_with_everything_stored_for_it(http, opera
     deleted = erase(http, operator, f"/clients/{leaving.client_id}")
 
     assert deleted.status_code == 200
-    assert deleted.json()["data"] == {"uuid": str(leaving.client_id), "deleted": {
+    # Its audit goes too (HIG-95): one entry per request that set it up.
+    gone = deleted.json()["data"]["deleted"]
+    audit = gone.pop("audit")
+    assert audit > 0
+    assert deleted.json()["data"]["uuid"] == str(leaving.client_id) and gone == {
         "chatbots": 2, "contacts": 4, "phones": 2, "rules": 2, "intents": 2, "messages": 4, "templates": 0,
-        "outbound": 0, "versions": 6, "ratings": 0, "guardrails": 0, "people": 0}}
+        "outbound": 0, "versions": 6, "ratings": 0, "guardrails": 0, "people": 0}
     # Not a document of any kind names the client any more: its registry entry, its tokens, its data.
     assert str(leaving.client_id) not in dump()
     assert counts(clientId=stranger.client_id) == kept == counts()
@@ -679,7 +687,7 @@ def test_the_repository_of_another_client_deletes_nothing_of_this_one(caller, st
 
     assert TenantRepository(stranger.client_id).erase_all() == {
         "chatbots": 0, "contacts": 0, "phones": 0, "rules": 0, "intents": 0, "messages": 0, "templates": 0,
-        "outbound": 0, "versions": 0, "ratings": 0, "guardrails": 0, "people": 0}
+        "outbound": 0, "versions": 0, "ratings": 0, "guardrails": 0, "people": 0, "audit": 0}
     assert counts() == before == counts(clientId=caller.client_id)
 
 
