@@ -941,7 +941,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.13.0
+  version: 0.13.0+develop
 openapi: 3.1.0
 paths:
   /bot:
@@ -1417,7 +1417,7 @@ paths:
 
         Meta''s code and why (window_closed, template_paused, template_disabled, template_parameters, marketing_limit,
 
-        no_token, gave_up...).'
+        no_token, gave_up...). Once sent, `ref` is the message''s reference in the conversation, never Meta''s id.'
       operationId: get_send_status_chat__bot_id__contacts__contact_id__messages__request_id__get
       parameters:
       - in: path
