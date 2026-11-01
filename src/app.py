@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTasks
 from fastapi.openapi.models import OAuthFlowClientCredentials, OAuthFlows
 from fastapi.security import OAuth2
 from fastapi.security.utils import get_authorization_scheme_param
@@ -45,7 +46,8 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         ctr_set_bot_credentials, ctr_set_consent, ctr_update_intent, ctr_withdraw_consent,
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
                         ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance, ctr_answers,
-                        ctr_list_guardrails, ctr_add_guardrail, ctr_change_guardrail, ctr_delete_guardrail)
+                        ctr_list_guardrails, ctr_add_guardrail, ctr_change_guardrail, ctr_delete_guardrail,
+                        ctr_audit, entry_for, write_entry)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -163,10 +165,13 @@ def get_principal(request: Request,
                                  request.method, _urls_of(request), GATEWAY_KEYS, settings.gateway_audience)
     except InvalidToken as e:
         log.warning(f"Rejected a request: {e}")
+        # Not authenticated: who it was is not known, and the audit of no client keeps it.
         error = "invalid_dpop_proof" if isinstance(e, dpop.InvalidProof) else "invalid_token"
         challenge = DPOP_CHALLENGE if not authorization else f'{DPOP_CHALLENGE}, error="{error}"'
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="HTTP_401_UNAUTHORIZED",
                             headers={"WWW-Authenticate": challenge}) from None
+    # Who it is, for the audit of its client (HIG-95), whatever comes of the request from here.
+    request.state.principal = principal
     # HIG-139: a credential that already made its requests this minute waits, whatever it asks for.
     refusal = request_limits.LIMITS.admit(principal.client_id, principal.limited_as)
     if refusal is not None:
@@ -223,6 +228,25 @@ async def require_operator(principal: Principal = Depends(get_principal)) -> Pri
 # An origin that keeps getting 401 or 403 waits, before its body is read (HIG-139).
 app = build(limit=request_limits.API, title=TITLE, summary=SUMMARY, description=DESCRIPTION,
             openapi_tags=TAGS_METADATA)
+
+
+@app.middleware("http")
+async def audit(request: Request, call_next):
+    """
+        The entry a request leaves in the audit of its client (RF18, HIG-95), written once the answer went out: the
+        caller waits for none of it. A request turned away for too many requests leaves none, so that a flood does not
+        fill it.
+    """
+    response = await call_next(request)
+    if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        return response
+    entry = entry_for(getattr(request.state, "principal", None), request.method, request.scope.get("route"),
+                      request.scope.get("path_params"), response.status_code)
+    if entry is not None:
+        tasks = BackgroundTasks([response.background] if response.background else [])
+        tasks.add_task(write_entry, entry)
+        response.background = tasks
+    return response
 
 
 def _oauth_error(code: int, error: str) -> JSONResponse:
@@ -954,6 +978,23 @@ def gateway_keys(_principal: Principal = Depends(get_principal)):
 def own_client(principal: Principal = Depends(get_principal)):
     """The client of whoever calls: its id and its name, for the PWA to say whose area it is. No keys."""
     return ctr_own_client(principal.client_id)
+
+
+@app.get(path="/audit", tags=["Clients"], response_model=ResponseData)
+def get_audit(since: str | None = None, until: str | None = None, category: str | None = None,
+              actor: str | None = None, action: str | None = None, resource: str | None = None,
+              result: str | None = None, offset: int = 0, limit: int = 50, format: str = "json",  # pylint: disable=redefined-builtin
+              repo: TenantRepository = Depends(get_repository)):
+    """
+        The audit of the client (RF18): what its people and its credentials did, the reads of personal data and what
+        the response engine read, newest first, for 12 months. Only identifiers. Filters: `since` and `until` (UTC),
+        `category` (config, people, keys, sends, data, engine), `actor`, `action`, `resource` (an id) and `result` (ok,
+        denied, failed). `format=csv` gives all that matches, as CSV. For the cliente-admin; not the cliente-analista.
+    """
+    if format not in ("json", "csv"):
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            content={"code": 422, "message": "format is json or csv"})
+    return ctr_audit(repo, since, until, category, actor, action, resource, result, offset, limit, format == "csv")
 
 
 @app.get(path="/keys", tags=["Clients"], response_model=ResponseData)

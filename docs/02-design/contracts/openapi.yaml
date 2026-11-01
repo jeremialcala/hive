@@ -975,9 +975,114 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.15.0
+  version: 0.15.0+develop
 openapi: 3.1.0
 paths:
+  /audit:
+    get:
+      description: 'The audit of the client (RF18): what its people and its credentials did, the reads of personal
+        data and what
+
+        the response engine read, newest first, for 12 months. Only identifiers. Filters: `since` and `until` (UTC),
+
+        `category` (config, people, keys, sends, data, engine), `actor`, `action`, `resource` (an id) and `result`
+        (ok,
+
+        denied, failed). `format=csv` gives all that matches, as CSV. For the cliente-admin; not the cliente-analista.'
+      operationId: get_audit_audit_get
+      parameters:
+      - in: query
+        name: since
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Since
+      - in: query
+        name: until
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Until
+      - in: query
+        name: category
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Category
+      - in: query
+        name: actor
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor
+      - in: query
+        name: action
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      - in: query
+        name: resource
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource
+      - in: query
+        name: result
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result
+      - in: query
+        name: offset
+        required: false
+        schema:
+          title: Offset
+          type: integer
+      - in: query
+        name: limit
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - in: query
+        name: format
+        required: false
+        schema:
+          title: Format
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Get Audit
+      tags:
+      - Clients
   /bot:
     post:
       operationId: create_chatbot_bot_post

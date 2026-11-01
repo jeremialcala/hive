@@ -329,6 +329,7 @@ Cada cambio de la persona, las reglas o los intents de un bot es una versión, c
 |---|---|---|---|
 | `GET` | `/gateway/keys` | cualquiera con token | La audiencia y las claves públicas del gateway a las que se cifran las aserciones. Se vuelve a pedir cuando el gateway rota la suya. |
 | `GET` | `/client` | el cliente y sus personas | Su id y su nombre, sin claves: lo que muestra la PWA en la tarjeta del cliente (HIG-126). |
+| `GET` | `/audit` | el cliente (no el `cliente-analista`) | Su auditoría, por páginas: quién hizo qué, sobre qué ids, cuándo y con qué resultado, también lo denegado, las lecturas de datos personales y lo que leyó el motor. Filtros `since`, `until`, `category`, `actor`, `action`, `resource`, `result`; `format=csv` (RF18). |
 | `GET` | `/keys` | el cliente | Sus claves registradas. |
 | `POST` | `/keys` | el cliente | Registra una segunda clave pública para rotar. La clave nueva firma una prueba ligada al token de la misma petición. |
 | `DELETE` | `/keys/{kid}` | el cliente | Revoca una de sus claves. La última no se puede quitar. |
