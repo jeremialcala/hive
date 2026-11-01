@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 import app as app_module
 from auth.idp import IdentityProvider
-from classes import AuditEntry, ChatBot, Client, Contact
+from classes import AuditEntry, Client, Contact
 from classes.entity_conversation_message import INCOMING
 from auth.client_keys import public_signing_key
 from conftest import KEY_OF, bearer, signed_assertion

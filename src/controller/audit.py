@@ -111,7 +111,7 @@ def entry_for(principal: Principal | None, method: str, route, path_params: dict
 def write_entry(entry: AuditEntry) -> None:
     """Runs once the answer went out (a background task of the response). A failure stays in the log, and only that."""
     try:
-        entry.save(force_insert=True)
+        TenantRepository(entry.clientId).record_audit(entry)
     except Exception as e:
         if not database_failed(e):
             log.error(f"An entry of the audit of client {entry.clientId} could not be written: {type(e).__name__}")

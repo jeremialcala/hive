@@ -199,6 +199,13 @@ class TenantRepository:
         deleted["audit"] = self._own(AuditEntry).delete()
         return deleted
 
+    def record_audit(self, entry: AuditEntry) -> AuditEntry:
+        """Writes one entry of the client's audit (RF18, HIG-95): only of this client, and only once."""
+        if entry.clientId != self.client_id:
+            raise NotFound(type(entry).__name__)
+        entry.save(force_insert=True)
+        return entry
+
     def audit(self, since: datetime | None, until: datetime | None, category: str | None, actor: str | None,
               action: str | None, resource: str | None, result: str | None, offset: int = 0,
               limit: int | None = 50) -> tuple:
