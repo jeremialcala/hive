@@ -7,6 +7,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **La pestaña «Guardrails» de la PWA** (HIG-151, RF27), en la ficha de cada bot.
+  - **La base de la plataforma,** con «Siempre» y sin ningún control que la desactive.
+  - **Los temas propios** en una tabla: qué abarca cada uno, su acción (bloquear, en rojo; registrar, en azul), su
+    respuesta fija y cuántos mensajes chocaron con él en 7 días, sin texto. El `cliente-admin` los añade, cambia y
+    borra en un panel lateral con su cURL; el `cliente-analista` los ve sin botones.
+  - **Los últimos 7 días:** cuántos mensajes se bloquearon y cuántos se registraron, y cuántos de ellos por la base.
+- **Cumplimiento:** la tarjeta «Textos fijos» pasa a «Bloqueados», con los mensajes que pararon los guardrails, por la
+  base y por los temas propios, y los registrados.
+
 ## [0.14.0] - 2026-11-01
 
 ### Añadido
