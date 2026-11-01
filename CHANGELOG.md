@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-01
+
 ### Seguridad
 - **El estado de un envío ya no da el id de Meta** (HIG-150). `GET /chat/{bot_id}/contacts/{contact_id}/messages/{request_id}`
   respondía con `messageId`, el `wamid` de WhatsApp, que lleva el número del contacto en base64. Ahora da `ref`, la
@@ -1506,7 +1508,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/jeremialcala/hive/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/jeremialcala/hive/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jeremialcala/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jeremialcala/hive/compare/v0.10.0...v0.11.0
