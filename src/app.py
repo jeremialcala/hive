@@ -989,7 +989,8 @@ def get_audit(since: str | None = None, until: str | None = None, category: str 
         The audit of the client (RF18): what its people and its credentials did, the reads of personal data and what
         the response engine read, newest first, for 12 months. Only identifiers. Filters: `since` and `until` (UTC),
         `category` (config, people, keys, sends, data, engine), `actor`, `action`, `resource` (an id) and `result` (ok,
-        denied, failed). `format=csv` gives all that matches, as CSV. For the cliente-admin; not the cliente-analista.
+        denied, failed). `format=csv` gives what matches as CSV, the newest 50,000 at most (X-Audit-Truncated says
+        when there were more). For the cliente-admin; not the cliente-analista.
     """
     if format not in ("json", "csv"):
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

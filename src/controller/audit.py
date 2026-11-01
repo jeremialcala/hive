@@ -57,6 +57,9 @@ DATA = {("DELETE", "/bot/{bot_id}"), ("DELETE", "/chat/{bot_id}/contacts/{contac
         ("PUT", "/chat/{bot_id}/contacts/{contact_id}/ratings")}
 SENDS = {("POST", "/chat/{bot_id}/contacts/{contact_id}/messages")}
 MAX_PAGE = 200
+# The rows a CSV carries at most: with what the engine reads, a year of a busy client is hundreds of thousands, and
+# the whole of it would not fit in the memory of the gateway. The answer says when it was cut (X-Audit-Truncated).
+MAX_CSV = 50_000
 
 
 def _category(method: str, route: str, principal: Principal) -> str:
@@ -127,7 +130,7 @@ def _moment(value: str | None) -> datetime | None:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
-def _csv(entries: list[dict]) -> Response:
+def _csv(entries: list[dict], total: int) -> Response:
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["at", "actor", "actorKind", "worker", "action", "method", "route", "category", "resource",
@@ -137,8 +140,11 @@ def _csv(entries: list[dict]) -> Response:
         writer.writerow([each["at"].isoformat(), each["actor"], each["actorKind"], each["worker"] or "",
                          each["action"], each["method"], each["route"], each["category"], resource, each["result"],
                          each["status"]])
-    return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": 'attachment; filename="auditoria.csv"', "Cache-Control": "no-store"})
+    headers = {"Content-Disposition": 'attachment; filename="auditoria.csv"', "Cache-Control": "no-store",
+               "X-Audit-Total": str(total)}
+    if total > len(entries):
+        headers["X-Audit-Truncated"] = "true"
+    return Response(content=out.getvalue(), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 def ctr_audit(repo: TenantRepository, since: str | None, until: str | None, category: str | None, actor: str | None,
@@ -159,9 +165,9 @@ def ctr_audit(repo: TenantRepository, since: str | None, until: str | None, cate
         except ValueError:
             return answer(status.HTTP_422_UNPROCESSABLE_ENTITY, "resource is the id of a resource")
     total, found = repo.audit(start, end, category, actor, action, resource, result,
-                              0 if as_csv else max(offset, 0), None if as_csv else max(1, min(limit, MAX_PAGE)))
+                              0 if as_csv else max(offset, 0), MAX_CSV if as_csv else max(1, min(limit, MAX_PAGE)))
     entries = [{**entry.info(), "at": as_utc(entry.at)} for entry in found]
     if as_csv:
-        return _csv(entries)
+        return _csv(entries, total)
     return answer(status.HTTP_200_OK, data={"total": total, "offset": offset, "limit": limit, "entries": entries,
                                             "keptFor": KEPT_FOR.days})

@@ -208,6 +208,19 @@ def test_the_audit_comes_as_csv(http, caller, bot):
     assert len(rows) == 2 and (rows[1][4], rows[1][8], rows[1][9]) == ("create_chatbot", "", "ok")
 
 
+def test_a_csv_too_long_is_cut_and_says_so(http, caller, bot, monkeypatch):
+    """With what the engine reads, a year of a client does not fit in the memory of the gateway."""
+    from controller import audit as audit_module
+
+    monkeypatch.setattr(audit_module, "MAX_CSV", 1)
+    http.post(f"/chat/{bot}/rules", headers=caller.auth, json={"rules": ["Be kind"]})
+
+    response = audit(http, caller, format="csv")
+
+    assert len(list(csv.reader(io.StringIO(response.text)))) == 2
+    assert (response.headers["x-audit-total"], response.headers["x-audit-truncated"]) == ("2", "true")
+
+
 def test_the_analyst_the_engine_and_another_client_do_not_read_it(http, caller, bot, people, register):
     key = new_signing_key()
     registered = public_signing_key(public_part(key))
