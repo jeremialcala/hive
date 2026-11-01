@@ -21,7 +21,7 @@ from controller.bot_state import bot_verified
 from controller.incoming import NotUnderstood, read_notification
 from crypto.fields import NotEncrypted
 from crypto.key_service import KeyServiceUnavailable
-from repository import BotSecrets, NotFound, TenantRepository, database_failed, find_webhook_bot
+from repository import BotSecrets, NotFound, TenantRepository, database_failed, find_webhook_bot, kept_bots
 from service import build, log, settings
 from utils import describe, is_valid_signature, looks_like_signature, secrets_match
 
@@ -52,11 +52,12 @@ def get_webhook_bot(bot_id: str) -> ChatBot:
 
 
 def current(bot: ChatBot) -> ChatBot:
-    """The chatbot as the database has it now, for what must not wait out the memory of the webhook."""
-    try:
-        return TenantRepository(bot.clientId).get_bot(bot.uuid)
-    except NotFound:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HTTP_404_NOT_FOUND") from None
+    """
+        The chatbot as the database has it now, for what must not wait out the memory of the webhook: what it kept is
+        forgotten, and the chatbot is found again the way every request finds it.
+    """
+    kept_bots.forget(bot.uuid)
+    return get_webhook_bot(str(bot.uuid))
 
 
 def webhook_secrets(bot: ChatBot) -> BotSecrets:
