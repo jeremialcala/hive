@@ -126,8 +126,12 @@ def _identify(channel: str, message: IncomingMessage, bot: ChatBot) -> Contact:
     return ctr_identify_fb_contact(fbId=message.sender, _bot=bot)
 
 
-def identified_event(event: dict, item: dict, contact: Contact, message: IncomingMessage) -> dict:
-    """MensajeIdentificado (asyncapi-v2.yaml): what the engine's workers read, one per message."""
+def identified_event(event: dict, item: dict, contact: Contact, message: IncomingMessage,
+                     guardrails: list[dict] = ()) -> dict:
+    """
+        MensajeIdentificado (asyncapi-v2.yaml): what the engine's workers read, one per message. With the topics of
+        the chatbot's own, for its classifier (HIG-103).
+    """
     who = {"uuid": str(contact._uuid), "name": contact.firstName}
     who["waId" if event["channel"] == "whatsapp" else "fbId"] = message.sender
     return {
@@ -140,14 +144,17 @@ def identified_event(event: dict, item: dict, contact: Contact, message: Incomin
         "receivedAt": event["receivedAt"],
         "orderKey": f"{event['botId']}.{contact._uuid}",
         "contact": who,
+        "guardrails": list(guardrails),
     }
 
 
-async def _publish(event: dict, item: dict, contact: Contact, message: IncomingMessage) -> None:
+async def _publish(event: dict, item: dict, contact: Contact, message: IncomingMessage,
+                   guardrails: list[dict] = ()) -> None:
     if bus.configured():
         await bus.publisher().publish(
             identified_subject(partition(event["botId"], contact._uuid), event["botId"], contact._uuid),
-            json.dumps(identified_event(event, item, contact, message), separators=(",", ":")).encode("utf-8"),
+            json.dumps(identified_event(event, item, contact, message, guardrails),
+                       separators=(",", ":")).encode("utf-8"),
             f"{event['botId']}:{item['messageId']}", headers={"traceparent": traceparent()})
     body = MessageBody(botId=event["botId"], clientId=event["clientId"], type=_KINDS[event["channel"]],
                        contact={"name": contact.firstName, ("waId" if event["channel"] == "whatsapp" else "fbId"):
@@ -256,12 +263,22 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
                        "gateway.channel": event.get("channel"), "gateway.messages": len(event["messages"])})
         received_at = datetime.fromisoformat(event["receivedAt"])
         outcome = {"ingested": 0, "seen": 0, "failed": 0}
+        # The topics of the chatbot's own, once for the whole notification: its classifier reads them in each message.
+        guardrails = None
         for item in event["messages"]:
-            outcome[await _ingest_message(repo, bot, event, item, received_at)] += 1
+            if guardrails is None:
+                guardrails = await asyncio.to_thread(_guardrails, repo, bot)
+            outcome[await _ingest_message(repo, bot, event, item, received_at, guardrails)] += 1
         return outcome
 
 
-async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, item: dict, received_at) -> str:
+def _guardrails(repo: TenantRepository, bot: ChatBot) -> list[dict]:
+    return [{key: value for key, value in guardrail.info().items() if value is not None}
+            for guardrail in repo.list_guardrails(bot.uuid)]
+
+
+async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, item: dict, received_at,
+                          guardrails: list[dict] = ()) -> str:
     """One message of the notification, in a span of its own. Says whether it was ingested, seen or failed."""
     with tracing.span("ingest.message", **{"gateway.bot_id": str(bot.uuid)}) as current:
         try:
@@ -270,7 +287,7 @@ async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, ite
                 return "seen"
             message = incoming(event["channel"], item)
             contact = await asyncio.to_thread(_identify, event["channel"], message, bot)
-            await _publish(event, item, contact, message)
+            await _publish(event, item, contact, message, guardrails)
             current.set(**{"gateway.contact_id": str(contact._uuid)})
             text, attachments, sent_at = what_was_said(event["channel"], message.content)
             await asyncio.to_thread(repo.record_message, contact, INCOMING, item["messageId"], event["channel"],
@@ -315,7 +332,8 @@ def _evaluation(event: dict) -> dict | None:
     if found is None:
         return None
     try:
-        return Evaluation.model_validate(found).model_dump()
+        # As JSON: the id of a topic is stored as text.
+        return Evaluation.model_validate(found).model_dump(mode="json")
     except ValidationError as e:
         # Its errors carry the values: only how many.
         log.warning(f"An answer came with an evaluation that does not follow the contract ({e.error_count()} "

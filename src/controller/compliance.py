@@ -77,6 +77,6 @@ def ctr_compliance(repo: TenantRepository, bot_id: str, since: datetime | None) 
         **metrics,
         # The rules by their number, as JSON has its keys.
         "rules": {str(rule): count for rule, count in metrics["rules"].items()},
-        # What the card of the guardrails shows until HIG-103: the fixed texts, the blocked messages among them.
+        # The fixed texts: the messages the guardrails blocked are among them, and `guardrails` says which (HIG-103).
         "fixedTexts": metrics["verdicts"]["fixed"],
         "since": as_utc(since) if since else None})

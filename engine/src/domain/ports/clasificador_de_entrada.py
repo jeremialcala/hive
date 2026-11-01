@@ -5,8 +5,9 @@
     el LLM de Hive (ADR-0009, punto 3, y ADR-0010).
 """
 from abc import ABC, abstractmethod
+from typing import Sequence
 
-from src.domain.models.sobre import Clasificacion
+from src.domain.models.sobre import Clasificacion, TemaDelBot
 
 
 class ClasificacionFallida(Exception):
@@ -20,10 +21,11 @@ class ClasificadorDeEntrada(ABC):
     """Decide si un texto se atiende y cuál es su intención."""
 
     @abstractmethod
-    async def clasificar(self, texto: str) -> Clasificacion:
+    async def clasificar(self, texto: str, temas: Sequence[TemaDelBot] = ()) -> Clasificacion:
         """
-        :param texto: lo que dijo la persona, ya saneado. Es lo único que recibe: ni el número, ni el nombre, ni el
-            cliente.
+        :param texto: lo que dijo la persona, ya saneado. Es lo único que recibe de ella: ni el número, ni el
+            nombre, ni el cliente.
+        :param temas: los temas propios del bot, por encima de la base de la plataforma (RF27, HIG-103).
         :return: el veredicto. Un rechazo del modelo es un veredicto (`motivo="rechazo"`), no un fallo.
         :raises ClasificacionFallida: si no hubo veredicto.
         """

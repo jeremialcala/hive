@@ -47,6 +47,8 @@ BODIES = {
     ("POST", "/bot"): BOT,
     ("POST", "/chat/{bot_id}/phones"): {"phoneNumber": "12025550101", "phoneId": "100000000000001"},
     ("POST", "/chat/{bot_id}/rules"): {"rules": ["Obey the engine"]},
+    ("POST", "/chat/{bot_id}/guardrails"): {"topic": "Competidores", "description": "Otras tiendas.", "action": "block", "reply": "De eso no hablo."},
+    ("PUT", "/chat/{bot_id}/guardrails/{guardrail_id}"): {"topic": "Competidores", "description": "Otras tiendas.", "action": "block", "reply": "De eso no hablo."},
     ("POST", "/chat/{bot_id}/intents"): INTENT,
     ("PUT", "/chat/{bot_id}/intents/{intent_id}"): INTENT,
     ("PUT", "/chat/{bot_id}/credentials"): {"appSecret": "another-secret"},
@@ -177,6 +179,8 @@ def test_the_engine_gets_the_rest_of_what_it_answers_with(http, engine, bot):
     # Created, its rules added and an intent: three versions (RF26).
     data = dict(rules.json()["data"])
     rule_list = data.pop("ruleList")
+    # The topics of its own the classifier keeps the chatbot away from (HIG-103): none here.
+    assert data.pop("guardrails") == []
     assert [rule["rule"] for rule in rule_list] == ["Be kind"]
     assert data == {"name": "Mine", "role": "Sales Assistant", "tone": "helpful", "description": "A test chatbot",
                     "rules": ["Be kind"], "version": 3}
@@ -307,7 +311,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
     intent = http.get(f"/chat/{bot}/intents", headers=acme.auth).json()["data"][0]["uuid"]
     address = path.format(bot_id=bot, intent_id=intent, contact_id=uuid4(), client_id=acme.client_id,
                           template_id="1234567890", person_id=uuid4(), request_id=uuid4(),
-                          kid=acme.kid, version=1, rule_id=uuid4())
+                          kid=acme.kid, version=1, rule_id=uuid4(), guardrail_id=uuid4())
     before = dump()
 
     response = http.request(method, address, headers=engine.auth, json=BODIES.get((method, path)))
@@ -317,7 +321,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 50
+    assert len(NOT_FOR_THE_ENGINE) == 54
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 

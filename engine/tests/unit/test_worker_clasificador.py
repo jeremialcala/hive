@@ -79,7 +79,7 @@ class Modelo(ClasificadorDeEntrada):
             permitido=True, motivo="ninguno", etiqueta="pregunta", confianza=0.9,
             entidades=[Entidad(nombre="producto", valor="zapatos rojos")], modelo="gemma-4-26b-a4b")
 
-    async def clasificar(self, texto):
+    async def clasificar(self, texto, temas=()):
         self.textos.append(texto)
         if isinstance(self._respuesta, Exception):
             raise self._respuesta
@@ -290,3 +290,39 @@ def test_sin_la_clave_del_llm_no_arranca(tmp_path, contenido):
 def test_la_configuracion_no_deja_pasar_limites_que_romperian_el_ack_wait_o_el_veredicto(tmp_path, cambio):
     with pytest.raises(ValueError):
         ajustes(tmp_path / "llm-api-key", **cambio)
+
+
+
+# --- Los temas propios del bot (HIG-103) -----------------------------------------------------------------------------
+
+def test_los_temas_del_evento_llegan_al_clasificador_con_los_nombres_del_motor():
+    temas_vistos = []
+
+    class ConTemas(Modelo):
+        async def clasificar(self, texto, temas=()):
+            temas_vistos.append(list(temas))
+            return await super().clasificar(texto, temas)
+
+    guardrails = [{"uuid": "c0ffee00-0000-4000-8000-000000000001", "topic": "Competidores", "description": "Otras tiendas.", "action": "block",
+                   "reply": "De eso no hablo."},
+                  {"uuid": "c0ffee00-0000-4000-8000-000000000002", "topic": "Legales", "description": "Abogados.", "action": "log"}]
+
+    atender(Mensaje(evento(guardrails=guardrails)), modelo=ConTemas())
+
+    ((bloquea, registra),) = temas_vistos
+    assert (str(bloquea.id), bloquea.tema, bloquea.accion, bloquea.respuesta) == (
+        "c0ffee00-0000-4000-8000-000000000001", "Competidores", "bloquear", "De eso no hablo.")
+    assert (registra.accion, registra.respuesta) == ("registrar", None)
+
+
+def test_un_evento_sin_temas_se_clasifica_con_la_base_sola():
+    temas_vistos = []
+
+    class ConTemas(Modelo):
+        async def clasificar(self, texto, temas=()):
+            temas_vistos.append(list(temas))
+            return await super().clasificar(texto, temas)
+
+    atender(Mensaje(evento()), modelo=ConTemas())
+
+    assert temas_vistos == [[]]

@@ -66,7 +66,7 @@ def test_the_event_follows_the_contract_and_carries_no_text():
                       evaluation=Evaluation(verdict="approved", model="gemma-4-26b-a4b"))
 
     assert set(json.loads(event.model_dump_json())["evaluation"]) == {"verdict", "criterion", "rule", "model",
-                                                                         "seconds"}
+                                                                         "seconds", "guardrail"}
 
 
 def test_an_answer_without_evaluation_is_stored_as_before(caller, bot, ana):
@@ -136,7 +136,8 @@ def test_the_metrics_count_each_verdict_and_what_failed(caller, repo, bot, ana):
     assert metrics == {"answers": 7,
                        "verdicts": {"approved": 2, "rewritten": 1, "replaced": 2, "fixed": 1, "unevaluated": 1},
                        "criteria": {"rule": 2, "language": 1}, "rules": {2: 2},
-                       "ratings": {"up": 0, "down": 0, "answers": 0}}
+                       "ratings": {"up": 0, "down": 0, "answers": 0},
+                       "guardrails": {"blocked": 0, "logged": 0, "platform": {}, "topics": {}}}
 
 
 def test_the_metrics_can_start_at_a_date(caller, repo, bot, ana):
@@ -156,3 +157,49 @@ def test_the_metrics_are_of_the_chatbot_and_the_client_that_own_them(caller, rep
 
     assert repo.compliance(other_bot.uuid)["answers"] == 0
     assert TenantRepository(register("globex").client_id).compliance(bot.uuid)["answers"] == 0
+
+
+# --- The guardrails the messages ran into (HIG-103) ---------------------------------------------------------------
+
+TOPIC = str(uuid4())
+
+
+def test_the_guardrail_a_message_ran_into_is_stored_with_the_answer_without_text(caller, bot, ana):
+    evaluation = {"verdict": "fixed", "guardrail": {"source": "topic", "topic": TOPIC, "action": "block"}}
+
+    assert asyncio.run(ingest_reply(answer(caller, bot, ana, evaluation=evaluation))) == {"stored": True}
+
+    assert stored(bot)["evaluation"]["guardrail"] == {"source": "topic", "topic": TOPIC, "action": "block"}
+
+
+@pytest.mark.parametrize("guardrail", [
+    {"source": "platform", "action": "block"},
+    {"source": "platform", "reason": "injection", "action": "log"},
+    {"source": "topic", "action": "log"},
+    {"source": "topic", "topic": TOPIC, "reason": "abuse", "action": "log"},
+    {"source": "topic", "topic": TOPIC, "action": "log", "text": "lo que dijo"},
+], ids=["platform without why", "platform that only logs", "topic without id", "topic with a why", "with a text"])
+def test_a_guardrail_off_the_contract_leaves_the_evaluation_out(caller, bot, ana, guardrail):
+    evaluation = {"verdict": "fixed", "guardrail": guardrail}
+
+    assert asyncio.run(ingest_reply(answer(caller, bot, ana, evaluation=evaluation))) == {"stored": True}
+
+    assert not stored(bot).get("evaluation")
+
+
+def test_the_metrics_count_the_guardrails_by_why_and_by_topic(caller, repo, bot, ana):
+    for n, guardrail in enumerate([
+            {"source": "platform", "reason": "injection", "action": "block"},
+            {"source": "platform", "reason": "injection", "action": "block"},
+            {"source": "platform", "reason": "data", "action": "block"},
+            {"source": "topic", "topic": TOPIC, "action": "block"},
+            {"source": "topic", "topic": TOPIC, "action": "log"}]):
+        verdict = "approved" if guardrail["action"] == "log" else "fixed"
+        asyncio.run(ingest_reply(answer(caller, bot, ana, f"wamid.G{n}", {"verdict": verdict, "guardrail": guardrail})))
+    asyncio.run(ingest_reply(answer(caller, bot, ana, "wamid.CLEAN", {"verdict": "approved"})))
+
+    metrics = repo.compliance(bot.uuid)
+
+    assert metrics["guardrails"] == {"blocked": 4, "logged": 1, "platform": {"injection": 2, "data": 1},
+                                     "topics": {TOPIC: {"block": 1, "log": 1}}}
+    assert metrics["answers"] == 6

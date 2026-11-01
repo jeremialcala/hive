@@ -12,10 +12,10 @@ from uuid import UUID
 from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Intent,
-                     MessageTemplate, OutboundRequest, Rating, Rule)
+from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Guardrail,
+                     Intent, MessageTemplate, OutboundRequest, Rating, Rule)
 from classes.entity_contact import Consent
-from classes.entity_conversation_message import INCOMING, OUTGOING, VERDICTS, MessageEvaluation
+from classes.entity_conversation_message import INCOMING, OUTGOING, VERDICTS, MessageEvaluation, MessageGuardrail
 from classes.entity_outbound import FAILED, SENT
 from crypto.fields import ClientCipher, normalize_email
 from enums import PersonRole, PersonStatus, Status
@@ -41,7 +41,7 @@ HISTORY_RETENTION = timedelta(days=365)
 OF_A_BOT = (("contacts", Contact, "botId"), ("phones", ChatbotPhone, "bot_id"), ("rules", Rule, "botId"),
             ("intents", Intent, "botId"), ("messages", ConversationMessage, "botId"),
             ("templates", MessageTemplate, "botId"), ("outbound", OutboundRequest, "botId"),
-            ("versions", BotVersion, "botId"), ("ratings", Rating, "botId"))
+            ("versions", BotVersion, "botId"), ("ratings", Rating, "botId"), ("guardrails", Guardrail, "botId"))
 
 
 @dataclass(frozen=True)
@@ -339,6 +339,33 @@ class TenantRepository:
             # Somebody else deleted it in the meantime.
             raise NotFound(rule.uuid)
 
+    # --- Guardrails (RF27, HIG-103) ----------------------------------------------------------------------------------
+
+    def list_guardrails(self, bot_id) -> list:
+        return list(self._own(Guardrail, botId=self.get_bot(bot_id).uuid).order_by("createdAt"))
+
+    def count_guardrails(self, bot_id) -> int:
+        return self._own(Guardrail, botId=self.get_bot(bot_id).uuid).count()
+
+    def add_guardrail(self, bot_id, guardrail: Guardrail) -> Guardrail:
+        return self._add_to_bot(bot_id, guardrail, "botId")
+
+    def get_guardrail(self, bot_id, guardrail_id) -> Guardrail:
+        guardrail = self._own(Guardrail, botId=self.get_bot(bot_id).uuid, uuid=as_uuid(guardrail_id)).first()
+        if guardrail is None:
+            raise NotFound(guardrail_id)
+        return guardrail
+
+    def set_guardrail(self, guardrail: Guardrail, topic: str, description: str, action: str,
+                      reply: str | None) -> Guardrail:
+        guardrail.topic, guardrail.description, guardrail.action, guardrail.reply = topic, description, action, reply
+        return self._save_own(guardrail)
+
+    def delete_guardrail(self, guardrail: Guardrail) -> None:
+        if not self._own(Guardrail, uuid=guardrail.uuid).delete():
+            # Somebody else deleted it in the meantime.
+            raise NotFound(guardrail.uuid)
+
     def set_persona(self, bot_id, name: str, role: str, tone: str, description: str) -> ChatBot:
         """The persona of the chatbot (RF23): its name, role, tone and description, the rest as it was."""
         bot_uuid = self.get_bot(bot_id).uuid
@@ -369,14 +396,15 @@ class TenantRepository:
     # --- Versions of the configuration (RF26, ADR-0035) -------------------------------------------------------------
 
     def bot_config(self, bot_id) -> dict:
-        """What a version keeps: the persona, the rules and the intents of the chatbot as they are now."""
+        """What a version keeps: the persona, the rules, the intents and the guardrails of the chatbot as they are now."""
         bot = self.get_bot(bot_id)
         intents = [intent for intent in self._own(Intent, botId=bot.uuid).order_by("createdAt")
                    if intent.status != Status.DIS.value]
         return {"persona": {"name": bot.name, "role": bot.role, "tone": bot.tone, "description": bot.description},
                 "rules": [{"uuid": str(rule.uuid), "rule": rule.rule} for rule in self.list_rules(bot.uuid)],
                 "intents": [{key: value for key, value in intent.intent_info().items() if key != "botId"}
-                            for intent in intents]}
+                            for intent in intents],
+                "guardrails": [guardrail.info() for guardrail in self.list_guardrails(bot.uuid)]}
 
     def add_version(self, bot_id, author: str, change: str, restored_from: int | None = None) -> BotVersion:
         """
@@ -411,8 +439,9 @@ class TenantRepository:
 
     def apply_config(self, bot_id, config: dict) -> None:
         """
-            Gives the chatbot the persona, rules and intents of `config`, a version's. Not in one transaction: what a
-            call that failed halfway left is put right by calling again. An intent left out is deleted, as DELETE does.
+            Gives the chatbot the persona, rules, intents and guardrails of `config`, a version's. Not in one
+            transaction: what a call that failed halfway left is put right by calling again. An intent left out is
+            deleted, as DELETE does. A version from before guardrails (HIG-103) had none.
         """
         bot_uuid = self.get_bot(bot_id).uuid
         persona = config["persona"]
@@ -421,6 +450,11 @@ class TenantRepository:
         for rule in config["rules"]:
             Rule(uuid=UUID(rule["uuid"]), clientId=self.client_id, botId=bot_uuid, rule=rule["rule"]).save(
                 force_insert=True)
+        self._own(Guardrail, botId=bot_uuid).delete()
+        for guardrail in config.get("guardrails", []):
+            Guardrail(uuid=UUID(guardrail["uuid"]), clientId=self.client_id, botId=bot_uuid, topic=guardrail["topic"],
+                      description=guardrail["description"], action=guardrail["action"],
+                      reply=guardrail.get("reply")).save(force_insert=True)
         kept = {UUID(intent["uuid"]) for intent in config["intents"]}
         now = datetime.now(timezone.utc)
         for intent in self._own(Intent, botId=bot_uuid, status__ne=Status.DIS.value):
@@ -659,7 +693,7 @@ class TenantRepository:
             botId=contact.botId, contactId=contact._uuid, direction=direction, messageId=message_id,
             channel=channel, sentAt=sent_at, text=self._cipher.encrypt("Message.text", text),
             attachments=list(attachments), intent=intent, inReplyTo=in_reply_to, origin=origin, sentBy=sent_by,
-            evaluation=MessageEvaluation(**evaluation) if evaluation else None, createdAt=now,
+            evaluation=self._evaluation(evaluation), createdAt=now,
             expiresAt=now + HISTORY_RETENTION)
         try:
             message.save(force_insert=True)
@@ -671,13 +705,24 @@ class TenantRepository:
             raise NotFound(contact._uuid)
         return True
 
+    @staticmethod
+    def _evaluation(evaluation: dict | None) -> MessageEvaluation | None:
+        if not evaluation:
+            return None
+        evaluation = dict(evaluation)
+        guardrail = evaluation.pop("guardrail", None)
+        return MessageEvaluation(**evaluation, guardrail=MessageGuardrail(**guardrail) if guardrail else None)
+
     def compliance(self, bot_uuid: UUID, since: datetime | None = None) -> dict:
         """
             The metrics of compliance of a chatbot (RF28, HIG-147): how many of its answers the evaluator approved,
             had rewritten or replaced, and the criteria and rules that failed in them. Counted over what the history
             keeps, 12 months at most, from `since` if given. Only identifiers and counts: no text is opened.
+            With the guardrails the messages ran into (HIG-103): the base of the platform by why, and each topic by
+            what it did.
         """
         filters = {"botId": bot_uuid, "direction": OUTGOING, "evaluation__exists": True}
+        guardrails = {"blocked": 0, "logged": 0, "platform": {}, "topics": {}}
         if since is not None:
             filters["sentAt__gte"] = since
         verdicts = dict.fromkeys(VERDICTS, 0)
@@ -688,6 +733,14 @@ class TenantRepository:
             if verdict not in verdicts:
                 continue
             verdicts[verdict] += 1
+            hit = evaluation.get("guardrail")
+            if hit:
+                guardrails["blocked" if hit.get("action") == "block" else "logged"] += 1
+                if hit.get("source") == "platform":
+                    guardrails["platform"][hit.get("reason")] = guardrails["platform"].get(hit.get("reason"), 0) + 1
+                else:
+                    counted = guardrails["topics"].setdefault(hit.get("topic"), {"block": 0, "log": 0})
+                    counted[hit.get("action")] = counted.get(hit.get("action"), 0) + 1
             criterion = evaluation.get("criterion") or "none"
             if verdict in ("rewritten", "replaced") and criterion != "none":
                 criteria[criterion] = criteria.get(criterion, 0) + 1
@@ -703,7 +756,7 @@ class TenantRepository:
         return {"answers": sum(verdicts.values()), "verdicts": verdicts,
                 "criteria": dict(sorted(criteria.items(), key=lambda item: (-item[1], item[0]))),
                 "rules": dict(sorted(rules.items(), key=lambda item: (-item[1], item[0]))),
-                "ratings": {**ratings, "answers": len(rated)}}
+                "ratings": {**ratings, "answers": len(rated)}, "guardrails": guardrails}
 
     # --- What the people of the client think of the answers (RF28, HIG-111) -------------------------------------------
 
@@ -766,7 +819,9 @@ class TenantRepository:
                                  evaluation__exists=True)
                        .order_by("-sentAt").only("messageId", "contactId", "sentAt", "evaluation")):
             ratings = scores.get(answer.messageId, {"up": 0, "down": 0})
-            flagged = answer.evaluation.verdict in ("rewritten", "replaced", "unevaluated") or ratings["down"] > 0
+            # A guardrail the message ran into marks it too, whether it blocked or only logged (HIG-103).
+            flagged = (answer.evaluation.verdict in ("rewritten", "replaced", "unevaluated") or ratings["down"] > 0
+                       or answer.evaluation.guardrail is not None)
             if (which == "unrated" and (ratings["up"] or ratings["down"])) or (which == "flagged" and not flagged):
                 continue
             found.append({"ref": self.ref_of(bot_uuid, OUTGOING, answer.messageId), "contactId": answer.contactId,

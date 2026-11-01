@@ -13,7 +13,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 import app as app_module
-from classes import ChatBot, ChatbotPhone, Contact, Intent, Rule
+from classes import ChatBot, ChatbotPhone, Contact, Guardrail, Intent, Rule
 from repository import TenantRepository
 
 INTENT = {"name": "check_order", "description": "Order status"}
@@ -24,6 +24,8 @@ BODIES = {
     ("POST", "/chat/{bot_id}/phones"): {"phoneNumber": "12025550101", "phoneId": "100000000000001"},
     ("POST", "/chat/{bot_id}/rules"): {"rules": ["Be kind"]},
     ("PUT", "/chat/{bot_id}/rules/{rule_id}"): {"rule": "Be brief"},
+    ("POST", "/chat/{bot_id}/guardrails"): {"topic": "Competidores", "description": "Otras tiendas.", "action": "block", "reply": "De eso no hablo."},
+    ("PUT", "/chat/{bot_id}/guardrails/{guardrail_id}"): {**{"topic": "Competidores", "description": "Otras tiendas.", "action": "block", "reply": "De eso no hablo."}, "action": "log"},
     ("PUT", "/chat/{bot_id}/persona"): {"name": "Other", "role": "Tech Support", "description": "Another persona",
                                         "tone": "brief"},
     ("POST", "/chat/{bot_id}/intents"): INTENT,
@@ -85,6 +87,8 @@ def stored(owner):
     bot = repo.add_bot(ChatBot(name="Bot", role="Sales Assistant", description="A test chatbot", tone="helpful"))
     repo.add_phone(bot.uuid, ChatbotPhone(phoneNumber="12025550101", phoneId="100000000000001"))
     repo.add_rules(bot.uuid, ["Be kind"])
+    repo.add_guardrail(bot.uuid, Guardrail(topic="Competidores", description="Otras tiendas.", action="block",
+                                           reply="De eso no hablo."))
     intent = repo.add_intent(bot.uuid, Intent(name="check_order", description="Order status"))
     contact = repo.add_contact(bot.uuid, Contact(firstName="Ana", waId="12025550143"))
     repo.add_version(bot.uuid, "test", "what it has")
@@ -94,14 +98,16 @@ def stored(owner):
 def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, contact_id):
     # The rule of the chatbot, if it has one: a chatbot that does not exist has none.
     rule = Rule.objects(botId=bot_id).first() if isinstance(bot_id, UUID) else None
+    guardrail = Guardrail.objects(botId=bot_id).first() if isinstance(bot_id, UUID) else None
     return http.request(method, path.format(bot_id=bot_id, intent_id=intent_id, contact_id=contact_id,
                                             template_id=TEMPLATE_ID, request_id=REQUEST_ID, version=1,
-                                            rule_id=rule.uuid if rule else uuid4()),
+                                            rule_id=rule.uuid if rule else uuid4(),
+                                            guardrail_id=guardrail.uuid if guardrail else uuid4()),
                         headers=caller.auth, json=BODIES.get((method, path)))
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 34 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 38 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.
