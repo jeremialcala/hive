@@ -263,12 +263,11 @@ async def ingest_notification(event: dict, trace: str | None = None, bot: ChatBo
                        "gateway.channel": event.get("channel"), "gateway.messages": len(event["messages"])})
         received_at = datetime.fromisoformat(event["receivedAt"])
         outcome = {"ingested": 0, "seen": 0, "failed": 0}
-        # The topics of the chatbot's own, once for the whole notification: its classifier reads them in each message.
-        guardrails = None
+        # The topics of the chatbot's own, read once for the whole notification and only if a message is new: its
+        # classifier reads them in each message, and one Meta delivers again costs nothing more.
+        topics = {}
         for item in event["messages"]:
-            if guardrails is None:
-                guardrails = await asyncio.to_thread(_guardrails, repo, bot)
-            outcome[await _ingest_message(repo, bot, event, item, received_at, guardrails)] += 1
+            outcome[await _ingest_message(repo, bot, event, item, received_at, topics)] += 1
         return outcome
 
 
@@ -278,7 +277,7 @@ def _guardrails(repo: TenantRepository, bot: ChatBot) -> list[dict]:
 
 
 async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, item: dict, received_at,
-                          guardrails: list[dict] = ()) -> str:
+                          topics: dict) -> str:
     """One message of the notification, in a span of its own. Says whether it was ingested, seen or failed."""
     with tracing.span("ingest.message", **{"gateway.bot_id": str(bot.uuid)}) as current:
         try:
@@ -287,7 +286,9 @@ async def _ingest_message(repo: TenantRepository, bot: ChatBot, event: dict, ite
                 return "seen"
             message = incoming(event["channel"], item)
             contact = await asyncio.to_thread(_identify, event["channel"], message, bot)
-            await _publish(event, item, contact, message, guardrails)
+            if "of" not in topics:
+                topics["of"] = await asyncio.to_thread(_guardrails, repo, bot)
+            await _publish(event, item, contact, message, topics["of"])
             current.set(**{"gateway.contact_id": str(contact._uuid)})
             text, attachments, sent_at = what_was_said(event["channel"], message.content)
             await asyncio.to_thread(repo.record_message, contact, INCOMING, item["messageId"], event["channel"],
