@@ -51,6 +51,14 @@ def get_webhook_bot(bot_id: str) -> ChatBot:
         raise database_unavailable(e) from None
 
 
+def current(bot: ChatBot) -> ChatBot:
+    """The chatbot as the database has it now, for what must not wait out the memory of the webhook."""
+    try:
+        return TenantRepository(bot.clientId).get_bot(bot.uuid)
+    except NotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HTTP_404_NOT_FOUND") from None
+
+
 def webhook_secrets(bot: ChatBot) -> BotSecrets:
     """
         What Meta's verification and signature are checked against, opened with the key of the client that
@@ -106,8 +114,11 @@ def verify(request: Request, bot_id, _bot: ChatBot = Depends(get_webhook_bot)):
     """The challenge Meta sends when the webhook is subscribed, answered only with the verification token."""
     log.info(f"Starting: {currentframe().f_code.co_name}")
     challenge = request.query_params.get(HUB_CHALLENGE)
+    # Against the token as it is now, not as the chatbot was kept a moment ago: one rotated stops working at once
+    # (HIG-104). A verification is rare: one more read is nothing.
     if (request.query_params.get(HUB_MODE) != SUBSCRIBE or not challenge
-            or not secrets_match(webhook_secrets(_bot).verify_token, request.query_params.get(HUB_VERIFY_TOKEN))):
+            or not secrets_match(webhook_secrets(current(_bot)).verify_token,
+                                 request.query_params.get(HUB_VERIFY_TOKEN))):
         log.warning(f"Rejected webhook verification for chatbot {_bot.uuid}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HTTP_403_FORBIDDEN")
 

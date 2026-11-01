@@ -975,7 +975,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.16.1
+  version: 0.16.1+develop
 openapi: 3.1.0
 paths:
   /audit:
@@ -2508,6 +2508,43 @@ paths:
       summary: Get Chatbot Tools
       tags:
       - Intents
+  /chat/{bot_id}/verify-token:
+    post:
+      description: 'Rotates the verifyToken of a chatbot (RF25): Hive makes a new random one, and the one before
+        stops working at
+
+        once. What Meta already subscribed keeps receiving: Meta only sends it to verify a subscription, so the
+        new one
+
+        goes into the Meta app the next time it is verified. The answer is the only place it is given. For the
+
+        cliente-admin and the machine credential; the cliente-analista does not see it (D6).'
+      operationId: rotate_verify_token_chat__bot_id__verify_token_post
+      parameters:
+      - in: path
+        name: bot_id
+        required: true
+        schema:
+          title: Bot Id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseData'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security:
+      - OAuth2: []
+      summary: Rotate Verify Token
+      tags:
+      - Chat
   /chat/{bot_id}/versions:
     get:
       description: 'The versions of the chatbot''s configuration, the newest first (RF26): who changed it, how and

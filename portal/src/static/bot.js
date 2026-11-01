@@ -196,10 +196,49 @@ function Credential({ botId, field, label, help, loaded, admin, onSaved }) {
     </div>`;
 }
 
+// Rotating the verifyToken (RF25, HIG-104): a new random one, and the one before stops working at once. What Meta
+// already subscribed keeps receiving: it only sends the token when it verifies a subscription.
+function VerifyToken({ botId, admin, token, onRotated }) {
+  const [confirming, setConfirming] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function rotate() {
+    setRotating(true);
+    setError(null);
+    const answer = await api("POST", `chat/${botId}/verify-token`);
+    setRotating(false);
+    setConfirming(false);
+    if (answer.status === 200) onRotated(answer.data.verifyToken);
+    else setError(explain(answer));
+  }
+
+  return html`
+    <div class="pwa-divided">
+      <h2 class="pwa-subtitle">Token de verificación</h2>
+      <p class="pwa-muted">Meta lo pide al suscribir el webhook. Solo lo ve el cliente-admin.</p>
+      <${CodeSnippet} title="verifyToken" variants=${[{ lang: "text", label: "Texto", code: token }]} />
+      ${admin && (confirming ? html`
+        <p class="pwa-notice">El token actual deja de valer al momento. Lo que Meta ya tiene suscrito sigue recibiendo
+          mensajes; el nuevo se pone en la app de Meta la próxima vez que verifiques el webhook.</p>
+        <span class="pwa-row-actions">
+          <${Button} variant="ghost" size="sm" onClick=${() => setConfirming(false)}>No rotar<//>
+          <${Button} variant="danger" size="sm" icon="key" disabled=${rotating} onClick=${rotate}>Rotar ahora<//>
+        </span>` : html`<span class="pwa-row-actions">
+          <${Button} variant="secondary" size="sm" icon="key" onClick=${() => setConfirming(true)}>Rotar verifyToken<//>
+        </span>`)}
+      ${error && html`<p class="pwa-error" role="alert">${error}</p>`}
+      <${CodeSnippet} title="Rotarlo desde una integración" variants=${[{ lang: "bash", label: "cURL",
+        code: curl("POST", `chat/${botId}/verify-token`) }]} />
+    </div>`;
+}
+
 function Credentials({ botId, admin, bot, onSaved }) {
   const loaded = bot.credentials || {};
   const [waba, setWaba] = useState("");
   const [wabaError, setWabaError] = useState(null);
+  // The value a rotation answered with, until the card is read again.
+  const [rotated, setRotated] = useState(null);
 
   async function saveWaba() {
     const answer = await api("PUT", `chat/${botId}/credentials`, { wabaId: waba });
@@ -223,12 +262,8 @@ function Credentials({ botId, admin, bot, onSaved }) {
               help="La cuenta de WhatsApp Business de las plantillas. No es un secreto." onChange=${(event) => setWaba(event.target.value)} />
           ${admin && html`<${Button} variant="secondary" disabled=${!waba} onClick=${saveWaba}>Guardar<//>`}
         </div>
-        ${bot.verifyToken && html`
-          <div class="pwa-divided">
-            <h2 class="pwa-subtitle">Token de verificación</h2>
-            <p class="pwa-muted">Meta lo pide una vez, al suscribir el webhook. Solo lo ve el cliente-admin.</p>
-            <${CodeSnippet} title="verifyToken" variants=${[{ lang: "text", label: "Texto", code: bot.verifyToken }]} />
-          </div>`}
+        ${(rotated || bot.verifyToken) && html`<${VerifyToken} botId=${botId} admin=${admin}
+            token=${rotated || bot.verifyToken} onRotated=${(token) => { setRotated(token); onSaved(); }} />`}
       </div>
       <aside class="pwa-aside">
         <${CodeSnippet} title="URL del webhook" variants=${[{ lang: "text", label: "URL", code: `${WEBHOOK}/${botId}` }]} />
