@@ -7,6 +7,33 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-01
+
+### Añadido
+- **La auditoría del cliente** (HIG-95, RF18, RS14). Las decisiones son de Jeremi del 2026-11-01. La pantalla de la PWA
+  es HIG-152.
+  - **Qué guarda:** una entrada por petición a la API de gestión:
+    - toda petición que cambia algo, con su resultado: hecha, denegada (`403`) o fallida;
+    - las lecturas que abren datos personales: la conversación de un contacto, su exportación y la búsqueda de
+      contactos;
+    - lo que lee el motor con las claves del cliente, con el worker que lo leyó.
+  - **Qué lleva cada entrada:** quién (persona, credencial de máquina, motor u operador), la ruta por su nombre y su
+    plantilla, los ids de su dirección, la categoría (configuración, personas, claves, envíos, datos y motor), la
+    hora en UTC y el resultado. Nunca un cuerpo, un texto, un número ni un nombre; un parámetro de la dirección que no
+    es un id se guarda como `?`.
+  - **Cómo se escribe:** un middleware de la API la escribe después de enviar la respuesta, así que nadie la espera,
+    y el motor tampoco. Una entrada que no se puede escribir queda en el log, sin sus recursos. Un `429` no deja
+    entrada, para que una avalancha no la llene.
+  - **Dónde vive:** en la colección `audit`, que caduca a los 12 meses y se borra con el cliente. Al borrar un
+    contacto o un bot, sus ids se quedan en la auditoría hasta caducar, sin nada que los enlace ya con una persona.
+  - **`GET /audit`:** la auditoría del cliente, de la más nueva a la más vieja, por páginas (hasta 200). Filtra por
+    `since`, `until`, `category`, `actor`, `action`, `resource` y `result`. Con `format=csv` da lo que coincide, como
+    mucho las 50.000 entradas más nuevas; `X-Audit-Truncated` avisa si había más. Sin ese tope, un año de lecturas del
+    motor no cabría en la memoria del gateway.
+    Es para el `cliente-admin` y la credencial de máquina del cliente; el `cliente-analista` y el motor reciben `403`.
+  - **La matriz rol × acción** (1.13.0), la clasificación de datos (0.6.0) y el PRD (0.19.0) están al día.
+  - **Pruebas:** `tests/unit/test_audit.py`, 18.
+
 ## [0.15.0] - 2026-11-01
 
 ### Añadido
@@ -1548,7 +1575,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/jeremialcala/hive/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jeremialcala/hive/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jeremialcala/hive/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/jeremialcala/hive/compare/v0.13.0...v0.13.1

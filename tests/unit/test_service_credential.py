@@ -153,10 +153,13 @@ def engine(acme):
 
 
 def dump() -> str:
-    """Everything in the database but the tokens already used, as text."""
+    """
+        Everything in the database but the tokens already used and the audit, as text: what the engine is denied
+        leaves its entry there, and only there (HIG-95).
+    """
     database = mongoengine.get_db()
     return json.dumps({name: list(database[name].find({})) for name in sorted(database.list_collection_names())
-                       if name != "seen_token"}, default=str, sort_keys=True)
+                       if name not in ("seen_token", "audit")}, default=str, sort_keys=True)
 
 
 # --- What the engine gets -----------------------------------------------------------------------------------------
@@ -322,7 +325,7 @@ def test_the_engine_reaches_no_other_route(http, acme, operator, engine, bot, me
 
 
 def test_every_route_is_either_for_the_engine_or_closed_to_it():
-    assert len(NOT_FOR_THE_ENGINE) == 54
+    assert len(NOT_FOR_THE_ENGINE) == 55
     assert sorted(FOR_THE_ENGINE + NOT_FOR_THE_ENGINE) == ROUTES
 
 

@@ -12,8 +12,8 @@ from uuid import UUID
 from mongoengine import Q
 from mongoengine.errors import NotUniqueError, SaveConditionError
 
-from classes import (BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage, Guardrail,
-                     Intent, MessageTemplate, OutboundRequest, Rating, Rule)
+from classes import (AuditEntry, BotVersion, ChatBot, ChatbotPhone, Client, ClientUser, Contact, ConversationMessage,
+                     Guardrail, Intent, MessageTemplate, OutboundRequest, Rating, Rule)
 from classes.entity_contact import Consent
 from classes.entity_conversation_message import INCOMING, OUTGOING, VERDICTS, MessageEvaluation, MessageGuardrail
 from classes.entity_outbound import FAILED, SENT
@@ -195,7 +195,29 @@ class TenantRepository:
             deleted[name] = self._own(document).delete()
         # The people of the client: nobody gets in as one of them any more.
         deleted["people"] = self._own(ClientUser).delete()
+        # Its audit goes with it (decision of Jeremi of 2026-11-01): nothing of the client stays in Hive.
+        deleted["audit"] = self._own(AuditEntry).delete()
         return deleted
+
+    def record_audit(self, entry: AuditEntry) -> AuditEntry:
+        """Writes one entry of the client's audit (RF18, HIG-95): only of this client, and only once."""
+        if entry.clientId != self.client_id:
+            raise NotFound(type(entry).__name__)
+        entry.save(force_insert=True)
+        return entry
+
+    def audit(self, since: datetime | None, until: datetime | None, category: str | None, actor: str | None,
+              action: str | None, resource: str | None, result: str | None, offset: int = 0,
+              limit: int | None = 50) -> tuple:
+        """How many entries of the client's audit match, and a page of them, the newest first (RF18, HIG-95)."""
+        filters = {key: value for key, value in (("at__gte", since), ("at__lt", until), ("category", category),
+                                                 ("actor", actor), ("action", action), ("result", result))
+                   if value is not None}
+        if resource is not None:
+            filters["ids"] = resource
+        found = self._own(AuditEntry, **filters).order_by("-at")
+        page = found.skip(offset)
+        return found.count(), list(page.limit(limit) if limit is not None else page)
 
     def erase_contacts(self, bot_uuid: UUID, contacts: list) -> dict:
         """The contacts first, then their history: from then on no new message is stored for them."""

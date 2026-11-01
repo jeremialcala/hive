@@ -17,6 +17,7 @@ from .entity_intent import Intent, Action, ApiCall, ActionParameter
 from .entity_bot_version import BotVersion
 from .entity_rating import Rating
 from .entity_guardrail import Guardrail
+from .entity_audit import AuditEntry
 
 from .dto_client_request import ClientRequest, OwnedKeyRequest, ServiceKeyRequest, SigningKeyRequest
 from .dto_bot_credentials import BotCredentialsRequest
