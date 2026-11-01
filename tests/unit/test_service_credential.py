@@ -180,7 +180,8 @@ def test_the_engine_gets_the_rest_of_what_it_answers_with(http, engine, bot):
     data = dict(rules.json()["data"])
     rule_list = data.pop("ruleList")
     # The topics of its own the classifier keeps the chatbot away from (HIG-103): none here.
-    assert data.pop("guardrails") == []
+    guardrails = data.pop("guardrails")
+    assert guardrails == []
     assert [rule["rule"] for rule in rule_list] == ["Be kind"]
     assert data == {"name": "Mine", "role": "Sales Assistant", "tone": "helpful", "description": "A test chatbot",
                     "rules": ["Be kind"], "version": 3}
