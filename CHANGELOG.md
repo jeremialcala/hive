@@ -7,6 +7,24 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Rotar el `verifyToken` de un bot** (HIG-104, RF25).
+  - **`POST /chat/{bot_id}/verify-token`:** Hive genera un valor nuevo y aleatorio (`secrets.token_urlsafe(32)`) y lo
+    guarda cifrado con la clave del cliente, como las demás credenciales. El anterior deja de valer al momento. La
+    respuesta es el único sitio donde aparece el valor nuevo, y no se guarda en caché (`no-store`).
+  - **En el webhook también:** la verificación de Meta compara contra el valor que tiene la base en ese momento, no
+    contra el bot que el webhook guarda 30 s en memoria. La verificación es rara, así que la lectura de más no se
+    nota.
+  - **Lo ya suscrito sigue recibiendo:** Meta solo manda el token al verificar una suscripción. El nuevo se pone en
+    la app de Meta la próxima vez que se verifique.
+  - **Quién:** el `cliente-admin` y la credencial de máquina del cliente. El `cliente-analista` recibe `403` y no ve
+    el valor (D6), y el motor tampoco.
+  - **La PWA:** la pestaña «Credenciales de Meta» tiene «Rotar verifyToken», con confirmación, el valor nuevo y su
+    cURL.
+  - **La auditoría** guarda la rotación, sin el valor, en la categoría «claves», como la carga de credenciales de
+    Meta, que antes iba en «configuración».
+  - **Pruebas:** `tests/unit/test_verify_token.py`, 7.
+
 ## [0.16.1] - 2026-11-01
 
 ### Seguridad

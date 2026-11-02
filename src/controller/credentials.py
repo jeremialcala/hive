@@ -17,7 +17,7 @@ from repository import NotFound, TenantRepository
 from .answers import answer
 from .bot_state import bot_accepted
 
-__all__ = ["ctr_set_bot_credentials", "ctr_get_bot_tokens"]
+__all__ = ["ctr_set_bot_credentials", "ctr_get_bot_tokens", "ctr_rotate_verify_token"]
 
 settings = Settings()
 log = logging.getLogger(settings.environment)
@@ -38,6 +38,26 @@ def ctr_set_bot_credentials(repo: TenantRepository, bot_id: str, request: BotCre
         # A new token: a chatbot in ERR is given its chance again (HIG-74). If Meta turns it away too, it goes back.
         bot_accepted(repo, bot.uuid, "the client loaded a new token", bot.status)
     return answer(status.HTTP_200_OK, data={"uuid": str(bot.uuid), "credentials": bot.chatbot_info()["credentials"]})
+
+
+def ctr_rotate_verify_token(repo: TenantRepository, bot_id: str, actor: str) -> JSONResponse:
+    """
+        A new verifyToken (RF25, HIG-104). What Meta already subscribed keeps receiving: Meta only sends the token when
+        it verifies a subscription. The answer is the only place the new value is given, and it is not cached.
+    """
+    try:
+        token = repo.rotate_verify_token(bot_id)
+    except NotFound:
+        return answer(status.HTTP_404_NOT_FOUND, "This chatbot was not found")
+    except KeyServiceUnavailable as e:
+        log.error(f"Key service unavailable: {e}")
+        return answer(status.HTTP_503_SERVICE_UNAVAILABLE, "SERVICE UNAVAILABLE")
+    bot = repo.get_bot(bot_id)
+    # Who and which chatbot, never the value.
+    log.warning(f"Audit: {actor} rotated the verifyToken of chatbot {bot.uuid}")
+    response = answer(status.HTTP_200_OK, data={"uuid": str(bot.uuid), "verifyToken": token})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def ctr_get_bot_tokens(repo: TenantRepository, bot_id: str, engine: Principal) -> JSONResponse:

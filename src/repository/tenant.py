@@ -6,6 +6,7 @@
 """
 import hashlib
 from dataclasses import dataclass
+from secrets import token_urlsafe
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -124,6 +125,18 @@ class TenantRepository:
         # The webhook checks signatures against the secrets it was kept with.
         kept_bots.forget(saved.uuid)
         return saved
+
+    def rotate_verify_token(self, bot_id) -> str:
+        """
+            A new verifyToken for the chatbot, random, stored encrypted as the other secrets (RF25, HIG-104): the one
+            before stops working at once. Returns the new value, which only the answer of the rotation carries.
+        """
+        bot = self.get_bot(bot_id)
+        token = token_urlsafe(32)
+        bot.verifyToken = self._cipher.encrypt("ChatBot.verifyToken", token)
+        saved = self._save_own(bot)
+        kept_bots.forget(saved.uuid)
+        return token
 
     def move_bot(self, bot_uuid: UUID, start: tuple[Status, ...], to: Status) -> bool:
         """

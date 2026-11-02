@@ -49,7 +49,8 @@ READS_BY_POST = {("POST", "/contacts/search")}
 SAFE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 ROUTES_OF = {
     "people": ("/people",),
-    "keys": ("/keys", "/clients/{client_id}/keys", "/clients/{client_id}/service-keys"),
+    "keys": ("/keys", "/clients/{client_id}/keys", "/clients/{client_id}/service-keys",
+             "/chat/{bot_id}/credentials", "/chat/{bot_id}/verify-token"),
 }
 DATA = {("DELETE", "/bot/{bot_id}"), ("DELETE", "/chat/{bot_id}/contacts/{contact_id}"),
         ("DELETE", "/clients/{client_id}"), ("PUT", "/chat/{bot_id}/contacts/{contact_id}/consent"),
