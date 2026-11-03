@@ -1,10 +1,10 @@
 # Matriz rol × acción de Hive
 
 * **Estado:** accepted
-* **Fecha:** 2026-11-01
+* **Fecha:** 2026-11-03
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 02-design
-* **Versión:** 1.14.0
+* **Versión:** 1.14.1
 * **Gate:** 1
 * **ADRs relacionadas:** [ADR-0012](../00-project/adr/0012-aislamiento-por-cliente-en-la-capa-de-datos.md) (aislamiento por cliente), [ADR-0016](../00-project/adr/0016-credencial-del-motor-por-cliente.md) (credencial del motor por cliente), [ADR-0022](../00-project/adr/0022-una-credencial-por-worker.md) (una credencial por worker), [ADR-0025](../00-project/adr/0025-oauth2-client-credentials-con-private-key-jwt.md) (OAuth 2.0), [ADR-0027](../00-project/adr/0027-el-mapa-de-estilo-de-hive.md) (las superficies)
 * **Requisitos origen:** [PRD del MVP](../01-requirements/mvp-baas-gateway.md): RF01, RF02, RF05, RF06, RF08–RF10, RF15; RS01, RS06, RS14, RS18
@@ -164,7 +164,7 @@ siempre el notificador, con límites por bot y por cliente (RS27); el camino lo 
 | Acción | operador | cliente-admin | cliente-analista | motor | Fuente | Contrato |
 |---|---|---|---|---|---|---|
 | Invitar usuarios al cliente; darlos de alta, de baja o bloquearlos; cambiar su rol | — | ✅ | ⛔ | — | RF16 (D1, D2), [ADR-0029](../00-project/adr/0029-autenticacion-de-personas.md) | ✅ `POST`, `GET /people`, `PUT`, `DELETE /people/{person_id}` |
-| Ver la auditoría de su cliente | ✅ nuevo, de la plataforma | ✅ nuevo, lectura | ⛔ nuevo | — | RF18, RF20; RS14, RS25 (D5, D9) | ✅ `GET /audit` para el cliente (HIG-95); la de la plataforma, para el operador, es RF20 (HIG-109) |
+| Ver la auditoría de su cliente | ✅ nuevo, de la plataforma | ✅ nuevo, lectura | ⛔ nuevo | — | RF18, RF20; RS14, RS25 (D5, D9) | ✅ `GET /audit` para el cliente (HIG-95), y su pantalla en la PWA, sin entrada en el menú del `cliente-analista` (HIG-152); la de la plataforma, para el operador, es RF20 (HIG-109) |
 | Definir guardrails y la acción ante una violación, sobre la base de la plataforma | — | ✅ nuevo | ⛔ nuevo, los ve | — | RF27, RS26 (D9) | ✅ `GET`, `POST /chat/{bot_id}/guardrails`, `PUT`, `DELETE /chat/{bot_id}/guardrails/{guardrail_id}` (HIG-103); la base no tiene ruta |
 | Calificar respuestas, leyendo la conversación del contacto, y ver métricas de cumplimiento | — | ✅ nuevo | ✅ nuevo | — | RF28 (D9; el evaluador de la ADR-0008 del motor) | ✅ `PUT /chat/{bot_id}/contacts/{contact_id}/ratings` (solo personas: una credencial de máquina recibe `403`) `GET /chat/{bot_id}/compliance` (HIG-111) y `GET /chat/{bot_id}/compliance/answers` (HIG-149) |
 | Ver trazas y eventos del bus, sin su contenido | ✅ nuevo | ⛔ | ⛔ | — | RF21, RS19 (ADR-0027, D9) | ⚠️ (hoy, en Tempo) |

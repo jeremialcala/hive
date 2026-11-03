@@ -298,6 +298,23 @@ def test_what_hive_api_answers_comes_back_as_it_is(http):
     assert answer.status_code == 429 and answer.headers["retry-after"] == "7"
 
 
+def test_the_audit_as_csv_comes_back_as_a_file_with_its_count_and_nothing_else(http):
+    sign_in(http)
+    FakeHive.answer = (200, b"at,actor\r\n2026-11-03T12:00:00+00:00,person p-1\r\n")
+    FakeHive.headers = {"Content-Type": "text/csv; charset=utf-8", "X-Audit-Total": "60000",
+                        "X-Audit-Truncated": "true", "X-Something-Else": "no",
+                        "Content-Disposition": 'attachment; filename="auditoria.csv"'}
+
+    answer = http.get("/api/audit", params={"format": "csv", "category": "people"})
+
+    assert FakeHive.seen[-1]["query"] == "format=csv&category=people"
+    assert answer.status_code == 200 and answer.content.startswith(b"at,actor")
+    assert answer.headers["content-type"] == "text/csv; charset=utf-8"
+    assert answer.headers["content-disposition"] == 'attachment; filename="auditoria.csv"'
+    assert (answer.headers["x-audit-total"], answer.headers["x-audit-truncated"]) == ("60000", "true")
+    assert "x-something-else" not in answer.headers and answer.headers["cache-control"] == "no-store"
+
+
 # --- When it ends -------------------------------------------------------------------------------------------------
 
 def test_a_session_unused_for_half_an_hour_leads_back_to_the_login(http, clock):

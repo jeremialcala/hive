@@ -7,6 +7,28 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-03
+
+### Añadido
+- **La pantalla «Auditoría» de la PWA** (HIG-152, RF18), sobre `GET /audit` (HIG-95).
+  - **Qué muestra:** cada entrada con su fecha en UTC, el actor, la acción en mono, los recursos por su id y el
+    resultado (OK, denegado o fallido). Una persona sale con su correo, que la PWA saca de `GET /people`; la
+    auditoría solo guarda su id. Una credencial de máquina sale con su `kid`, y el motor con su worker.
+  - **Cómo se busca:** pestañas por categoría (configuración, personas, claves, envíos, datos y borrados, y motor), y
+    filtros por fechas UTC, actor, acción, recurso (un UUID, comprobado antes de pedir) y resultado. Va en páginas
+    de 50.
+  - **Exportar CSV:** lo que coincide con los filtros, como un fichero. Si la API lo cortó en 50.000 entradas, la PWA
+    lo dice y pide acotar las fechas.
+  - **A la vista:** «Se guarda 12 meses» y que solo guarda identificadores.
+  - **Solo para el `cliente-admin`:** el `cliente-analista` no tiene la entrada en el menú, y la dirección
+    `#/auditoria` le lleva a los bots.
+  - **El portal** deja pasar de la respuesta de hive-api `Content-Disposition`, `X-Audit-Total` y
+    `X-Audit-Truncated`, para el CSV. Las demás cabeceras siguen sin pasar.
+  - **Pruebas:**
+    - una del portal para las cabeceras del CSV;
+    - una de punta a punta, que cubre los dos roles, las categorías, el filtro por recurso, el CSV y el contraste de
+      los resultados en los dos temas.
+
 ## [0.17.0] - 2026-11-03
 
 ### Añadido
@@ -1609,7 +1631,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/jeremialcala/hive/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jeremialcala/hive/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/jeremialcala/hive/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/jeremialcala/hive/compare/v0.15.0...v0.16.0
