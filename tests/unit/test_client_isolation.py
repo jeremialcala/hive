@@ -107,7 +107,7 @@ def call(http: TestClient, caller, method: str, path: str, bot_id, intent_id, co
 
 
 def test_every_route_of_a_chatbot_is_covered():
-    assert len(BOT_ROUTES) == 38 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
+    assert len(BOT_ROUTES) == 39 and ENGINE_ONLY <= set(ROUTES) and IN_META <= set(BOT_ROUTES)
     # The search of contacts and the deletion of a client have their own tests in test_export_and_delete, and
     # the keys of the response engine in test_service_credential.
     # The people of the client have their own tests in test_invitations, the isolation between clients included.

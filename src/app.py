@@ -47,7 +47,7 @@ from controller import (ctr_add_own_signing_key, ctr_add_phone_chatbot, ctr_add_
                         announce, ctr_get_version, ctr_list_versions, ctr_restore_version, ctr_change_rule,
                         ctr_delete_rule, ctr_set_persona, ctr_own_client, ctr_rate, ctr_compliance, ctr_answers,
                         ctr_list_guardrails, ctr_add_guardrail, ctr_change_guardrail, ctr_delete_guardrail,
-                        ctr_audit, entry_for, write_entry)
+                        ctr_audit, entry_for, write_entry, ctr_rotate_verify_token)
 from enums import Role, Worker
 from repository import TenantRepository, erasures
 from service import METHODS, build, log, settings
@@ -513,6 +513,18 @@ def set_chatbot_credentials(bot_id: str, credentials: BotCredentialsRequest,
         Secret. The ones sent replace the stored ones. The answer says which are loaded, never their values.
     """
     return ctr_set_bot_credentials(repo, bot_id, credentials)
+
+
+@app.post(path="/chat/{bot_id}/verify-token", tags=["Chat"], response_model=ResponseData)
+def rotate_verify_token(bot_id: str, repo: TenantRepository = Depends(get_repository),
+                        principal: Principal = Depends(get_principal)):
+    """
+        Rotates the verifyToken of a chatbot (RF25): Hive makes a new random one, and the one before stops working at
+        once. What Meta already subscribed keeps receiving: Meta only sends it to verify a subscription, so the new one
+        goes into the Meta app the next time it is verified. The answer is the only place it is given. For the
+        cliente-admin and the machine credential; the cliente-analista does not see it (D6).
+    """
+    return ctr_rotate_verify_token(repo, bot_id, principal.actor)
 
 
 @app.get(path="/chat/{bot_id}/contacts", tags=["Contacts"], response_model=ResponseData)
