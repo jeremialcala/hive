@@ -16,6 +16,7 @@
     In every page: no violation of the portal's Content-Security-Policy, no error of the page, no request that fails.
 """
 import re
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import requests
@@ -398,5 +399,100 @@ def test_a_cliente_admin_changes_the_identity_and_it_is_a_version_the_analyst_on
     expect(page.get_by_role("button", name=f"Volver a v{before}")).to_have_count(0)
     page.get_by_role("tab", name="Credenciales de Meta").click()
     expect(page.get_by_role("button", name="Reemplazar")).to_have_count(0)
+    problems = analyst.close()
+    assert problems == []
+
+
+# --- The audit of the client (HIG-152) -------------------------------------------------------------------------------
+
+# The ink of an element and the colour under it, with a translucent ground laid over the first opaque one below.
+INK_AND_GROUND = """(element) => {
+    const rgba = (color) => color.match(/[0-9.]+/g).map(Number);
+    const opaque = (from) => {
+        for (let each = from; each; each = each.parentElement) {
+            const color = rgba(getComputedStyle(each).backgroundColor);
+            if (color.length < 4 || color[3] === 1) return color.slice(0, 3);
+        }
+        return [255, 255, 255];
+    };
+    const own = rgba(getComputedStyle(element).backgroundColor), under = opaque(element.parentElement);
+    const alpha = own.length < 4 ? 1 : own[3];
+    return [rgba(getComputedStyle(element).color).slice(0, 3),
+            own.slice(0, 3).map((value, at) => value * alpha + under[at] * (1 - alpha))];
+}"""
+
+
+def audit_page(page, act, **wanted):
+    """Does what changes the page of the audit, and waits for the answer of GET /audit that comes of it: until then
+    the table on the screen is the one before."""
+    def asked(response):
+        query = parse_qs(urlsplit(response.url).query)
+        return "/api/audit" in response.url and all(query.get(name) == [value] for name, value in wanted.items())
+    with page.expect_response(asked):
+        act()
+
+
+def test_a_cliente_admin_reads_the_audit_by_category_and_resource_and_takes_it_as_csv(client, people, browser):
+    bot = client["bot"]
+    admin = Watched(browser)
+    page = admin.page
+    admin.sign_in(ADMIN)
+    nav = page.get_by_role("navigation", name="Área del cliente")
+    audit_page(page, nav.get_by_role("link", name="Auditoría").click)
+
+    expect(page.get_by_role("heading", name="Auditoría")).to_be_visible()
+    expect(page.get_by_text("Se guarda 12 meses")).to_be_visible()
+    # The sends of the first tests, by the people of the client, who are named by their email.
+    audit_page(page, page.get_by_role("tab", name="Envíos", exact=True).click, category="sends")
+    expect(page.get_by_role("cell", name="send_message").first).to_be_visible()
+    expect(page.locator("tbody").get_by_text(ADMIN).first).to_be_visible()
+    actions = {text.strip() for text in page.locator("tbody td:nth-child(3)").all_inner_texts()}
+    assert actions == {"send_message"}
+    # The invitations, by the client's machine credential.
+    audit_page(page, page.get_by_role("tab", name="Personas", exact=True).click, category="people")
+    expect(page.get_by_role("cell", name="invite_person").first).to_be_visible()
+    expect(page.locator("tbody").get_by_text("Credencial de máquina").first).to_be_visible()
+
+    # By a resource: the chatbot, in every category.
+    audit_page(page, page.get_by_role("tab", name="Todo", exact=True).click)
+    page.locator("#audit-resource").fill("no-es-un-id")
+    page.get_by_role("button", name="Filtrar").click()
+    expect(page.get_by_text("Es el id de un recurso: un UUID.")).to_be_visible()
+    page.locator("#audit-resource").fill(bot)
+    audit_page(page, page.get_by_role("button", name="Filtrar").click, resource=bot)
+    expect(page.get_by_text("Es el id de un recurso: un UUID.")).to_have_count(0)
+    expect(page.get_by_role("cell", name="send_message").first).to_be_visible()
+    resources = page.locator("tbody td:nth-child(4)").all_inner_texts()
+    assert resources and all(f"bot {bot[:8]}" in each for each in resources)
+
+    # And what matches, as CSV: the same filter, as a file.
+    with page.expect_download() as download:
+        page.get_by_role("button", name="Exportar CSV").click()
+    with open(download.value.path(), encoding="utf-8") as saved:
+        rows = saved.read().splitlines()
+    assert rows[0].startswith("at,actor,actorKind,worker,action")
+    assert len(rows) > 1 and all(f"bot_id={bot}" in row for row in rows[1:])
+    expect(page.get_by_text(re.compile(r"^Descargado: \d+ entradas?\.$"))).to_be_visible()
+
+    # Its results can be read in both themes.
+    for theme in ("dark", "light"):
+        if theme == "light":
+            page.locator(".pwa-sidebar").get_by_role("button", name="Tema claro").click()
+            page.wait_for_timeout(400)  # the colours of the components change in 120 ms
+        for badge in page.locator("tbody .hv-badge").all()[:5]:
+            ink, under = badge.evaluate(INK_AND_GROUND)
+            assert contrast(ink, under) >= 4.5, (theme, badge.inner_text())
+
+    problems = admin.close()
+    assert problems == []
+
+    # The analyst has no audit: no entry in the side bar, and its address leads to the bots.
+    analyst = Watched(browser)
+    page = analyst.page
+    analyst.sign_in(ANALYST)
+    assert "Auditoría" not in sections(page)
+    page.goto(f"{PORTAL}/#/auditoria")
+    expect(page.get_by_role("heading", name="Bots")).to_be_visible()
+    expect(page.get_by_role("heading", name="Auditoría")).to_have_count(0)
     problems = analyst.close()
     assert problems == []

@@ -26,7 +26,8 @@ ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token"
 # What of the PWA's request goes on to hive-api, and of hive-api's answer comes back. Nothing else: not the cookie,
 # not an Authorization of the browser's, not a Set-Cookie.
 REQUEST_HEADERS = ("accept", "content-type", "idempotency-key")
-ANSWER_HEADERS = ("content-type", "retry-after")
+# The audit as CSV (HIG-152) comes back as a file, with how many entries matched and whether it was cut.
+ANSWER_HEADERS = ("content-type", "retry-after", "content-disposition", "x-audit-total", "x-audit-truncated")
 
 
 class NoAccess(Exception):

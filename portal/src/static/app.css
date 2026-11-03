@@ -124,10 +124,20 @@ body {
 .pwa-main .hv-table-wrap, .pwa-card-table > div { overflow-x: auto; }
 .pwa-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .pwa-card-head.pwa-bare { padding: 0; border-bottom: 0; }
+/* The audit (HIG-152): its filters in three columns, the actor and the ids of a row, and its pages. */
+.pwa-audit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; align-items: end; }
+.pwa-audit-grid .pwa-label { margin-top: 0; }
+.pwa-audit-actor, .pwa-audit-ids { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pwa-audit-pages {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+.pwa-card-table > .pwa-error { margin: 12px 16px; }
 
 @media (max-width: 64rem) {
   .pwa-two, .pwa-two-wide { grid-template-columns: minmax(0, 1fr); }
   .pwa-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pwa-audit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 48rem) {
@@ -141,7 +151,7 @@ body {
   .pwa-phonebar-client { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pwa-tabbar { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; }
   .pwa-main { padding: 16px 16px 96px; }
-  .pwa-pair, .pwa-secret { grid-template-columns: minmax(0, 1fr); }
+  .pwa-pair, .pwa-secret, .pwa-audit-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .pwa-loading { padding: 48px; text-align: center; }

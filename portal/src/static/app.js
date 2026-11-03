@@ -3,6 +3,7 @@
 // No build: React 18, htm and the design system's components (window.Hive) come from the portal itself, so the CSP
 // stays 'self'. The role comes from the session: a cliente-analista sees no button that would only answer 403.
 import { session, signIn, api, explain } from "./api.js";
+import { Audit } from "./audit.js";
 import { BotCardPage, TABS } from "./bot.js";
 import { More, PageCall, PageHeader, Pending, Shell, applyTheme, go, isPending, lockup, savedTheme, sectionsFor } from "./shell.js";
 
@@ -53,6 +54,7 @@ function Screen({ where, who, client, admin, theme, onTheme }) {
     return where.bot ? html`<${BotCardPage} where=${where} admin=${admin} person=${who.person} client=${client} />`
       : html`<${Bots} client=${client} />`;
   }
+  if (where.section === "auditoria") return html`<${Audit} client=${client} />`;
   return isPending(where.section) ? html`<${Pending} client=${client} section=${where.section} />` : html`<${Bots} client=${client} />`;
 }
 

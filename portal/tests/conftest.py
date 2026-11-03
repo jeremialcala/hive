@@ -105,14 +105,17 @@ class FakeHive(BaseHTTPRequestHandler):
     lifetime: int = 600
     answer: tuple = (200, {"ok": True})
     tokens_refused: set = set()     # tokens the API answers 401 to, as after a restart of the portal
+    headers: dict = {}              # more headers of the answer
 
     def log_message(self, *_args):
         pass
 
     def _send(self, code, body, headers=None):
-        data = json.dumps(body).encode()
+        # Bytes go as they are, with the Content-Type of their headers: a CSV, for one.
+        data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        if not isinstance(body, bytes):
+            self.send_header("Content-Type", "application/json")
         self.send_header("Set-Cookie", "hive-api-cookie=never-to-the-browser")
         for name, value in (headers or {}).items():
             self.send_header(name, value)
@@ -141,7 +144,7 @@ class FakeHive(BaseHTTPRequestHandler):
         if token in FakeHive.tokens_refused:
             return self._send(401, {"code": 401})
         code, content = FakeHive.answer
-        return self._send(code, content, {"Retry-After": "7"} if code == 429 else None)
+        return self._send(code, content, {"Retry-After": "7", **FakeHive.headers} if code == 429 else FakeHive.headers)
 
     do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = _handle  # pylint: disable=invalid-name
 
@@ -159,4 +162,4 @@ def servers():
 def clean():
     FakeZitadel.codes, FakeZitadel.token_calls, FakeZitadel.fail = {}, [], None
     FakeHive.exchanges, FakeHive.seen, FakeHive.refuse, FakeHive.lifetime = [], [], None, 600
-    FakeHive.answer, FakeHive.tokens_refused = (200, {"ok": True}), set()
+    FakeHive.answer, FakeHive.tokens_refused, FakeHive.headers = (200, {"ok": True}), set(), {}
