@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-03
+
 ### Añadido
 - **Rotar el `verifyToken` de un bot** (HIG-104, RF25).
   - **`POST /chat/{bot_id}/verify-token`:** Hive genera un valor nuevo y aleatorio (`secrets.token_urlsafe(32)`) y lo
@@ -1607,7 +1609,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/jeremialcala/hive/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/jeremialcala/hive/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/jeremialcala/hive/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jeremialcala/hive/compare/v0.14.0...v0.15.0
