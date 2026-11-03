@@ -16,6 +16,7 @@
     In every page: no violation of the portal's Content-Security-Policy, no error of the page, no request that fails.
 """
 import re
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import requests
@@ -421,33 +422,44 @@ INK_AND_GROUND = """(element) => {
 }"""
 
 
+def audit_page(page, act, **wanted):
+    """Does what changes the page of the audit, and waits for the answer of GET /audit that comes of it: until then
+    the table on the screen is the one before."""
+    def asked(response):
+        query = parse_qs(urlsplit(response.url).query)
+        return "/api/audit" in response.url and all(query.get(name) == [value] for name, value in wanted.items())
+    with page.expect_response(asked):
+        act()
+
+
 def test_a_cliente_admin_reads_the_audit_by_category_and_resource_and_takes_it_as_csv(client, people, browser):
     bot = client["bot"]
     admin = Watched(browser)
     page = admin.page
     admin.sign_in(ADMIN)
-    page.get_by_role("navigation", name="Área del cliente").get_by_role("link", name="Auditoría").click()
+    nav = page.get_by_role("navigation", name="Área del cliente")
+    audit_page(page, nav.get_by_role("link", name="Auditoría").click)
 
     expect(page.get_by_role("heading", name="Auditoría")).to_be_visible()
     expect(page.get_by_text("Se guarda 12 meses")).to_be_visible()
     # The sends of the first tests, by the people of the client, who are named by their email.
-    page.get_by_role("tab", name="Envíos", exact=True).click()
+    audit_page(page, page.get_by_role("tab", name="Envíos", exact=True).click, category="sends")
     expect(page.get_by_role("cell", name="send_message").first).to_be_visible()
     expect(page.locator("tbody").get_by_text(ADMIN).first).to_be_visible()
     actions = {text.strip() for text in page.locator("tbody td:nth-child(3)").all_inner_texts()}
     assert actions == {"send_message"}
     # The invitations, by the client's machine credential.
-    page.get_by_role("tab", name="Personas", exact=True).click()
+    audit_page(page, page.get_by_role("tab", name="Personas", exact=True).click, category="people")
     expect(page.get_by_role("cell", name="invite_person").first).to_be_visible()
     expect(page.locator("tbody").get_by_text("Credencial de máquina").first).to_be_visible()
 
     # By a resource: the chatbot, in every category.
-    page.get_by_role("tab", name="Todo", exact=True).click()
+    audit_page(page, page.get_by_role("tab", name="Todo", exact=True).click)
     page.locator("#audit-resource").fill("no-es-un-id")
     page.get_by_role("button", name="Filtrar").click()
     expect(page.get_by_text("Es el id de un recurso: un UUID.")).to_be_visible()
     page.locator("#audit-resource").fill(bot)
-    page.get_by_role("button", name="Filtrar").click()
+    audit_page(page, page.get_by_role("button", name="Filtrar").click, resource=bot)
     expect(page.get_by_text("Es el id de un recurso: un UUID.")).to_have_count(0)
     expect(page.get_by_role("cell", name="send_message").first).to_be_visible()
     resources = page.locator("tbody td:nth-child(4)").all_inner_texts()
