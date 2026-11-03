@@ -67,6 +67,13 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
     - Gemma 4 E2B acierta el 84 %, con dos.
   - **Los casos y el script** están en `evaluacion/`, para medir otra vez al cambiar de modelo o de prompt.
 
+### Eliminado
+- **Los consumidores `MOTOR/notifier` y `MOTOR/coordinator-respuesta`** (HIG-148). Leían lo que proponía el de
+  respuesta, antes del evaluador. Desde el evaluador (HIG-146), el notificador y el coordinador leen lo aprobado
+  (`MOTOR/notifier-aprobada` y `MOTOR/coordinator-aprobada`), y nadie leía los de antes. Salen de Bifröst
+  (bifrost#13), de la configuración de NATS de las pruebas de integración y del contrato (`asyncapi-motor.yaml`
+  2.4.1).
+
 ### Corregido
 - **Un contacto nuevo tiene contexto desde el primer mensaje** (HIG-144). En la 0.10.0, el contexto sembrado de un
   historial vacío no recibía apuntes, así que el segundo mensaje volvía a preguntar al gateway.

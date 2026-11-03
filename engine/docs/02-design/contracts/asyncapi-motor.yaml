@@ -11,7 +11,7 @@
 asyncapi: 3.0.0
 info:
   title: Sobre interno del motor de respuestas
-  version: 2.4.0
+  version: 2.4.1
   description: >-
     Lo que se pasan los workers del motor entre sí. Ninguno guarda estado entre mensajes: todo lo que el siguiente
     necesita viaja en el sobre, y así cualquier réplica atiende cualquier mensaje. Los campos que vienen del gateway
@@ -64,8 +64,7 @@ channels:
     address: 'motor.respuesta.{particion}.{botId}.{contactId}'
     description: >-
       Lo que el de respuesta propone contestar. Lo lee el evaluador con el consumidor `MOTOR/evaluator`, un mensaje en
-      vuelo (HIG-146, ADR-0012). Hasta que se despliegue, lo leían el notificador (`MOTOR/notifier`) y el
-      coordinador (`MOTOR/coordinator-respuesta`).
+      vuelo (HIG-146, ADR-0012).
     parameters:
       particion:
         $ref: '#/components/parameters/particion'
