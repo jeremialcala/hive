@@ -178,7 +178,6 @@ const PENDING = {
   credenciales: { title: "Credenciales", text: "Las claves de firma de la credencial de máquina del cliente.",
     call: { method: "GET", route: "keys" } },
   integraciones: { title: "Integraciones", text: "Los servicios de terceros conectados a la cuenta del cliente." },
-  auditoria: { title: "Auditoría", text: "Lo que pasó en el cliente: quién cambió qué y cuándo." },
 };
 
 export function Pending({ client, section }) {
