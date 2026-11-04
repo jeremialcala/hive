@@ -50,4 +50,6 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     de un chatbot y el cifrado por cliente), en el workflow `mutation`, que informa y no bloquea.
     [La puntuación por módulo](../../docs/04-testing/mutation-testing.md): del 84,8 % al 98,8 % sobre 977
     mutantes, y todos los módulos por encima del 97 %. Sobreviven 12, cada uno con su motivo.
+  - **`request_limits.py`** (2026-11-04, HIG-155), que llegó mientras se medía: del 93,5 % de la pasada semanal al
+    97,6 %, con tres pruebas nuevas. Sobreviven 4, equivalentes. Con él, 1 154 mutantes y un 98,0 % en el CI.
   - **Falta:** el resto del gateway y el motor, y decidir si el workflow pasa a bloquear.

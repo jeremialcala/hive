@@ -1,10 +1,10 @@
 # Mutation testing de los módulos de seguridad
 
 * **Estado:** review
-* **Fecha:** 2026-10-30
+* **Fecha:** 2026-11-04
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.0.0
+* **Versión:** 1.1.0
 
 Si las pruebas de los módulos donde un fallo es un fallo de seguridad cazan un fallo de verdad (HIG-137, Gate 3). La
 cobertura dice qué líneas corren; esto dice si alguna prueba se entera cuando una de ellas cambia.
@@ -125,8 +125,18 @@ del motor. Están abajo.
 - **En la práctica:** están detectados, porque con ellos no arranca nada. Contándolos, el módulo tiene un 93,5 % antes
   y un 98,1 % después.
 
-**`src/auth/request_limits.py` no está en la tabla.** Llegó a `develop` con HIG-139 mientras se medía. Cae en
-`src/auth/*`, así que el workflow ya lo mide.
+**`src/auth/request_limits.py`, medido aparte** (HIG-155). Llegó a `develop` con HIG-139 mientras se medía lo de
+arriba.
+- **La primera medida:** la pasada semanal del workflow, el 2026-11-02 sobre `main`. Daba un 93,5 % (157 de 168), con 11
+  que sobrevivían. Los demás módulos daban lo mismo que la tabla.
+- **Las pruebas nuevas:** con las tres de abajo, en Docker, solo para este módulo, sube al **97,6 % (164)**. Los 4 que
+  quedan son equivalentes y van en la tabla del final.
+- **Sin veredicto, 9:** rompen el constructor de `RequestLimits`, que el módulo llama al importarse, como los diez de
+  `token_limits.py`. Están detectados.
+
+| Módulo | Mutantes | Antes | Después | Sobreviven después |
+|---|---:|---:|---:|---:|
+| `src/auth/request_limits.py` | 177 | 93,5 % (157) | 97,6 % (164) | 4 |
 
 ## Las pruebas que se añadieron
 
@@ -183,9 +193,20 @@ Cada una mata mutantes que sobrevivían y comprueba algo que antes no se comprob
   que se le da.
   - **La prueba:** `test_authentication.py::test_a_token_is_issued_for_a_key_or_for_a_person_with_their_role_and_at_the_time_it_is_told`.
 
+**Lo que dejaba pasar el límite de peticiones** (`src/auth/request_limits.py`, HIG-155):
+- **Una petición al webhook sin la dirección del par**, la que da un servidor en un socket Unix. El código la cuenta
+  por su cabecera, o como `unknown`, pero ninguna prueba lo comprobaba. Una condición que perdiera su `if peer` habría
+  roto el webhook entero con un `TypeError`.
+  - **La prueba:** `test_request_limits.py::test_the_webhook_counts_a_request_without_a_peer_by_its_header_or_as_unknown`.
+- **Que lo que no se cuenta pasa tal cual**, sin tocar su scope ni su cuerpo: el arranque (`lifespan`), un websocket y el
+  health check.
+  - **La prueba:** `test_request_limits.py::test_what_is_not_counted_goes_through_as_it_came`.
+- **Que el log de un origen rechazado dice por qué y no de quién:** la dirección es un dato personal (RS07).
+  - **La prueba:** `test_request_limits.py::test_turning_an_origin_away_is_logged_without_its_address`.
+
 ## Los que sobreviven a propósito
 
-Doce. Diez son equivalentes: ninguna prueba puede distinguirlos, porque el código hace lo mismo.
+Dieciséis. Catorce son equivalentes: ninguna prueba puede distinguirlos, porque el código hace lo mismo.
 
 | Mutante | El cambio | Por qué sobrevive |
 |---|---|---|
@@ -199,6 +220,10 @@ Doce. Diez son equivalentes: ninguna prueba puede distinguirlos, porque el códi
 | `auth.token_limits.x_origin_of__mutmut_5` | `candidate or ""` → `candidate or "XXXX"` | Ninguna de las dos es una dirección: las dos pasan al siguiente candidato |
 | `auth.token_limits.x_origin_of__mutmut_13` | `strict=False` → `strict=None` | `ip_network` solo mira si es verdadero |
 | `crypto.fields.xǁClientCipherǁ__init____mutmut_16` | sin `salt=None` | `None` es el valor por omisión de HKDF |
+| `auth.request_limits.x_too_many__mutmut_13` | `"Retry-After"` → `"retry-after"` | HTTP no distingue mayúsculas en el nombre de una cabecera |
+| `auth.request_limits.x_too_many__mutmut_14` | `"Retry-After"` → `"RETRY-AFTER"` | Lo mismo |
+| `auth.request_limits.xǁTooManyRequestsǁ__init____mutmut_1` | el mensaje de la excepción → `None` | Nadie lee el mensaje: quien la recoge solo usa `retry_after` |
+| `auth.request_limits.xǁOriginFailuresǁ__call____mutmut_40` | `receive` → `None` al responder el `429` | Una respuesta JSON no lee el cuerpo de la petición, y no leerlo es justo lo que se quiere |
 
 Los otros dos se aceptan:
 
