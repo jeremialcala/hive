@@ -7,6 +7,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **Pruebas para los mutantes de `src/auth/request_limits.py`** (HIG-155, Gate 3). Llegó mientras se medía HIG-137, y
+  la pasada semanal del 2026-11-02 le daba un 93,5 %, con 11 que sobrevivían. Tres pruebas matan 6, y sube al 97,6 %:
+  - una petición al webhook sin la dirección del par se cuenta igual;
+  - lo que no es HTTP, o no se cuenta, pasa tal cual;
+  - el log de un origen rechazado no lleva su dirección (RS07).
+
+  Los 4 que quedan son equivalentes, y `docs/04-testing/mutation-testing.md` (1.1.0) dice por qué.
+
 ### Seguridad
 - **Las marcas de turno de Gemma 4 no abren un turno del modelo** (HIG-154, LLM01).
   - **El problema:** llama.cpp lee como tokens especiales las marcas de la plantilla que vienen dentro de un mensaje.

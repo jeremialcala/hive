@@ -150,6 +150,15 @@ def test_the_webhook_counts_every_origin_but_not_its_health_check():
     assert WEBHOOK.origin(health, headers_of(health)) is None
 
 
+def test_the_webhook_counts_a_request_without_a_peer_by_its_header_or_as_unknown():
+    """A server on a Unix socket gives no `client`: the request is counted all the same, and nothing breaks."""
+    behind_cloudflare = {**scope(path="/chat/x", headers={"CF-Connecting-IP": "203.0.113.7"}), "client": None}
+    nobody = {**scope(path="/chat/x"), "client": None}
+
+    assert WEBHOOK.origin(behind_cloudflare, headers_of(behind_cloudflare)) == "203.0.113.7"
+    assert WEBHOOK.origin(nobody, headers_of(nobody)) == "unknown"
+
+
 # --- the middleware ---------------------------------------------------------------------------------------------------
 
 class Application:
@@ -189,12 +198,41 @@ def test_an_origin_over_the_cap_is_answered_before_the_application_or_its_body(m
     assert application.called == request_limits.WEBHOOK_FAILURES
 
 
-def test_a_request_that_is_not_http_goes_through():
-    application = Application(200)
+class Passed:
+    """What is behind the middleware, keeping what it was handed."""
 
-    asyncio.run(OriginFailures(application, rule=API, log=Mock())({"type": "lifespan"}, None, AsyncMock()))
+    def __init__(self):
+        self.handed = []
 
-    assert application.called == 1
+    async def __call__(self, *handed):
+        self.handed.append(handed)
+
+
+@pytest.mark.parametrize("request_", [{"type": "lifespan"}, {"type": "websocket", "path": "/x", "headers": []},
+                                      scope(path="/health")],
+                         ids=["lifespan", "websocket", "not counted"])
+def test_what_is_not_counted_goes_through_as_it_came(request_):
+    """Not HTTP, or not counted (the health check): the scope, the body and the answer go on untouched."""
+    application, receive, send = Passed(), AsyncMock(), AsyncMock()
+
+    asyncio.run(OriginFailures(application, rule=API, log=Mock())(request_, receive, send))
+
+    assert application.handed == [(request_, receive, send)]
+
+
+def test_turning_an_origin_away_is_logged_without_its_address(monkeypatch):
+    """The address is a personal datum (RS07): the log says that it happened and why, and nothing of whom."""
+    monkeypatch.setattr(request_limits, "LIMITS", RequestLimits(Clock()))
+    log = Mock()
+    middleware = OriginFailures(Application(403), rule=WEBHOOK, log=log)
+    unsigned = scope("POST", "/chat/x", {"CF-Connecting-IP": "203.0.113.7"})
+
+    codes = [call(middleware, unsigned) for _ in range(request_limits.WEBHOOK_FAILURES + 1)]
+
+    assert codes[-1] == 429
+    log.warning.assert_called_once_with("Turned away a request: too many failures from its origin")
+    logged = str(log.mock_calls)
+    assert "203.0.113" not in logged
 
 
 def test_the_429_is_the_one_of_oauth_token():
