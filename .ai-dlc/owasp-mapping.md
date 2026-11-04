@@ -1,10 +1,10 @@
 # Matriz OWASP Top 10:2025 → controles de Hive
 
 * **Estado:** review
-* **Fecha:** 2026-10-30
+* **Fecha:** 2026-11-04
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.6.0
+* **Versión:** 1.7.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -18,6 +18,8 @@ Cómo se lee:
 Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine · test` y `portal · test`.
 - **La suite de seguridad del gateway** se corre sola con `pytest -m security`: son `tests/security/` y las
   pruebas unitarias de esta matriz, que `tests/conftest.py` marca.
+- **La del motor** también (HIG-154), desde `engine/`: `engine/tests/security/` y las pruebas unitarias de sus
+  controles, que `engine/tests/conftest.py` marca.
 - **`tests/e2e/`** recorre del webhook a la respuesta con las imágenes de producción ([e2e](../docs/04-testing/e2e.md)).
 
 ## Resumen
@@ -178,6 +180,13 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **Lo que dice el LLM no es de fiar:** el clasificador falla cerrado.
   - **Prueba:** `engine/tests/unit/test_clasificador_llm.py::test_una_respuesta_que_no_valida_no_es_un_veredicto`.
   - **Decidido en:** ADR-0004 y ADR-0005 del motor; RS16, RS26.
+- **Nada de lo que llega al modelo abre un turno** (LLM01, HIG-154). llama.cpp lee como tokens especiales las marcas
+  de la plantilla que vienen dentro de un mensaje: con Gemma 4, `<turn|>` en un turno de usuario es el token que lo
+  cierra (medido el 2026-11-04). El cliente del LLM del motor rompe cada marca de cada contenido, venga de la persona,
+  del historial o del cliente. Los bloques de datos del evaluador y del resumidor no se pueden cerrar desde dentro.
+  - **Prueba:** `engine/tests/security/test_inyeccion.py` (un corpus de 15 mensajes hostiles contra el clasificador,
+    el de respuesta, el evaluador y el resumidor), y `engine/tests/security/test_salida_del_modelo.py` para lo que
+    vuelve del modelo.
 - **Lo hostil, en cada ruta** (`tests/security/test_hostile_input.py`, HIG-134).
   - **Qué cubre:** un id hostil en cada parámetro de la dirección de cada ruta del cliente, uno por llamada, con
     inyección SQL y NoSQL, rutas relativas, `NUL`, HTML y 5 000 caracteres. Operadores de MongoDB donde se espera
@@ -189,7 +198,8 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **La persona y las reglas de un bot no rompen el `system` del modelo** (`src/classes/bot_text.py`, HIG-105,
   HIG-106).
   - **Qué rechaza:** caracteres de control, saltos de línea donde el texto es de una línea y las marcas con las que
-    un modelo separa roles (`<|...|>`, `[INST]`, `<<SYS>>`, `<s>`), con los mismos límites al crear que al editar.
+    un modelo separa roles (`<|...|>`, `[INST]`, `<<SYS>>`, `<s>`, y las de Gemma: `<|turn>`, `<turn|>`,
+    `<start_of_turn>`, desde HIG-154), con los mismos límites al crear que al editar.
   - **Prueba:** `tu/test_bot_config.py` (`test_a_line_of_the_persona_refuses_what_could_break_the_system`,
     `test_a_rule_refuses_what_could_break_the_system`).
   - **Decidido en:** RS11; las decisiones del 2026-10-30 en el PRD.

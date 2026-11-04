@@ -10,7 +10,7 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     | | unit | integration | contract | e2e | security |
     |---|---|---|---|---|---|
     | gateway y motor | 1 879 | 49 | 87 | 2 (`tests/e2e`, juntos) | 654 (1 752 con `-m security`) |
-    | motor | 268 | 7 | 57 | 0 | 0 |
+    | motor | 268 | 7 | 57 | 0 | 142 (422 con `-m security`) |
     | portal | 60 | 2 | — | — | — |
   - **Seguridad** (HIG-134): `tests/security/` prueba lo hostil en cada ruta. `pytest -m security` la corre junto a
     las pruebas unitarias de la matriz OWASP, que `tests/conftest.py` marca.
@@ -18,7 +18,10 @@ lo que está y lo que falta. Lo que falta es HIG-125.
     Bifröst tal como está configurado, OpenBao con TLS, y Meta y el LLM falsos. Corre en los PR a `main`.
   - **PWA** (HIG-141): [su recorrido](../../docs/04-testing/e2e.md#el-recorrido-de-la-pwa) en Chromium, del login con
     un Zitadel falso al envío de una plantilla, con la CSP sin violaciones y el `cliente-analista` sin botones de
-    admin. **Falta:** el motor no tiene suite de seguridad propia.
+    admin.
+  - **Seguridad del motor** (HIG-154): `engine/tests/security/` ataca lo que va al modelo y lo que vuelve de él, con un
+    corpus de mensajes hostiles. Encontró que llama.cpp lee las marcas de turno de Gemma 4 dentro de un mensaje como
+    tokens especiales, ya corregido en el cliente del LLM y en el gateway.
 - [ ] Matriz OWASP Top 10 ejecutada
   - **Está** (2026-10-30, HIG-133): [`owasp-mapping.md`](../owasp-mapping.md) traza A01–A10 a los controles reales, con
     la prueba que lo verifica y dónde se decidió. `tests/unit/test_owasp_mapping.py` falla si una prueba, un fichero o

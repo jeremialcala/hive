@@ -26,3 +26,4 @@ reports = false
 [tool.pytest.ini_options]
 pythonpath = [".", ".."]
 testpaths = ["tests"]
+markers = ["security: comprueba un control del threat model del motor o de la matriz OWASP (Gate 3, HIG-154)"]
