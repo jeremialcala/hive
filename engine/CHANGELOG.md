@@ -85,6 +85,27 @@ a este fichero está en `docs/03-implementation/repo-history.md`.
     no lo borran. Si tampoco se puede borrar, el log lo dice y caduca en 24 horas.
   - **Pruebas:** 11 nuevas en `tests/unit/test_memoria.py`.
 
+### Seguridad
+- **Ninguna marca de turno llega al modelo** (HIG-154, LLM01).
+  - **El problema:** llama.cpp lee como tokens especiales las marcas de la plantilla que vienen dentro de un mensaje.
+    Medido el 2026-11-04 con Gemma 4: `<turn|>` en el turno de usuario cuenta como un solo token, el que cierra el
+    turno, y `<turnX|>` como cuatro. Con él, un mensaje de WhatsApp abriría un turno de `system` o del modelo que la
+    plataforma no escribió.
+  - **El arreglo:** `ClienteLlm.preguntar` rompe cada marca de cada contenido antes de enviarlo (`sin_marcas`): las de
+    Gemma 4, ChatML, Llama 2 y 3, Gemma 3 y las de inicio y fin de secuencia. Sus `<`, `>`, `[` y `]` pasan a `‹`, `›`,
+    `［` y `］`, y el modelo las lee como texto. Por ahí pasa todo: lo de la persona, el historial, el resumen y la
+    configuración del cliente.
+  - **Los bloques de datos** del evaluador y del resumidor, entre `<<<` y `>>>`, ya no se pueden cerrar desde dentro:
+    un mensaje que los trajera abría otra «respuesta propuesta» para el evaluador (`dato`).
+- **La suite de seguridad del motor** (HIG-154): `tests/security/`, 142 pruebas, y el marcador `security`, que
+  `pytest -m security` corre con las pruebas unitarias de los controles (422 en total).
+  - **Inyección:** un corpus de 15 mensajes hostiles contra el clasificador, los temas del bot, el de respuesta, una
+    respuesta devuelta, el evaluador y el resumidor. Sin el arreglo fallan 64.
+  - **La salida del modelo:** clasificaciones y veredictos fuera de su esquema, fuera de rango o cortados fallan
+    cerrado, y un servidor roto no deja nada suyo en el error ni en el log.
+  - **Límites y destinos:** un mensaje enorme se recorta, sin control y normalizado. El número de cuenta del bot es
+    solo dígitos, y el notificador habla con Graph.
+
 ### Añadido
 - **El coordinador recuerda cada conversación** (HIG-19; ADR-0017 del gateway). Hasta ahora pedía las vueltas al
   gateway en cada mensaje.

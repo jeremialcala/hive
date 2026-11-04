@@ -6,11 +6,40 @@
 
     Una llamada por pregunta, sin reintentos aquí: si falla, Bifröst entrega el mensaje otra vez. Ni el log ni las
     excepciones llevan lo que se envió ni lo que volvió: solo el tipo de fallo, el estado HTTP y los tokens.
+
+    **Sin marcas de turno en el contenido (LLM01, HIG-154).** llama.cpp lee como tokens especiales las marcas de la
+    plantilla que vienen dentro de un mensaje: medido el 2026-11-04 con Gemma 4, `<turn|>` en el turno de usuario es
+    un solo token, el que cierra el turno. Con él, un mensaje de WhatsApp abriría un turno de `system` o del modelo
+    que la plataforma no escribió. Por aquí pasa todo lo que va al modelo, sea de la persona, del historial o del
+    cliente, así que aquí se rompe cada marca: sus `<`, `>`, `[` y `]` pasan a `‹`, `›`, `［` y `］`, que el modelo
+    lee como texto.
 """
 import asyncio
+import re
 from dataclasses import dataclass
 
 import requests
+
+# Las marcas con que un modelo separa los turnos: las de Gemma 4 (`<|turn>`, `<turn|>`, `<|"|>`...), las de ChatML y
+# Llama 3 (`<|im_start|>`, `<|eot_id|>`), las de Gemma 3 y de Llama 2, y las de inicio y fin de secuencia.
+MARCA = re.compile(r"<\|[^<>\s]{0,40}?\|?>|<[A-Za-z_]{1,40}\|>|</?(?:s|bos|eos|start_of_turn|end_of_turn)>"
+                   r"|\[/?INST\]|<</?SYS>>", re.IGNORECASE)
+# Lo que rompe una marca: sus signos, por otros que se leen igual y no forman ningún token especial.
+ROTAS = str.maketrans({"<": "‹", ">": "›", "[": "［", "]": "］"})
+
+
+def sin_marcas(texto: str) -> str:
+    """El texto, con cada marca de turno rota: el modelo la lee como texto, no como un token especial."""
+    return MARCA.sub(lambda marca: marca.group(0).translate(ROTAS), texto)
+
+
+def dato(texto: str) -> str:
+    """
+        Un texto que va como dato entre las marcas `<<<` y `>>>` de un turno de usuario (el evaluador, el resumidor),
+        sin ellas: uno que las trajera cerraría su bloque y abriría otro, por ejemplo una «respuesta propuesta» que
+        cumple (HIG-154).
+    """
+    return texto.replace("<<<", "‹‹‹").replace(">>>", "›››")
 
 
 def leer_clave(path: str) -> str:
@@ -74,6 +103,7 @@ class ClienteLlm:
         :param esquema: si lo hay, la respuesta queda atada a ese JSON Schema (llama.cpp lo convierte en gramática).
         :raises LlmNoDisponible: si no hubo respuesta.
         """
+        mensajes = [{**mensaje, "content": sin_marcas(mensaje["content"])} for mensaje in mensajes]
         cuerpo = {"model": self.modelo, "messages": mensajes, "max_tokens": max_tokens,
                   # Sin pensamiento: el modelo contesta directamente, y lo que piensa no gasta el tope.
                   "chat_template_kwargs": {"enable_thinking": False}}

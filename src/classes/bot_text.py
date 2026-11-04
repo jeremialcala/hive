@@ -8,8 +8,11 @@
 
     * **Control characters.** A line break only where text has lines (the description and the rules), and a tab there
       too. Never the characters that turn text around or hide it (bidirectional overrides, zero-width marks).
-    * **The marks with which a model tells roles apart**: `<|...|>`, `[INST]`, `<<SYS>>`, `<s>` and `</s>`. Written in
-      a rule, they could open a turn of the user or of the system that the platform did not write.
+    * **The marks with which a model tells roles apart**: `<|...|>`, `[INST]`, `<<SYS>>`, `<s>` and `</s>`, and those of
+      Gemma, the model of Hive: `<|turn>`, `<turn|>`, `<start_of_turn>`, `<end_of_turn>`, `<bos>` and `<eos>`. Written
+      in a rule, they could open a turn of the user or of the system that the platform did not write: llama.cpp reads
+      them as special tokens inside a message (measured on 2026-11-04, HIG-154). The engine breaks them too, before
+      anything reaches the model; here they are refused, so that the client is told.
 """
 import re
 import unicodedata
@@ -20,7 +23,8 @@ DESCRIPTION_LENGTH = 2000
 RULE_LENGTH = 1000
 RULES_PER_BOT = 50
 
-TEMPLATE_MARK = re.compile(r"<\|[^|>]*\|>|\[/?INST\]|<</?SYS>>|</?s>", re.IGNORECASE)
+TEMPLATE_MARK = re.compile(r"<\|[^|>]*\|>|<\|[^<>\s|]{1,40}>|<[A-Za-z_]{1,40}\|>"
+                           r"|</?(?:s|bos|eos|start_of_turn|end_of_turn)>|\[/?INST\]|<</?SYS>>", re.IGNORECASE)
 # Format characters that change how text reads without being seen.
 HIDDEN = {"​", "‌", "‍", "‎", "‏", "⁠", "﻿",
           *(chr(code) for code in range(0x202a, 0x202f)), *(chr(code) for code in range(0x2066, 0x206a))}

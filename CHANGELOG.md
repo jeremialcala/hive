@@ -7,6 +7,19 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Las marcas de turno de Gemma 4 no abren un turno del modelo** (HIG-154, LLM01).
+  - **El problema:** llama.cpp lee como tokens especiales las marcas de la plantilla que vienen dentro de un mensaje.
+    Con Gemma 4, `<turn|>` en el turno de usuario es el token que lo cierra (medido el 2026-11-04). Un mensaje de
+    WhatsApp, una regla o un tema del bot podían abrir un turno de `system` que la plataforma no escribió.
+  - **En el motor:** su cliente del LLM rompe cada marca de cada contenido antes de enviarlo, venga de donde venga, y
+    los bloques de datos del evaluador y del resumidor no se pueden cerrar desde dentro.
+  - **En el gateway:** la persona, las reglas, los intents y los temas rechazan también las marcas de Gemma
+    (`<|turn>`, `<turn|>`, `<start_of_turn>`, `<bos>`...), con un `422`, como las de ChatML y Llama (RS11).
+  - **La suite de seguridad del motor** (`engine/tests/security/`, 142 pruebas) lo prueba con un corpus de mensajes
+    hostiles, junto con la salida del modelo, los límites y los destinos. Cierra el hueco del Gate 3 «el motor no
+    tiene suite de seguridad propia».
+
 ## [0.18.0] - 2026-11-03
 
 ### Añadido
