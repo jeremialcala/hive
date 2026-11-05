@@ -7,6 +7,25 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Producción solo levanta las imágenes que firmó el CI** (HIG-20, [ADR-0036](docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md)).
+  `deploy/desplegar.sh` despliega una release sin construir nada en el servidor, y todo lo que puede fallar va antes de
+  cambiar nada:
+  - descarga cada imagen por el digest de su release;
+  - pasa `cosign verify` con la identidad del workflow `release` en la etiqueta exacta;
+  - si una firma falla, para con «No se ha cambiado nada»;
+  - comprueba que cada contenedor corre justo la imagen verificada.
+
+### Añadido
+- **La vuelta atrás automática** (RF11): si los diez contenedores no quedan sanos en 300 s, el script vuelve solo a
+  la versión que corría. Usa las copias de los composes y del `.env` del motor que acaba de guardar, y las imágenes
+  que siguen en el servidor, sin descargar nada.
+- **Las otras dos formas del script:** `--solo-verificar` descarga y verifica sin cambiar nada, y `--local` vuelve a
+  una versión anterior a la 0.20.0, que no está firmada.
+- **El runbook de despliegue y vuelta atrás** ([runbook](docs/05-deployment/runbook-despliegue-y-rollback.md)): los
+  pasos, las comprobaciones de después, siete disparadores de la vuelta atrás, cómo volver a mano y lo que no se
+  deshace.
+
 ## [0.20.0] - 2026-11-05
 
 ### Seguridad

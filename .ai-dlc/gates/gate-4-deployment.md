@@ -19,8 +19,14 @@
     sin `no-new-privileges`, `cap_drop` ni `read_only`, ya corregidos.
 - [ ] Runbook de rollback documentado con disparadores
   - **Está la base** (HIG-160, ADR-0036): las imágenes de cada release, firmadas y con procedencia, en ghcr.
-  - **Falta:** HIG-20, que despliega desde ellas por digest y tras `cosign verify`, con el runbook y un rollback
-    probado.
+  - **Está el despliegue** (HIG-20): `deploy/desplegar.sh` las descarga por digest, verifica su firma con la
+    identidad del workflow en esa etiqueta y, si los diez contenedores no quedan sanos, vuelve solo a la versión
+    anterior (RF11). Lo prueba `tests/unit/test_desplegar.py`, y `--solo-verificar` verificó las cuatro de la v0.20.0
+    desde nidavellir el 2026-11-05.
+  - **Está el runbook,** con sus disparadores y lo que no se deshace:
+    [runbook de despliegue y vuelta atrás](../../docs/05-deployment/runbook-despliegue-y-rollback.md).
+  - **Falta:** la prueba de la vuelta atrás en producción, de la v0.20.0 a la v0.19.0 y de vuelta a la v0.20.0
+    firmada.
 - [ ] SBOM generado
   - **Está** (2026-11-05, HIG-158): un CycloneDX por imagen en cada build, como artefacto del job «Contenedores»
     (el del gateway: 129 componentes, 87 de Debian y 41 de PyPI).

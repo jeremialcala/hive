@@ -4,7 +4,7 @@
 * **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.8.0
+* **Versión:** 1.9.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -27,13 +27,13 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 | ID | Riesgo | Estado | Lo que más lo sostiene | Lo que falta |
 |---|---|---|---|---|
 | A01 | Control de acceso | Cubierto en la API | Aislamiento por cliente y matriz rol × acción, probados ruta por ruta | DAST con una sesión de cada rol: `dast · zap` va sin token; RS20, RS24 |
-| A02 | Configuración insegura | Parcial | Contenedores sin root, endurecidos; documentación solo en desarrollo; cabeceras en el portal, `hive-api` y el webhook | Escaneo de imagen y de compose (HIG-20) |
-| A03 | Cadena de suministro | Parcial | Locks con hashes, imágenes por digest, `pip-audit`, gitleaks, CodeQL con umbral | SBOM, Actions por SHA, Dependabot (HIG-20) |
+| A02 | Configuración insegura | Cubierto | Contenedores sin root, endurecidos y de solo lectura; Trivy, hadolint y `trivy config` con umbral; documentación solo en desarrollo; cabeceras en el portal, `hive-api` y el webhook | — |
+| A03 | Cadena de suministro | Cubierto | Locks con hashes, imágenes por digest, `pip-audit`, gitleaks, CodeQL con umbral, licencias, SBOM de cada release, Actions por SHA y Dependabot | — |
 | A04 | Fallos criptográficos | Cubierto, con una salvedad | Clave de datos por cliente en Andvari, AES-GCM con el cliente autenticado, sesiones selladas | Cifrado de lo que viaja por el bus (RS08); RS28 |
 | A05 | Inyección | Parcial | Solo ODM por el repositorio; ids, operadores y anidamiento hostiles en cada ruta; 422 sin eco | Fuzzing de los cuerpos con token: `dast · zap` no pasa del `401`; RS11 |
 | A06 | Diseño inseguro | Cubierto, con una salvedad | Threat model; límites de `/oauth/token`, del resto de rutas, del webhook y de envíos; `Idempotency-Key`, ventana y consentimiento | Los contadores del webhook son por proceso, aproximados |
 | A07 | Identificación y autenticación | Cubierto | Aserción firmada y cifrada de un solo uso, DPoP, MFA en el `amr`, BFF con PKCE | DAST con la sesión abierta: `dast · zap` escanea el login sin ella |
-| A08 | Integridad de software y datos | Parcial | Firma de Meta sobre el cuerpo crudo, contratos versionados, imágenes solo tras las pruebas | Firma de imágenes y procedencia (HIG-20) |
+| A08 | Integridad de software y datos | Cubierto | Firma de Meta sobre el cuerpo crudo, contratos versionados, imágenes firmadas por el CI y verificadas antes de levantarlas | — |
 | A09 | Registro y monitorización | Parcial | Logs sin datos personales, `WARNING` de auditoría, trazas sin PII, vigía | Alertas, tablero y runbook (HIG-140); RS14, RS19, RS25 |
 | A10 | Condiciones excepcionales | Cubierto | 503 para que Meta reintente, fallo cerrado, 500 genérico, bus que reentrega | Mutation testing (HIG-137); RD-19 aceptado |
 
@@ -154,7 +154,7 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   excepción es `pylint`, GPL, que solo revisa el código y no va en ninguna imagen.
   - **Prueba:** `tu/test_trivy_exceptions.py`.
 
-**Huecos:** que cada release publique su SBOM (HIG-160).
+**Huecos:** ninguno desde HIG-160, que atesta el SBOM de cada imagen y lo adjunta a su release.
 
 ## A04 — Fallos criptográficos
 
@@ -329,8 +329,8 @@ logout sin una sesión abierta; con ella, no.
   - **Decidido en:** ADR-0011, ADR-0019.
 - **Un `messageId` determinista,** para que Bifröst descarte lo repetido.
   - **Prueba:** `tu/test_webhook_event.py::test_the_same_notification_sent_again_has_the_same_message_id`.
-- **Solo se publica una imagen que pasó las pruebas** (`needs: test` en `build.yml`), y producción se construye desde
-  la etiqueta de una release ([releases](../docs/05-deployment/releases.md)).
+- **Solo se publica una imagen que pasó las pruebas** (`needs: test` en `build.yml`), y producción corre la de una
+  release ([releases](../docs/05-deployment/releases.md)).
 
 - **Las imágenes de cada release, firmadas y con procedencia** (HIG-160,
   [ADR-0036](../docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md); el workflow `release`).
@@ -340,8 +340,16 @@ logout sin una sesión abierta; con ella, no.
   - **Por qué sin clave:** no hay clave que robar. La firma dice qué repositorio y qué etiqueta la produjeron, y queda
     en el registro público de Sigstore.
 
-**Huecos** (de HIG-20): que el servidor despliegue esas imágenes por digest y tras `cosign verify`, en vez de
-construirlas.
+- **El servidor solo levanta esas imágenes** (HIG-20, `deploy/desplegar.sh`).
+  - **Qué hace:** las descarga por el digest de la release y pasa `cosign verify` con la identidad del workflow en la
+    etiqueta exacta que se despliega. Si una firma falla, para sin haber cambiado nada. Después comprueba que cada
+    contenedor corre justo la imagen verificada.
+  - **Prueba:** `tu/test_desplegar.py`: una firma que no es la del workflow, un digest con otra forma o un contenedor
+    con otra imagen no se dan por desplegados.
+  - **Decidido en:** ADR-0036; el [runbook](../docs/05-deployment/runbook-despliegue-y-rollback.md).
+
+**Huecos:** ninguno en el código. Las anteriores a la 0.20.0 no están firmadas, y volver a ellas (`--local`) no
+verifica nada.
 
 ## A09 — Registro y monitorización
 

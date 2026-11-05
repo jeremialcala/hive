@@ -401,7 +401,7 @@ def another():
 # (.ai-dlc/owasp-mapping.md). `pytest -m security` runs them alone, and the CI counts them apart.
 SECURITY_MODULES = {
     "test_authentication", "test_bot_config", "test_bot_state", "test_bot_versions", "test_client_encryption",
-    "test_compose_hardening", "test_idp_compose", "test_trivy_exceptions", "test_workflows_pinned",
+    "test_compose_hardening", "test_desplegar", "test_idp_compose", "test_trivy_exceptions", "test_workflows_pinned",
     "test_client_isolation",
     "test_data_access_boundary", "test_dpop", "test_intent_destinations", "test_intent_request", "test_key_proof",
     "test_logs_and_errors",
