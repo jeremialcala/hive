@@ -16,6 +16,11 @@ x-gateway: &gateway
   env_file: ["${E2E_DIR:?E2E_DIR is required}/gateway.env"]
   volumes: ["${E2E_DIR}:/run/e2e:ro"]
   networks: [e2e]
+  # As in production (deploy/docker-compose.yml, HIG-157): read-only, without capabilities.
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
 
 x-worker: &worker
   image: ${ENGINE_IMAGE:-hive-engine:e2e}
@@ -83,7 +88,7 @@ services:
     networks: [e2e]
 
   fakes:
-    image: python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    image: python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
     command: ["python", "-I", "/fakes/fakes.py"]
     environment: *zitadel
     volumes: ["./fakes.py:/fakes/fakes.py:ro", "${E2E_DIR}:/run/e2e:ro"]

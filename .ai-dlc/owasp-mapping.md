@@ -1,10 +1,10 @@
 # Matriz OWASP Top 10:2025 → controles de Hive
 
 * **Estado:** review
-* **Fecha:** 2026-11-04
+* **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.7.0
+* **Versión:** 1.8.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -89,11 +89,22 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **El webhook y la gestión son dos servicios,** y el túnel publica cada uno por su nombre.
   - **Prueba:** `tu/test_two_services.py`.
   - **Decidido en:** ADR-0018, ADR-0021, ADR-0024; RS09, RS13.
-- **Contenedores sin root (uid 10001)** en los tres Dockerfile. Los compose llevan `read_only`, `no-new-privileges` y
-  `cap_drop: [ALL]`.
-  - **Prueba:** `tu/test_idp_compose.py::test_every_container_drops_its_capabilities_and_cannot_gain_privileges`, solo
-    para el compose de Zitadel.
+- **Contenedores sin root (uid 10001)** en los tres Dockerfile. Todos los compose de producción llevan
+  `no-new-privileges` y `cap_drop: [ALL]`, y lo que siempre está arriba, `read_only` y un tope de memoria. El gateway
+  no lo llevaba hasta HIG-157. Las imágenes van por digest, y nada se publica en todas las direcciones de la máquina.
+  - **Prueba:** `tu/test_compose_hardening.py`, sobre los cinco compose de producción, con sus excepciones
+    justificadas (el LLM del PC, Zitadel y su base, y `engine-keys`), y
+    `tu/test_idp_compose.py::test_every_container_drops_its_capabilities_and_cannot_gain_privileges`.
   - **Decidido en:** RS17.
+- **Las imágenes y los Dockerfile, escaneados** (HIG-157, Gate 4; `seguridad.yml`).
+  - **Contenedores:** Trivy sobre las cuatro imágenes (gateway, motor, portal y docs), construidas como en
+    producción. Rompe con un CRITICAL o un HIGH que ya tiene arreglo, y lo demás va a la pestaña Security. Las
+    excepciones, en `.trivyignore.yaml`, con su motivo y su fecha.
+  - **IaC:** hadolint y `trivy config` sobre los Dockerfile. Los compose los prueba `tu/test_compose_hardening.py`,
+    porque Trivy no los lee.
+  - **Lo primero que encontró** (2026-11-05): un CRITICAL (brotli) y 10 HIGH con arreglo en la imagen de la
+    documentación, y `apt` en las otras tres. Se corrigieron subiendo las imágenes base.
+  - **Prueba:** `tu/test_trivy_exceptions.py`.
 - **Cabeceras del navegador en el portal** (`portal/src/app.py`): CSP en `'self'`, HSTS, `nosniff`, `X-Frame-Options`,
   `Referrer-Policy`, y `no-cache` en los ficheros de la PWA.
   - **Prueba:** `ptu/test_portal.py::test_every_page_says_what_the_browser_may_load`,
@@ -112,8 +123,7 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **Protección de las ramas:** `GitFlow guard` y los rulesets `Protect-MAIN` y `Protect-DEVELOP`, que exigen los checks
   del CI. Los rulesets viven en GitHub, no en el repositorio.
 
-**Huecos:**
-- **No hay escaneo de imagen** (Trivy) **ni de compose o Dockerfile** (hadolint), que son gates de Gate 4 (HIG-20).
+**Huecos:** ninguno propio desde HIG-157. Lo que queda del Gate 4 es de A03 y A08.
 
 ## A03 — Cadena de suministro
 

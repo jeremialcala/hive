@@ -7,6 +7,28 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Las imágenes y los Dockerfile, escaneados en cada PR** (HIG-157, Gate 4).
+  - **Contenedores:** el job «Contenedores» de `seguridad.yml` construye las cuatro imágenes como en producción y les
+    pasa Trivy 0.76.1. Rompe con un CRITICAL o un HIGH que ya tiene arreglo (decisión de Jeremi del 2026-11-05).
+    Todo lo CRITICAL y HIGH va a la pestaña Security y al resumen del job. Las excepciones van en
+    `.trivyignore.yaml`, cada una con su motivo y su fecha, y `tests/unit/test_trivy_exceptions.py` lo comprueba.
+  - **IaC:** el job «IaC · Dockerfile» pasa hadolint y `trivy config` por los cuatro Dockerfile. Las dos herramientas
+    corren desde su imagen, fijada por digest.
+  - **Lo que encontró:**
+    - la imagen de la documentación tenía un CRITICAL (brotli, CVE-2026-111497) y 10 HIGH con arreglo;
+    - las otras tres, `apt` (CVE-2026-109518).
+  - **Los arreglos:**
+    - `python:3.12-slim`, en un digest nuevo;
+    - `nginx-unprivileged`, en la 1.30.6, con `apk upgrade` en el build para lo que Alpine corrigió después;
+    - con eso, las cuatro imágenes pasan.
+- **El gateway, sin capacidades y en solo lectura** (HIG-157), como ya estaban el motor, el portal y la documentación.
+  - **Lo que cambia:** los servicios de `deploy/docker-compose.yml` llevan `no-new-privileges` y `cap_drop: [ALL]`, y
+    los tres que siempre están arriba, `read_only` con `/tmp` en memoria. La prueba de punta a punta los levanta igual.
+  - **La prueba:** `tests/unit/test_compose_hardening.py` lo exige en los cinco compose de producción, con sus
+    excepciones justificadas.
+  - **Despliegue:** el compose del gateway cambia, así que el próximo despliegue lo instala.
+
 ### Cambiado
 - **El PRD, al día con lo construido** (HIG-118; `docs/01-requirements/mvp-baas-gateway.md` 0.22.0).
   - **RF17** pasa a construido, con el BFF (HIG-93).
