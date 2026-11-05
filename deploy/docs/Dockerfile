@@ -5,14 +5,14 @@
 #
 # Its own Dockerfile.dockerignore lets in only the contract and this directory.
 
-FROM node:22.23.3-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS page
+FROM node:26.13.0-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS page
 WORKDIR /build
 COPY deploy/docs/package.json deploy/docs/package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY docs/02-design/contracts/openapi.yaml deploy/docs/build.mjs ./
 RUN node build.mjs
 
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 # The image lags behind Alpine: on 2026-11-05 it still had brotli, curl and expat with fixes already published
 # (CVE-2026-111497, CRITICAL; HIG-157). What Alpine has fixed comes in at build time, and the server goes on as user
 # 101, as the image runs it.
