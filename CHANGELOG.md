@@ -7,6 +7,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Cambiado
+- **El Gate 3 (Pruebas) queda aprobado** (HIG-125; `.ai-dlc/gates/gate-3-testing.md`).
+  - **La pirámide:** completa, con la suite de seguridad del motor (HIG-154).
+  - **La matriz OWASP:** ejecutada. Sus huecos pasan a los gates 4 y 5 (HIG-20, HIG-140), por decisión de Jeremi.
+  - **El DAST:** limpio.
+  - **RNF10:** se cumple con 23 respuestas (mediana 4,8 s, p95 5,5 s).
+  - **El mutation testing:** un 98,0 % sobre los módulos de seguridad, y el workflow sigue sin bloquear, también por
+    decisión de Jeremi.
+- **La medición de punta a punta se hace en nidavellir** (`docs/04-testing/medicion-punta-a-punta.md` 1.1.0). El script
+  llega por la entrada estándar y no se escribe nada en el servidor. Recoge las mediciones del 2026-11-04.
+
 ### Añadido
 - **Pruebas para los mutantes de `src/auth/request_limits.py`** (HIG-155, Gate 3). Llegó mientras se medía HIG-137, y
   la pasada semanal del 2026-11-02 le daba un 93,5 %, con 11 que sobrevivían. Tres pruebas matan 6, y sube al 97,6 %:
