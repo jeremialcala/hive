@@ -165,6 +165,20 @@ jobs:
           key: trivy-db-${{ steps.dia.outputs.dia }}
           restore-keys: trivy-db-
 
+      # El SBOM de la imagen (HIG-158), en CycloneDX: lo que lleva, paquete a paquete, del sistema y de Python. Queda
+      # como artefacto del job; el de cada release lo adjunta el workflow que la publica (HIG-160).
+      - name: SBOM
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/src" -w /src "$TRIVY" image --quiet --format cyclonedx \
+            --output "/src/sbom-${{ matrix.imagen }}.cdx.json" "hive-${{ matrix.imagen }}:scan"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.imagen }}
+          path: sbom-${{ matrix.imagen }}.cdx.json
+          if-no-files-found: error
+
       # Todo lo CRITICAL y HIGH, con arreglo o sin él, a la pestaña Security y al resumen del job.
       - name: Informe de la imagen
         run: |
@@ -227,3 +241,35 @@ jobs:
               --exit-code 1 "$f" || fallo=1
           done
           exit $fallo
+
+  # El gate «license» del Gate 4 (HIG-158), sobre las dependencias de los seis locks: los tres de las imágenes y los
+  # tres de desarrollo. Los paquetes del sistema de las imágenes no entran: son de la distribución, cada uno con su
+  # licencia, y Hive no los cambia ni los enlaza en su código.
+  licencias:
+    name: Licencias
+    runs-on: ubuntu-latest
+    env:
+      TRIVY: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # Cada lock en un directorio propio, sin dependencias propias (el lock las tiene todas) y con sus hashes. Trivy
+      # lee la licencia del METADATA de cada paquete instalado.
+      - name: Instalar cada lock aparte
+        run: |
+          for lock in requirements requirements-dev engine/requirements engine/requirements-dev \
+                      portal/requirements portal/requirements-dev; do
+            pip install --quiet --no-deps --require-hashes --target "licencias/$(echo "$lock" | tr / _)" -r "$lock.lock"
+          done
+
+      # La política (decisión de Jeremi del 2026-11-05), en .trivy-licencias.yaml: rompe con GPL, AGPL, SSPL o una
+      # licencia que no está en sus listas. Las excepciones, en .trivyignore.yaml, con su motivo y su fecha.
+      - name: Umbral
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src "$TRIVY" rootfs --quiet --scanners license \
+            --config .trivy-licencias.yaml --ignorefile .trivyignore.yaml --severity CRITICAL,UNKNOWN \
+            --exit-code 1 --format table /src/licencias

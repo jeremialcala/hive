@@ -9,9 +9,10 @@
     - secretos, con gitleaks en toda la historia;
     - DAST, con ZAP en los PR a `main` (HIG-90);
     - **container**, con Trivy sobre las cuatro imágenes (HIG-157);
-    - **IaC**, con hadolint y `trivy config` (HIG-157).
+    - **IaC**, con hadolint y `trivy config` (HIG-157);
+    - **license**, con Trivy sobre los seis locks y la política de `.trivy-licencias.yaml` (HIG-158).
   - **Las Actions del pipeline,** fijadas por SHA, y Dependabot para moverlas, igual que las imágenes base (HIG-159).
-  - **Falta:** el de licencias (HIG-158).
+  - **Falta:** que los siete pasen juntos en el CI de la release que cierre el gate.
 - [x] IaC escaneada sin findings críticos
   - **Está** (2026-11-05, HIG-157): hadolint y `trivy config`, sobre los cuatro Dockerfile, sin avisos ni errores. Los
     compose, que Trivy no lee, los prueba `tests/unit/test_compose_hardening.py`. Encontró los servicios del gateway
@@ -19,4 +20,6 @@
 - [ ] Runbook de rollback documentado con disparadores
   - **Falta:** HIG-20, con el despliegue desde ghcr verificado (HIG-160).
 - [ ] SBOM generado
-  - **Falta:** HIG-158.
+  - **Está** (2026-11-05, HIG-158): un CycloneDX por imagen en cada build, como artefacto del job «Contenedores»
+    (el del gateway: 129 componentes, 87 de Debian y 41 de PyPI).
+  - **Falta:** que cada release lo adjunte, con el workflow que la publica (HIG-160).

@@ -8,6 +8,18 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **El SBOM de cada imagen y el gate de licencias** (HIG-158, Gate 4).
+  - **El SBOM:** el job «Contenedores» de `seguridad.yml` genera un CycloneDX de cada imagen en cada build y lo deja
+    como artefacto (`sbom-<imagen>`). El de cada release lo adjuntará el workflow que la publica (HIG-160).
+  - **Las licencias:** el job nuevo «Licencias» instala las dependencias de los seis locks, cada lock aparte y con sus
+    hashes, y les pasa Trivy con la política de `.trivy-licencias.yaml` (decisión de Jeremi del 2026-11-05).
+    - Pasan las permisivas, LGPL (`jwcrypto`, `astroid`) y MPL-2.0 (`certifi`).
+    - Rompe con GPL, AGPL, SSPL o una licencia que no está en sus listas. `MIT-0` (`cffi`) y `PSF-2.0`
+      (`typing_extensions`) van entre las permisivas.
+    - La única excepción es `pylint` (GPL-2.0-or-later), que solo revisa el código y no va en ninguna imagen. Está en
+      `.trivyignore.yaml`, con su motivo y su fecha.
+  - **Los paquetes del sistema** de las imágenes no entran en el gate de licencias: son de la distribución, cada uno
+    con la suya, y Hive no los cambia ni los enlaza.
 - **Las Actions, fijadas por el SHA de su commit, y Dependabot para moverlas** (HIG-159, Gate 4).
   - **Las Actions:** las 51 `uses:` de los ocho workflows que usan Actions van por el SHA del commit de su versión,
     con la versión en un comentario (`actions/checkout@3d3c42e… # v7.0.1`). Antes iban por la etiqueta mayor, que su

@@ -146,9 +146,15 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   build con un hallazgo de 7.0 o más fuera de las pruebas. `main` tiene 0 alertas abiertas desde la 0.4.0.
   - **Prueba:** `tu/test_sast_threshold.py::test_a_high_security_finding_breaks_the_build`.
 
-**Huecos** (de HIG-158, Gate 4):
-- no se genera SBOM (RS12, «Parcial»);
-- no hay gate de licencias;
+- **El SBOM de cada imagen** (HIG-158): un CycloneDX por imagen en cada build, del sistema y de Python, como
+  artefacto del job «Contenedores». El de cada release lo adjunta el workflow que la publica (HIG-160).
+- **Las licencias** (HIG-158; el job «Licencias» de `seguridad.yml`): las dependencias de los seis locks, instaladas
+  cada una aparte, pasan por Trivy con la política de `.trivy-licencias.yaml`. Rompe con GPL, AGPL, SSPL o una
+  licencia que no conoce, y deja pasar las permisivas, LGPL y MPL-2.0 (decisión de Jeremi del 2026-11-05). La única
+  excepción es `pylint`, GPL, que solo revisa el código y no va en ninguna imagen.
+  - **Prueba:** `tu/test_trivy_exceptions.py`.
+
+**Huecos:** que cada release publique su SBOM (HIG-160).
 
 ## A04 — Fallos criptográficos
 
