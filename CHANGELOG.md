@@ -17,6 +17,12 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     Actions y los digest nuevos de las imágenes base de los cuatro Dockerfile.
   - **Python no va,** porque sus locks salen de `uv pip compile` y Dependabot no los regenera. Lo cubre el SCA, que ya
     corre cada lunes.
+
+### Corregido
+- **El mutation testing no recogía sus estadísticas** (HIG-159). mutmut corre las pruebas desde una copia del
+  repositorio con lo que lista `also_copy` en `setup.cfg`. `test_trivy_exceptions` y `test_workflows_pinned` leen los
+  workflows, Dependabot, el `Dockerfile` de la raíz y las configuraciones de los escaneos, que no se copiaban. Por
+  eso la recogida de las pruebas fallaba («failed to collect stats»). Ahora se copian.
 - **Las imágenes y los Dockerfile, escaneados en cada PR** (HIG-157, Gate 4).
   - **Contenedores:** el job «Contenedores» de `seguridad.yml` construye las cuatro imágenes como en producción y les
     pasa Trivy 0.76.1. Rompe con un CRITICAL o un HIGH que ya tiene arreglo (decisión de Jeremi del 2026-11-05).
