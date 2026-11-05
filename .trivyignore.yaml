@@ -1,0 +1,21 @@
+# The vulnerabilities the job «Contenedores» of seguridad.yml lets through (HIG-157, Gate 4), and below, the
+# licenses the job «Licencias» lets through (HIG-158). It breaks with a
+# CRITICAL or a HIGH that already has a fixed version (decision of Jeremi of 2026-11-05); an exception goes here, with
+# its reason in `statement` and the day it is looked at again in `expired_at`, after which Trivy no longer ignores it.
+# tests/unit/test_trivy_exceptions.py checks both.
+#
+#   vulnerabilities:
+#     - id: CVE-2026-00000
+#       paths: ["usr/lib/python3.12/site-packages/x"]
+#       statement: Why it does not reach Hive, or why it waits.
+#       expired_at: 2026-12-31
+vulnerabilities: []
+
+# The licenses the job «Licencias» lets through (HIG-158), with the same fields.
+licenses:
+  - id: GPL-2.0-or-later
+    paths: ["**/pylint-*.dist-info/METADATA"]
+    statement: >-
+      pylint lints the code of Hive in development and in the CI, and is in no image and in nothing that is
+      distributed. Running a GPL tool puts no obligation on the code it reads.
+    expired_at: 2027-05-01

@@ -44,13 +44,23 @@ x-common: &common
   env_file:
     - .env
   networks: [hermod, andvari]
+  # Without capabilities and unable to gain any, as the engine, the portal and the docs (HIG-157): the gateway runs as
+  # uid 10001 and listens above 1024, so it needs none.
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+# What the three services that are always up add: a read-only filesystem. They write only to /tmp (the heartbeat of
+# the ingestion) and to the volumes mounted for that (the register of erasures of the management API).
+x-read-only: &read-only
+  read_only: true
+  tmpfs: [/tmp]
   logging:
     driver: json-file
     options: {max-size: "10m", max-file: "3"}
 
 services:
   webhook:
-    <<: *common
+    <<: [*common, *read-only]
     container_name: hive-webhook
     command: ["uvicorn", "webhook:app", "--host", "0.0.0.0", "--port", "5002", "--no-access-log"]
     # NATS_URL, NATS_USER, NATS_PASSWORD, NATS_CA and NATS_INBOX_PREFIX, as Bifröst wrote them for the webhook.
@@ -82,7 +92,7 @@ services:
     cpus: 1.0
 
   management:
-    <<: *common
+    <<: [*common, *read-only]
     container_name: hive-api
     # NATS_* as Bifröst wrote them for the management API: it publishes the notices of erasure (ADR-0017).
     env_file:
@@ -119,7 +129,7 @@ services:
     cpus: 0.5
 
   ingest:
-    <<: *common
+    <<: [*common, *read-only]
     container_name: hive-ingest
     command: ["python", "ingest.py"]
     # NATS_* as Bifröst wrote them for the worker: its consumer of WEBHOOK and the subjects of MENSAJES.

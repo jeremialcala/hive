@@ -1,10 +1,10 @@
 # Matriz OWASP Top 10:2025 → controles de Hive
 
 * **Estado:** review
-* **Fecha:** 2026-11-04
+* **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.7.0
+* **Versión:** 1.8.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -89,11 +89,22 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **El webhook y la gestión son dos servicios,** y el túnel publica cada uno por su nombre.
   - **Prueba:** `tu/test_two_services.py`.
   - **Decidido en:** ADR-0018, ADR-0021, ADR-0024; RS09, RS13.
-- **Contenedores sin root (uid 10001)** en los tres Dockerfile. Los compose llevan `read_only`, `no-new-privileges` y
-  `cap_drop: [ALL]`.
-  - **Prueba:** `tu/test_idp_compose.py::test_every_container_drops_its_capabilities_and_cannot_gain_privileges`, solo
-    para el compose de Zitadel.
+- **Contenedores sin root (uid 10001)** en los tres Dockerfile. Todos los compose de producción llevan
+  `no-new-privileges` y `cap_drop: [ALL]`, y lo que siempre está arriba, `read_only` y un tope de memoria. El gateway
+  no lo llevaba hasta HIG-157. Las imágenes van por digest, y nada se publica en todas las direcciones de la máquina.
+  - **Prueba:** `tu/test_compose_hardening.py`, sobre los cinco compose de producción, con sus excepciones
+    justificadas (el LLM del PC, Zitadel y su base, y `engine-keys`), y
+    `tu/test_idp_compose.py::test_every_container_drops_its_capabilities_and_cannot_gain_privileges`.
   - **Decidido en:** RS17.
+- **Las imágenes y los Dockerfile, escaneados** (HIG-157, Gate 4; `seguridad.yml`).
+  - **Contenedores:** Trivy sobre las cuatro imágenes (gateway, motor, portal y docs), construidas como en
+    producción. Rompe con un CRITICAL o un HIGH que ya tiene arreglo, y lo demás va a la pestaña Security. Las
+    excepciones, en `.trivyignore.yaml`, con su motivo y su fecha.
+  - **IaC:** hadolint y `trivy config` sobre los Dockerfile. Los compose los prueba `tu/test_compose_hardening.py`,
+    porque Trivy no los lee.
+  - **Lo primero que encontró** (2026-11-05): un CRITICAL (brotli) y 10 HIGH con arreglo en la imagen de la
+    documentación, y `apt` en las otras tres. Se corrigieron subiendo las imágenes base.
+  - **Prueba:** `tu/test_trivy_exceptions.py`.
 - **Cabeceras del navegador en el portal** (`portal/src/app.py`): CSP en `'self'`, HSTS, `nosniff`, `X-Frame-Options`,
   `Referrer-Policy`, y `no-cache` en los ficheros de la PWA.
   - **Prueba:** `ptu/test_portal.py::test_every_page_says_what_the_browser_may_load`,
@@ -112,8 +123,7 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 - **Protección de las ramas:** `GitFlow guard` y los rulesets `Protect-MAIN` y `Protect-DEVELOP`, que exigen los checks
   del CI. Los rulesets viven en GitHub, no en el repositorio.
 
-**Huecos:**
-- **No hay escaneo de imagen** (Trivy) **ni de compose o Dockerfile** (hadolint), que son gates de Gate 4 (HIG-20).
+**Huecos:** ninguno propio desde HIG-157. Lo que queda del Gate 4 es de A03 y A08.
 
 ## A03 — Cadena de suministro
 
@@ -126,15 +136,25 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Prueba:** `tu/test_idp_compose.py::test_every_image_is_pinned_by_digest`, para el compose de Zitadel.
   - **Decidido en:** threat model, T14; RS12.
 - **Secretos:** gitleaks 8.28.0, con `--redact`, sobre toda la historia de todas las ramas.
+- **Las Actions, fijadas por el SHA de su commit** (HIG-159), con su versión en un comentario: una etiqueta como `@v7`
+  la puede mover su dueño, y cambiaría lo que corre con el token del repositorio sin un commit aquí.
+  - **Prueba:** `tu/test_workflows_pinned.py`.
+- **Dependabot** (`.github/dependabot.yml`, HIG-159) mueve esos SHA y los digest de las imágenes base de los cuatro
+  Dockerfile, cada lunes, en PR hacia `develop` que pasan por los mismos gates. Las dependencias de Python no van:
+  sus locks salen de `uv pip compile`, que Dependabot no regenera. Las cubre el SCA, que corre también cada lunes.
 - **SAST:** «SAST · CodeQL», con las consultas `security-and-quality`. `.ai-dlc/scripts/sast_threshold.py` rompe el
   build con un hallazgo de 7.0 o más fuera de las pruebas. `main` tiene 0 alertas abiertas desde la 0.4.0.
   - **Prueba:** `tu/test_sast_threshold.py::test_a_high_security_finding_breaks_the_build`.
 
-**Huecos** (todos de HIG-20, Gate 4):
-- no se genera SBOM (RS12, «Parcial»);
-- no hay Dependabot ni Renovate;
-- no hay gate de licencias;
-- las Actions van por etiqueta (`@v4`), no por SHA.
+- **El SBOM de cada imagen** (HIG-158): un CycloneDX por imagen en cada build, del sistema y de Python, como
+  artefacto del job «Contenedores». El de cada release lo adjunta el workflow que la publica (HIG-160).
+- **Las licencias** (HIG-158; el job «Licencias» de `seguridad.yml`): las dependencias de los seis locks, instaladas
+  cada una aparte, pasan por Trivy con la política de `.trivy-licencias.yaml`. Rompe con GPL, AGPL, SSPL o una
+  licencia que no conoce, y deja pasar las permisivas, LGPL y MPL-2.0 (decisión de Jeremi del 2026-11-05). La única
+  excepción es `pylint`, GPL, que solo revisa el código y no va en ninguna imagen.
+  - **Prueba:** `tu/test_trivy_exceptions.py`.
+
+**Huecos:** que cada release publique su SBOM (HIG-160).
 
 ## A04 — Fallos criptográficos
 
@@ -312,8 +332,16 @@ logout sin una sesión abierta; con ella, no.
 - **Solo se publica una imagen que pasó las pruebas** (`needs: test` en `build.yml`), y producción se construye desde
   la etiqueta de una release ([releases](../docs/05-deployment/releases.md)).
 
-**Huecos** (de HIG-20): no hay firma de imágenes (cosign), ni atestación de procedencia, ni etiquetas de release
-firmadas.
+- **Las imágenes de cada release, firmadas y con procedencia** (HIG-160,
+  [ADR-0036](../docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md); el workflow `release`).
+  - **Qué hace:** con la etiqueta `vX.Y.Z` las construye, escanea, publica y firma con cosign sin claves, con la
+    identidad OIDC de ese workflow en esa etiqueta, y atesta su SBOM y su procedencia SLSA. Lo que no pasa el escaneo
+    no se publica.
+  - **Por qué sin clave:** no hay clave que robar. La firma dice qué repositorio y qué etiqueta la produjeron, y queda
+    en el registro público de Sigstore.
+
+**Huecos** (de HIG-20): que el servidor despliegue esas imágenes por digest y tras `cosign verify`, en vez de
+construirlas.
 
 ## A09 — Registro y monitorización
 

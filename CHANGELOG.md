@@ -7,6 +7,83 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-05
+
+### Seguridad
+- **Las imágenes de cada release, construidas, escaneadas y firmadas en el CI** (HIG-160,
+  [ADR-0036](docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md); decisión de Jeremi del 2026-11-05).
+  - **El workflow `release`** se dispara con la etiqueta `vX.Y.Z`. Comprueba que el CHANGELOG tiene la versión, y por
+    cada imagen:
+    - la construye y la escanea con el umbral de HIG-157; si rompe, no se publica nada;
+    - genera su SBOM y la publica en ghcr como `vX.Y.Z`;
+    - la firma con **cosign sin claves**, con la identidad OIDC del workflow;
+    - atesta el SBOM y la procedencia SLSA;
+    - comprueba la firma.
+  - **La release de GitHub la crea él,** con las cuatro firmadas: las notas del CHANGELOG, el digest de cada imagen,
+    cómo verificarlas y los SBOM adjuntos. Ya no se crea a mano.
+  - **En un PR que cambia el workflow,** construye, escanea y genera los SBOM, sin publicar nada.
+  - **Desplegar desde esas imágenes**, verificadas, es HIG-20. Hasta entonces se sigue construyendo en el servidor.
+- **El SBOM de cada imagen y el gate de licencias** (HIG-158, Gate 4).
+  - **El SBOM:** el job «Contenedores» de `seguridad.yml` genera un CycloneDX de cada imagen en cada build y lo deja
+    como artefacto (`sbom-<imagen>`). El de cada release lo adjuntará el workflow que la publica (HIG-160).
+  - **Las licencias:** el job nuevo «Licencias» instala las dependencias de los seis locks, cada lock aparte y con sus
+    hashes, y les pasa Trivy con la política de `.trivy-licencias.yaml` (decisión de Jeremi del 2026-11-05).
+    - Pasan las permisivas, LGPL (`jwcrypto`, `astroid`) y MPL-2.0 (`certifi`).
+    - Rompe con GPL, AGPL, SSPL o una licencia que no está en sus listas. `MIT-0` (`cffi`) y `PSF-2.0`
+      (`typing_extensions`) van entre las permisivas.
+    - La única excepción es `pylint` (GPL-2.0-or-later), que solo revisa el código y no va en ninguna imagen. Está en
+      `.trivyignore.yaml`, con su motivo y su fecha.
+  - **Los paquetes del sistema** de las imágenes no entran en el gate de licencias: son de la distribución, cada uno
+    con la suya, y Hive no los cambia ni los enlaza.
+- **Las Actions, fijadas por el SHA de su commit, y Dependabot para moverlas** (HIG-159, Gate 4).
+  - **Las Actions:** las 51 `uses:` de los ocho workflows que usan Actions van por el SHA del commit de su versión,
+    con la versión en un comentario (`actions/checkout@3d3c42e… # v7.0.1`). Antes iban por la etiqueta mayor, que su
+    dueño puede mover. `tests/unit/test_workflows_pinned.py` falla con una por etiqueta, o con dos SHA distintos de
+    la misma versión.
+  - **Dependabot** (`.github/dependabot.yml`) propone cada lunes, agrupados y hacia `develop`, los SHA nuevos de las
+    Actions y los digest nuevos de las imágenes base de los cuatro Dockerfile.
+  - **Python no va,** porque sus locks salen de `uv pip compile` y Dependabot no los regenera. Lo cubre el SCA, que ya
+    corre cada lunes.
+
+### Corregido
+- **El mutation testing no recogía sus estadísticas** (HIG-159). mutmut corre las pruebas desde una copia del
+  repositorio con lo que lista `also_copy` en `setup.cfg`. `test_trivy_exceptions` y `test_workflows_pinned` leen los
+  workflows, Dependabot, el `Dockerfile` de la raíz y las configuraciones de los escaneos, que no se copiaban. Por
+  eso la recogida de las pruebas fallaba («failed to collect stats»). Ahora se copian.
+- **Las imágenes y los Dockerfile, escaneados en cada PR** (HIG-157, Gate 4).
+  - **Contenedores:** el job «Contenedores» de `seguridad.yml` construye las cuatro imágenes como en producción y les
+    pasa Trivy 0.76.1. Rompe con un CRITICAL o un HIGH que ya tiene arreglo (decisión de Jeremi del 2026-11-05).
+    Todo lo CRITICAL y HIGH va a la pestaña Security y al resumen del job. Las excepciones van en
+    `.trivyignore.yaml`, cada una con su motivo y su fecha, y `tests/unit/test_trivy_exceptions.py` lo comprueba.
+  - **IaC:** el job «IaC · Dockerfile» pasa hadolint y `trivy config` por los cuatro Dockerfile. Las dos herramientas
+    corren desde su imagen, fijada por digest.
+  - **Lo que encontró:**
+    - la imagen de la documentación tenía un CRITICAL (brotli, CVE-2026-111497) y 10 HIGH con arreglo;
+    - las otras tres, `apt` (CVE-2026-109518).
+  - **Los arreglos:**
+    - `python:3.12-slim`, en un digest nuevo;
+    - `nginx-unprivileged`, en la 1.30.6, con `apk upgrade` en el build para lo que Alpine corrigió después;
+    - con eso, las cuatro imágenes pasan.
+- **El gateway, sin capacidades y en solo lectura** (HIG-157), como ya estaban el motor, el portal y la documentación.
+  - **Lo que cambia:** los servicios de `deploy/docker-compose.yml` llevan `no-new-privileges` y `cap_drop: [ALL]`, y
+    los tres que siempre están arriba, `read_only` con `/tmp` en memoria. La prueba de punta a punta los levanta igual.
+  - **La prueba:** `tests/unit/test_compose_hardening.py` lo exige en los cinco compose de producción, con sus
+    excepciones justificadas.
+  - **Despliegue:** el compose del gateway cambia, así que el próximo despliegue lo instala.
+
+### Cambiado
+- **El PRD, al día con lo construido** (HIG-118; `docs/01-requirements/mvp-baas-gateway.md` 0.22.0).
+  - **RF17** pasa a construido, con el BFF (HIG-93).
+  - **RF28 y RF29** pasan a cumplido y a construido.
+  - **RF30 y RF16:** ya no dicen «hasta que haya personas» ni «hasta la auditoría».
+  - **RF05, RF07, RF12 y RF15** describen el motor de hoy: Bifröst, el contrato v2, el notificador y el contexto
+    del coordinador.
+  - **RF11** dice que producción se despliega a mano desde la etiqueta de cada release.
+  - **Lo pendiente de la D9** (RF19 a RF22, RF32 a RF35), RF10 y RF13 enlazan su issue.
+  - **Mitigados:** AB06, AB17, AB29 y AB36 a AB39 y AB42.
+  - **RNF10** pasa a cumplido, con la medición del 2026-11-04.
+  - **Al día también:** RNF05, RS09 y RS22.
+
 ## [0.19.0] - 2026-11-05
 
 ### Cambiado
@@ -1666,7 +1743,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/jeremialcala/hive/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jeremialcala/hive/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jeremialcala/hive/compare/v0.16.1...v0.17.0
