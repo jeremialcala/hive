@@ -8,6 +8,19 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **Las imágenes de cada release, construidas, escaneadas y firmadas en el CI** (HIG-160,
+  [ADR-0036](docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md); decisión de Jeremi del 2026-11-05).
+  - **El workflow `release`** se dispara con la etiqueta `vX.Y.Z`. Comprueba que el CHANGELOG tiene la versión, y por
+    cada imagen:
+    - la construye y la escanea con el umbral de HIG-157; si rompe, no se publica nada;
+    - genera su SBOM y la publica en ghcr como `vX.Y.Z`;
+    - la firma con **cosign sin claves**, con la identidad OIDC del workflow;
+    - atesta el SBOM y la procedencia SLSA;
+    - comprueba la firma.
+  - **La release de GitHub la crea él,** con las cuatro firmadas: las notas del CHANGELOG, el digest de cada imagen,
+    cómo verificarlas y los SBOM adjuntos. Ya no se crea a mano.
+  - **En un PR que cambia el workflow,** construye, escanea y genera los SBOM, sin publicar nada.
+  - **Desplegar desde esas imágenes**, verificadas, es HIG-20. Hasta entonces se sigue construyendo en el servidor.
 - **El SBOM de cada imagen y el gate de licencias** (HIG-158, Gate 4).
   - **El SBOM:** el job «Contenedores» de `seguridad.yml` genera un CycloneDX de cada imagen en cada build y lo deja
     como artefacto (`sbom-<imagen>`). El de cada release lo adjuntará el workflow que la publica (HIG-160).

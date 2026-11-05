@@ -1,10 +1,10 @@
 # Releases
 
 * **Estado:** approved
-* **Fecha:** 2026-10-30
+* **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 1.0.0
+* **Versión:** 1.1.0
 
 Cómo sale una versión de Hive y cómo llega a producción. Lo decidió Jeremi el 2026-10-30 (HIG-35):
 
@@ -46,22 +46,38 @@ gh pr create --base develop --head release/X.Y.Z --title "release X.Y.Z, de vuel
 - **Jeremi fusiona los dos.** Si entre medias entra algo más en `develop`, se queda en `[Unreleased]` para la
   siguiente.
 
-Después del merge a `main`, la etiqueta va sobre su commit de merge, con las notas que da el propio CHANGELOG:
+Después del merge a `main`, la etiqueta va sobre su commit de merge:
 
 ```sh
 git fetch hive
 git tag -a vX.Y.Z hive/main -m "Hive X.Y.Z"
 git push hive vX.Y.Z
-python .ai-dlc/scripts/cortar_release.py X.Y.Z --notas > notas.md
-gh release create vX.Y.Z --title "Hive X.Y.Z" --notes-file notas.md --verify-tag
 ```
+
+**La etiqueta dispara el workflow `release`** (desde el 2026-11-05, [ADR-0036](../00-project/adr/0036-imagenes-firmadas-desde-el-ci.md)).
+Por cada una de las cuatro imágenes:
+
+1. comprueba que el CHANGELOG tiene la versión;
+2. construye la imagen y la escanea con el umbral de HIG-157. Si rompe, no se publica nada;
+3. genera su SBOM;
+4. la publica en ghcr como `vX.Y.Z`;
+5. la firma con cosign sin claves, y atesta el SBOM y la procedencia SLSA;
+6. comprueba la firma.
+
+Con las cuatro firmadas, **crea la release de GitHub**: las notas del CHANGELOG, el digest de cada imagen, el comando
+para verificarlas y los SBOM adjuntos. Ya no se crea a mano. Se sigue en Actions; si falla, no hay release, y se
+arregla con un `hotfix/*`.
 
 El merge a `main` también ejecuta `build` y `build-engine`, que publican en GHCR `hive-gateway:sha-<7>` y
 `hive-engine:sha-<7>`. midgard no los usa, porque el receptor de despliegue continuo no tiene Hive. Eso es HIG-20.
 
 ## Desplegar la release
 
-Solo con el «despliega» de Jeremi en ese turno. Se construye en midgard desde la etiqueta, y las imágenes llevan la
+Solo con el «despliega» de Jeremi en ese turno.
+
+**Esto cambia con HIG-20:** desde ADR-0036, producción se despliega con las imágenes firmadas de la release. Se
+descargan por su digest y se verifica su firma con `cosign verify` antes de levantarlas. Mientras HIG-20 no esté
+hecho, se sigue construyendo en el servidor como hasta ahora (hoy, nidavellir, 192.168.10.2), y las imágenes llevan la
 versión:
 
 ```sh
