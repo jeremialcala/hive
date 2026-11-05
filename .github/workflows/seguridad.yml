@@ -130,3 +130,100 @@ jobs:
       # El script tiene sus pruebas en tests/unit/test_sast_threshold.py.
       - name: Umbral de severidad sobre el SARIF
         run: python3 .ai-dlc/scripts/sast_threshold.py sarif-python
+
+  # Los gates «container» e «IaC» del Gate 4 (HIG-157). Trivy y hadolint corren desde sus imágenes, fijadas por
+  # digest como el resto de las imágenes de Hive: así no se baja ningún binario sin verificar.
+  imagenes:
+    name: Contenedores · ${{ matrix.imagen }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {imagen: gateway, dockerfile: Dockerfile}
+          - {imagen: engine, dockerfile: engine/Dockerfile}
+          - {imagen: portal, dockerfile: portal/Dockerfile}
+          - {imagen: docs, dockerfile: deploy/docs/Dockerfile}
+    env:
+      TRIVY: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - uses: actions/checkout@v7
+
+      # La misma imagen que producción: el mismo Dockerfile, desde la raíz, como en build.yml.
+      - name: Construir la imagen
+        run: docker build -q -f "${{ matrix.dockerfile }}" -t "hive-${{ matrix.imagen }}:scan" .
+
+      # La base de datos de vulnerabilidades, una vez al día y no en cada job.
+      - id: dia
+        run: echo "dia=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.dia.outputs.dia }}
+          restore-keys: trivy-db-
+
+      # Todo lo CRITICAL y HIGH, con arreglo o sin él, a la pestaña Security y al resumen del job.
+      - name: Informe de la imagen
+        run: |
+          trivy() {
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              -v "$PWD:/src:ro" -w /src "$TRIVY" "$@"
+          }
+          trivy image --quiet --scanners vuln --severity CRITICAL,HIGH --ignorefile .trivyignore.yaml \
+            --format sarif --output "/src/trivy-${{ matrix.imagen }}.sarif" "hive-${{ matrix.imagen }}:scan" || true
+          {
+            echo "### hive-${{ matrix.imagen }}: CRITICAL y HIGH"
+            echo '```'
+            trivy image --quiet --scanners vuln --severity CRITICAL,HIGH --ignorefile .trivyignore.yaml \
+              --format table "hive-${{ matrix.imagen }}:scan"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.imagen)) != ''
+        with:
+          sarif_file: trivy-${{ matrix.imagen }}.sarif
+          category: trivy-${{ matrix.imagen }}
+
+      # El umbral (decisión de Jeremi del 2026-11-05): rompe con un CRITICAL o un HIGH que ya tiene versión
+      # corregida. Lo que no tiene arreglo se informa arriba y no bloquea. Las excepciones, en .trivyignore.yaml,
+      # cada una con su motivo y su fecha de revisión.
+      - name: Umbral
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$PWD:/src:ro" -w /src "$TRIVY" image --quiet --scanners vuln --severity CRITICAL,HIGH \
+            --ignore-unfixed --ignorefile .trivyignore.yaml --exit-code 1 "hive-${{ matrix.imagen }}:scan"
+
+  iac:
+    name: IaC · Dockerfile
+    runs-on: ubuntu-latest
+    env:
+      TRIVY: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+      HADOLINT: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+    steps:
+      - uses: actions/checkout@v7
+
+      # Las reglas de hadolint y lo que no aplica, en .hadolint.yaml: rompe con un aviso o un error.
+      - name: hadolint
+        run: |
+          fallo=0
+          for f in Dockerfile engine/Dockerfile portal/Dockerfile deploy/docs/Dockerfile; do
+            echo "== $f"
+            docker run --rm -i -v "$PWD/.hadolint.yaml:/.config/hadolint.yaml:ro" "$HADOLINT" hadolint - < "$f" || fallo=1
+          done
+          exit $fallo
+
+      # Las configuraciones de los Dockerfile. Lo que Trivy no lee, los compose, lo prueba
+      # tests/unit/test_compose_hardening.py en «gateway · test».
+      - name: Trivy config
+        run: |
+          fallo=0
+          for f in Dockerfile engine/Dockerfile portal/Dockerfile deploy/docs/Dockerfile; do
+            echo "== $f"
+            docker run --rm -v "$PWD:/src:ro" -w /src "$TRIVY" config --quiet --severity CRITICAL,HIGH,MEDIUM \
+              --exit-code 1 "$f" || fallo=1
+          done
+          exit $fallo

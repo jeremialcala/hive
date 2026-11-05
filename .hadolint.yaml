@@ -1,0 +1,7 @@
+# hadolint over the four Dockerfiles (HIG-157, Gate 4; the job «IaC · Dockerfile» of seguridad.yml). A warning or an
+# error breaks the build; what is ignored here says why.
+failure-threshold: warning
+ignored:
+  # «Non-numeric user-id»: each image creates its own user with a fixed uid (10001 in ours, 101 in nginx), and the
+  # composes do not override it. The name is that uid on every host.
+  - DL3066
