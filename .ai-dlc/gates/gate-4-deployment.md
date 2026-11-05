@@ -18,8 +18,11 @@
     compose, que Trivy no lee, los prueba `tests/unit/test_compose_hardening.py`. Encontró los servicios del gateway
     sin `no-new-privileges`, `cap_drop` ni `read_only`, ya corregidos.
 - [ ] Runbook de rollback documentado con disparadores
-  - **Falta:** HIG-20, con el despliegue desde ghcr verificado (HIG-160).
+  - **Está la base** (HIG-160, ADR-0036): las imágenes de cada release, firmadas y con procedencia, en ghcr.
+  - **Falta:** HIG-20, que despliega desde ellas por digest y tras `cosign verify`, con el runbook y un rollback
+    probado.
 - [ ] SBOM generado
   - **Está** (2026-11-05, HIG-158): un CycloneDX por imagen en cada build, como artefacto del job «Contenedores»
     (el del gateway: 129 componentes, 87 de Debian y 41 de PyPI).
-  - **Falta:** que cada release lo adjunte, con el workflow que la publica (HIG-160).
+  - **Y con cada release** (HIG-160): el workflow `release` atesta el SBOM de cada imagen con cosign y lo adjunta a
+    la release de GitHub. Queda por verse con la primera etiqueta.

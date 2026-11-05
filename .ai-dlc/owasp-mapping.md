@@ -332,8 +332,16 @@ logout sin una sesión abierta; con ella, no.
 - **Solo se publica una imagen que pasó las pruebas** (`needs: test` en `build.yml`), y producción se construye desde
   la etiqueta de una release ([releases](../docs/05-deployment/releases.md)).
 
-**Huecos** (de HIG-20): no hay firma de imágenes (cosign), ni atestación de procedencia, ni etiquetas de release
-firmadas.
+- **Las imágenes de cada release, firmadas y con procedencia** (HIG-160,
+  [ADR-0036](../docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md); el workflow `release`).
+  - **Qué hace:** con la etiqueta `vX.Y.Z` las construye, escanea, publica y firma con cosign sin claves, con la
+    identidad OIDC de ese workflow en esa etiqueta, y atesta su SBOM y su procedencia SLSA. Lo que no pasa el escaneo
+    no se publica.
+  - **Por qué sin clave:** no hay clave que robar. La firma dice qué repositorio y qué etiqueta la produjeron, y queda
+    en el registro público de Sigstore.
+
+**Huecos** (de HIG-20): que el servidor despliegue esas imágenes por digest y tras `cosign verify`, en vez de
+construirlas.
 
 ## A09 — Registro y monitorización
 
