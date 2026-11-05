@@ -136,15 +136,19 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
   - **Prueba:** `tu/test_idp_compose.py::test_every_image_is_pinned_by_digest`, para el compose de Zitadel.
   - **Decidido en:** threat model, T14; RS12.
 - **Secretos:** gitleaks 8.28.0, con `--redact`, sobre toda la historia de todas las ramas.
+- **Las Actions, fijadas por el SHA de su commit** (HIG-159), con su versión en un comentario: una etiqueta como `@v7`
+  la puede mover su dueño, y cambiaría lo que corre con el token del repositorio sin un commit aquí.
+  - **Prueba:** `tu/test_workflows_pinned.py`.
+- **Dependabot** (`.github/dependabot.yml`, HIG-159) mueve esos SHA y los digest de las imágenes base de los cuatro
+  Dockerfile, cada lunes, en PR hacia `develop` que pasan por los mismos gates. Las dependencias de Python no van:
+  sus locks salen de `uv pip compile`, que Dependabot no regenera. Las cubre el SCA, que corre también cada lunes.
 - **SAST:** «SAST · CodeQL», con las consultas `security-and-quality`. `.ai-dlc/scripts/sast_threshold.py` rompe el
   build con un hallazgo de 7.0 o más fuera de las pruebas. `main` tiene 0 alertas abiertas desde la 0.4.0.
   - **Prueba:** `tu/test_sast_threshold.py::test_a_high_security_finding_breaks_the_build`.
 
-**Huecos** (todos de HIG-20, Gate 4):
+**Huecos** (de HIG-158, Gate 4):
 - no se genera SBOM (RS12, «Parcial»);
-- no hay Dependabot ni Renovate;
 - no hay gate de licencias;
-- las Actions van por etiqueta (`@v4`), no por SHA.
 
 ## A04 — Fallos criptográficos
 
