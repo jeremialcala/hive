@@ -7,6 +7,19 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Cambiado
+- **El PRD, al día con lo construido** (HIG-118; `docs/01-requirements/mvp-baas-gateway.md` 0.22.0).
+  - **RF17** pasa a construido, con el BFF (HIG-93).
+  - **RF28 y RF29** pasan a cumplido y a construido.
+  - **RF30 y RF16:** ya no dicen «hasta que haya personas» ni «hasta la auditoría».
+  - **RF05, RF07, RF12 y RF15** describen el motor de hoy: Bifröst, el contrato v2, el notificador y el contexto
+    del coordinador.
+  - **RF11** dice que producción se despliega a mano desde la etiqueta de cada release.
+  - **Lo pendiente de la D9** (RF19 a RF22, RF32 a RF35), RF10 y RF13 enlazan su issue.
+  - **Mitigados:** AB06, AB17, AB29 y AB36 a AB39 y AB42.
+  - **RNF10** pasa a cumplido, con la medición del 2026-11-04.
+  - **Al día también:** RNF05, RS09 y RS22.
+
 ## [0.19.0] - 2026-11-05
 
 ### Cambiado
