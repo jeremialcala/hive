@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-05
+
 ### Cambiado
 - **El Gate 3 (Pruebas) queda aprobado** (HIG-125; `.ai-dlc/gates/gate-3-testing.md`).
   - **La pirámide:** completa, con la suite de seguridad del motor (HIG-154).
@@ -1664,7 +1666,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jeremialcala/hive/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jeremialcala/hive/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/jeremialcala/hive/compare/v0.16.0...v0.16.1
