@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from src.domain.models.sobre import Criterio, Persona, Vuelta
 from src.domain.ports.evaluador import Evaluador, EvaluacionFallida, Juicio
 from src.infrastructure.llm.caliente import Caliente, prefijo
-from src.infrastructure.llm.cliente import ClienteLlm, LlmNoDisponible
+from src.infrastructure.llm.cliente import ClienteLlm, LlmNoDisponible, dato
 from src.infrastructure.llm.redactor import INSTRUCCIONES
 
 log = logging.getLogger(__name__)
@@ -92,10 +92,10 @@ def system_de(persona: Persona) -> str:
 
 def turno(vueltas: list[Vuelta], texto: str, respuesta: str) -> str:
     """Lo que se revisa, como datos."""
-    conversacion = "\n".join(f"[{'Persona' if v.de == 'persona' else 'Asistente'}] {v.texto}" for v in vueltas)
+    conversacion = "\n".join(f"[{'Persona' if v.de == 'persona' else 'Asistente'}] {dato(v.texto)}" for v in vueltas)
     return (f"Conversación anterior:\n{conversacion or '(ninguna)'}\n\n"
-            f"Último mensaje de la persona:\n<<<\n{texto}\n>>>\n\n"
-            f"Respuesta propuesta del asistente:\n<<<\n{respuesta}\n>>>")
+            f"Último mensaje de la persona:\n<<<\n{dato(texto)}\n>>>\n\n"
+            f"Respuesta propuesta del asistente:\n<<<\n{dato(respuesta)}\n>>>")
 
 
 class LlmEvaluador(Evaluador):

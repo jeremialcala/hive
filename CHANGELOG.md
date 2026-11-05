@@ -7,6 +7,41 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-05
+
+### Cambiado
+- **El Gate 3 (Pruebas) queda aprobado** (HIG-125; `.ai-dlc/gates/gate-3-testing.md`).
+  - **La pirámide:** completa, con la suite de seguridad del motor (HIG-154).
+  - **La matriz OWASP:** ejecutada. Sus huecos pasan a los gates 4 y 5 (HIG-20, HIG-140), por decisión de Jeremi.
+  - **El DAST:** limpio.
+  - **RNF10:** se cumple con 23 respuestas (mediana 4,8 s, p95 5,5 s).
+  - **El mutation testing:** un 98,0 % sobre los módulos de seguridad, y el workflow sigue sin bloquear, también por
+    decisión de Jeremi.
+- **La medición de punta a punta se hace en nidavellir** (`docs/04-testing/medicion-punta-a-punta.md` 1.1.0). El script
+  llega por la entrada estándar y no se escribe nada en el servidor. Recoge las mediciones del 2026-11-04.
+
+### Añadido
+- **Pruebas para los mutantes de `src/auth/request_limits.py`** (HIG-155, Gate 3). Llegó mientras se medía HIG-137, y
+  la pasada semanal del 2026-11-02 le daba un 93,5 %, con 11 que sobrevivían. Tres pruebas matan 6, y sube al 97,6 %:
+  - una petición al webhook sin la dirección del par se cuenta igual;
+  - lo que no es HTTP, o no se cuenta, pasa tal cual;
+  - el log de un origen rechazado no lleva su dirección (RS07).
+
+  Los 4 que quedan son equivalentes, y `docs/04-testing/mutation-testing.md` (1.1.0) dice por qué.
+
+### Seguridad
+- **Las marcas de turno de Gemma 4 no abren un turno del modelo** (HIG-154, LLM01).
+  - **El problema:** llama.cpp lee como tokens especiales las marcas de la plantilla que vienen dentro de un mensaje.
+    Con Gemma 4, `<turn|>` en el turno de usuario es el token que lo cierra (medido el 2026-11-04). Un mensaje de
+    WhatsApp, una regla o un tema del bot podían abrir un turno de `system` que la plataforma no escribió.
+  - **En el motor:** su cliente del LLM rompe cada marca de cada contenido antes de enviarlo, venga de donde venga, y
+    los bloques de datos del evaluador y del resumidor no se pueden cerrar desde dentro.
+  - **En el gateway:** la persona, las reglas, los intents y los temas rechazan también las marcas de Gemma
+    (`<|turn>`, `<turn|>`, `<start_of_turn>`, `<bos>`...), con un `422`, como las de ChatML y Llama (RS11).
+  - **La suite de seguridad del motor** (`engine/tests/security/`, 142 pruebas) lo prueba con un corpus de mensajes
+    hostiles, junto con la salida del modelo, los límites y los destinos. Cierra el hueco del Gate 3 «el motor no
+    tiene suite de seguridad propia».
+
 ## [0.18.0] - 2026-11-03
 
 ### Añadido
@@ -1631,7 +1666,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jeremialcala/hive/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jeremialcala/hive/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/jeremialcala/hive/compare/v0.16.0...v0.16.1

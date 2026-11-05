@@ -6,7 +6,7 @@
 | `integration/` | Contra un NATS con los permisos de Bifröst (`nats-test.conf`): leer, publicar, confirmar, reentregar, y que cada usuario solo publica su paso | Con pruebas |
 | `contract/` | Que el sobre que se publica cumple `docs/02-design/contracts/asyncapi-motor.yaml` | Con pruebas |
 | `e2e/` | Un mensaje de WhatsApp de punta a punta, con Claude de verdad (E7) | Vacío |
-| `security/` | Amenazas T1 a T12: corpus de jailbreaks, payloads hostiles, URL internas, PII en logs | Vacío |
+| `security/` | Lo que va al modelo y lo que vuelve (T1, T2, T7, T10; LLM01, LLM05, LLM10): un corpus de mensajes hostiles, las marcas de turno, las salidas que no cumplen su esquema, los límites y los destinos. `pytest -m security` la corre con las pruebas unitarias de los controles | Con pruebas (HIG-154) |
 
 ```bash
 pytest                                  # toda la pirámide
