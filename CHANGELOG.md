@@ -8,6 +8,15 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 ## [Unreleased]
 
 ### Seguridad
+- **Las Actions, fijadas por el SHA de su commit, y Dependabot para moverlas** (HIG-159, Gate 4).
+  - **Las Actions:** las 51 `uses:` de los ocho workflows que usan Actions van por el SHA del commit de su versión,
+    con la versión en un comentario (`actions/checkout@3d3c42e… # v7.0.1`). Antes iban por la etiqueta mayor, que su
+    dueño puede mover. `tests/unit/test_workflows_pinned.py` falla con una por etiqueta, o con dos SHA distintos de
+    la misma versión.
+  - **Dependabot** (`.github/dependabot.yml`) propone cada lunes, agrupados y hacia `develop`, los SHA nuevos de las
+    Actions y los digest nuevos de las imágenes base de los cuatro Dockerfile.
+  - **Python no va,** porque sus locks salen de `uv pip compile` y Dependabot no los regenera. Lo cubre el SCA, que ya
+    corre cada lunes.
 - **Las imágenes y los Dockerfile, escaneados en cada PR** (HIG-157, Gate 4).
   - **Contenedores:** el job «Contenedores» de `seguridad.yml` construye las cuatro imágenes como en producción y les
     pasa Trivy 0.76.1. Rompe con un CRITICAL o un HIGH que ya tiene arreglo (decisión de Jeremi del 2026-11-05).

@@ -26,7 +26,7 @@ jobs:
     name: Fuga de secretos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Historia completa: un secreto borrado en el commit siguiente sigue estando en el repo, y este es un
           # repositorio PÚBLICO.
@@ -49,9 +49,9 @@ jobs:
     name: SCA · dependencias vulnerables
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -109,14 +109,14 @@ jobs:
       # el push miden lo mismo.
       CODEQL_ACTION_DIFF_INFORMED_QUERIES: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: python
           queries: security-and-quality
 
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:python
           # El SARIF también en disco, para poder decidir aquí. Sube igual a la pestaña Security, que es donde vive
@@ -150,7 +150,7 @@ jobs:
     env:
       TRIVY: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # La misma imagen que producción: el mismo Dockerfile, desde la raíz, como en build.yml.
       - name: Construir la imagen
@@ -159,7 +159,7 @@ jobs:
       # La base de datos de vulnerabilidades, una vez al día y no en cada job.
       - id: dia
         run: echo "dia=$(date -u +%F)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.dia.outputs.dia }}
@@ -182,7 +182,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: always() && hashFiles(format('trivy-{0}.sarif', matrix.imagen)) != ''
         with:
           sarif_file: trivy-${{ matrix.imagen }}.sarif
@@ -204,7 +204,7 @@ jobs:
       TRIVY: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
       HADOLINT: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Las reglas de hadolint y lo que no aplica, en .hadolint.yaml: rompe con un aviso o un error.
       - name: hadolint

@@ -1,0 +1,34 @@
+# Dependabot (HIG-159, Gate 4): the Actions of the workflows, pinned by SHA, and the base images of the Dockerfiles,
+# pinned by digest. Without it a pin never moves: what it pins would grow old, and a fix would never come in.
+#
+# Each PR goes to develop and through the same gates as any other: the tests, the SCA, the scan of the images.
+#
+# The Python dependencies are not here. Their .txt declare ranges and their .lock come from `uv pip compile`, which
+# Dependabot does not regenerate: its PR would change the .txt and break the check of the locks. What they need is
+# covered by «SCA · dependencias vulnerables» (seguridad.yml), which runs every Monday as well: it breaks with a known
+# vulnerability in any of the six locks, and warns when a lock has newer versions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: docker
+    directories: ["/", "/engine", "/portal", "/deploy/docs"]
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      imagenes-base:
+        patterns: ["*"]
+    commit-message:
+      prefix: build

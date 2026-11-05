@@ -38,9 +38,9 @@ jobs:
     # with 8 processes it took some 80 minutes (docs/04-testing/mutation-testing.md), and this runner has 4.
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -70,7 +70,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # `mutmut show <mutant>` reads these: the mutated copies and what each mutant did.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: mutants
