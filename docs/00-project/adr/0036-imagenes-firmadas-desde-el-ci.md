@@ -4,7 +4,7 @@
 * **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 1.0.0
+* **Versión:** 1.0.1
 * **ID:** ADR-0036
 * **Supersede:** el paso «se construye en el servidor desde la etiqueta» de
   [releases](../../05-deployment/releases.md)
@@ -53,7 +53,8 @@ Jeremi lo decidió el 2026-11-05: **producción se despliega desde las imágenes
        --certificate-identity-regexp '^https://github.com/jeremialcala/hive/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$'
        --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-   Sin una firma válida, no se despliega. Eso es HIG-20, con el runbook.
+   Sin una firma válida, no se despliega. Lo hace `deploy/desplegar.sh` (HIG-20), que exige además la etiqueta
+   exacta que se despliega, con el [runbook](../../05-deployment/runbook-despliegue-y-rollback.md).
 4. **En un PR que cambia el workflow,** corre todo menos publicar, firmar y crear la release: construye, escanea y
    genera los SBOM. Lo demás se prueba con la primera etiqueta.
 
@@ -72,8 +73,8 @@ Jeremi lo decidió el 2026-11-05: **producción se despliega desde las imágenes
 - **Lo que corre es lo que pasó los gates,** y se puede comprobar en cualquier momento por su digest y su firma.
 - **Una release necesita que el CI funcione.** Si GitHub o Sigstore no responden, no hay release, y lo urgente espera
   o va por `hotfix/*` con el mismo workflow.
-- **El servidor necesita leer ghcr.** Si los paquetes son privados, necesita además un token de solo lectura. Lo
-  resuelve HIG-20.
+- **El servidor necesita leer ghcr y Sigstore.** Los paquetes son públicos, así que no hace falta token (comprobado
+  el 2026-11-05 en HIG-20). Si GitHub no responde, se vuelve atrás a mano con las imágenes que ya hay en el servidor.
 - **Las imágenes de ghcr pasan a ser las de producción,** con su etiqueta `vX.Y.Z`. Las que `build` y `build-engine`
   publican desde `main` con `sha-xxxxxxx` siguen para el despliegue continuo de antes, y no son las de producción.
 - **El registro de Sigstore es público:** cada firma dice qué repositorio y qué etiqueta la produjo. El repositorio ya
