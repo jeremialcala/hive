@@ -1,10 +1,10 @@
 # Runbook: desplegar una release y volver atrás
 
-* **Estado:** review
-* **Fecha:** 2026-11-05
+* **Estado:** approved
+* **Fecha:** 2026-11-06
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 1.0.0
+* **Versión:** 1.1.0
 * **Requisitos:** RF11 del [PRD](../01-requirements/mvp-baas-gateway.md); HIG-20 (Gate 4);
   [ADR-0036](../00-project/adr/0036-imagenes-firmadas-desde-el-ci.md)
 
@@ -156,10 +156,21 @@ Volver a la imagen anterior no deshace lo que la versión nueva ya hizo fuera de
 
 ## Prueba de la vuelta atrás
 
-Pendiente, después del merge de HIG-20 y con el «despliega» de Jeremi. Se hará en dos tiempos, con un mensaje de
-prueba en cada uno:
+Hecha el 2026-11-06, en nidavellir y con el «despliega» de Jeremi, en dos tiempos y con un mensaje de prueba en
+cada uno. Las horas son UTC.
 
-1. De la v0.20.0, construida en el servidor, a la v0.19.0 con `--local`.
-2. De la v0.19.0 a la v0.20.0 firmada, con el script. Desde ahí, lo que corre es lo que firmó el CI.
+| Tiempo | Qué | Duración | Resultado |
+|---|---|---|---|
+| 1 (01:37) | De la v0.20.0, construida en el servidor, a la v0.19.0 con `--local` | 42 s | Los diez contenedores, healthy y sin reinicios. El script instaló el compose del gateway de la 0.19.0, que aún no era de solo lectura, con copia del anterior |
+| Mensaje | Respuesta del bot con la v0.19.0 (01:58) | 17,7 s | Traza completa en Saga, del webhook a `ingest.answer`. Era el primero tras recrear los contenedores; el siguiente tardó 7,3 s |
+| 2 (02:00) | De la v0.19.0 a la v0.20.0 firmada, desde ghcr | 96 s, con las descargas | Las cuatro firmas, verificadas antes de cambiar nada. Los diez contenedores, healthy, de solo lectura y con el digest de la release |
+| Mensaje | Respuesta del bot con la v0.20.0 (02:41) | 9,4 s | Traza completa en Saga |
 
-Aquí quedarán la fecha, la duración de cada tiempo y lo que se vio.
+En los dos tiempos, las cuatro URL públicas respondieron 200 y la documentación mostraba la versión desplegada. Los
+logs, sin `ERROR`, `Traceback` ni `401`. El túnel no se tocó. **Desde las 02:01, producción corre lo que firmó el CI:**
+el gateway `sha256:707e7a41…`, el motor `sha256:b0160dc2…`, el portal `sha256:0b5e2f98…` y la documentación
+`sha256:b7644f37…`.
+
+La vuelta automática, la de cuando la sonda falla, no se provocó en producción. La prueban
+`tests/unit/test_desplegar.py`, con la sonda rota a propósito, y el mismo camino de `levantar` y `esperar` que los dos
+tiempos usaron.

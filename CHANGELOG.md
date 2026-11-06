@@ -25,6 +25,9 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 - **El runbook de despliegue y vuelta atrás** ([runbook](docs/05-deployment/runbook-despliegue-y-rollback.md)): los
   pasos, las comprobaciones de después, siete disparadores de la vuelta atrás, cómo volver a mano y lo que no se
   deshace.
+- **La vuelta atrás, probada en producción** el 2026-11-06: de la v0.20.0 a la v0.19.0 en 42 s, y de vuelta a la
+  v0.20.0 firmada en 96 s, con un mensaje respondido en cada versión. Desde entonces producción corre las imágenes que
+  firmó el CI. Con eso, y con los SBOM de la v0.20.0, se cierran dos ítems del Gate 4.
 
 ## [0.20.0] - 2026-11-05
 
