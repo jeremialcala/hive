@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-06
+
 ### Seguridad
 - **Producción solo levanta las imágenes que firmó el CI** (HIG-20, [ADR-0036](docs/00-project/adr/0036-imagenes-firmadas-desde-el-ci.md)).
   `deploy/desplegar.sh` despliega una release sin construir nada en el servidor, y todo lo que puede fallar va antes de
@@ -28,6 +30,14 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 - **La vuelta atrás, probada en producción** el 2026-11-06: de la v0.20.0 a la v0.19.0 en 42 s, y de vuelta a la
   v0.20.0 firmada en 96 s, con un mensaje respondido en cada versión. Desde entonces producción corre las imágenes que
   firmó el CI. Con eso, y con los SBOM de la v0.20.0, se cierran dos ítems del Gate 4.
+
+### Cambiado
+- **Las primeras subidas de Dependabot** (HIG-159):
+  - la imagen de la documentación construye con Node 26.13.0 (antes 22.23.3) y sirve con
+    `nginx-unprivileged` 1.31.7 (antes 1.30.6);
+  - las Actions `actions/cache` 6.1.0 y `actions/upload-artifact` 7.0.2, fijadas por SHA.
+- **Los PR de Dependabot** tienen su propia clave de solo lectura para Bifröst, como secreto de Dependabot, y corren
+  el e2e y el DAST como los demás.
 
 ## [0.20.0] - 2026-11-05
 
@@ -1765,7 +1775,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/jeremialcala/hive/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jeremialcala/hive/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jeremialcala/hive/compare/v0.17.0...v0.18.0
