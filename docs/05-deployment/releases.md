@@ -4,7 +4,7 @@
 * **Fecha:** 2026-11-05
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 05-deployment
-* **Versión:** 1.1.0
+* **Versión:** 1.2.0
 
 Cómo sale una versión de Hive y cómo llega a producción. Lo decidió Jeremi el 2026-10-30 (HIG-35):
 
@@ -69,46 +69,27 @@ para verificarlas y los SBOM adjuntos. Ya no se crea a mano. Se sigue en Actions
 arregla con un `hotfix/*`.
 
 El merge a `main` también ejecuta `build` y `build-engine`, que publican en GHCR `hive-gateway:sha-<7>` y
-`hive-engine:sha-<7>`. midgard no los usa, porque el receptor de despliegue continuo no tiene Hive. Eso es HIG-20.
+`hive-engine:sha-<7>`. Producción no los usa: se despliega desde las imágenes firmadas de la release.
 
 ## Desplegar la release
 
-Solo con el «despliega» de Jeremi en ese turno.
-
-**Esto cambia con HIG-20:** desde ADR-0036, producción se despliega con las imágenes firmadas de la release. Se
-descargan por su digest y se verifica su firma con `cosign verify` antes de levantarlas. Mientras HIG-20 no esté
-hecho, se sigue construyendo en el servidor como hasta ahora (hoy, nidavellir, 192.168.10.2), y las imágenes llevan la
-versión:
+Solo con el «despliega» de Jeremi en ese turno, y con el
+[runbook de despliegue y vuelta atrás](runbook-despliegue-y-rollback.md) (HIG-20). Desde la 0.20.0, ya no se
+construye nada en el servidor: `deploy/desplegar.sh` descarga las imágenes firmadas de la release por su digest,
+verifica su firma con `cosign verify` y solo entonces las levanta:
 
 ```sh
-git -c core.autocrlf=false archive vX.Y.Z | ssh midgard 'rm -rf ~/hive-build && mkdir ~/hive-build && tar -x -C ~/hive-build'
-# En midgard, en ~/hive-build:
-sudo docker build -t ghcr.io/jeremialcala/hive-gateway:vX.Y.Z .
-sudo docker build -f deploy/docs/Dockerfile -t ghcr.io/jeremialcala/hive-docs:vX.Y.Z .
-sudo docker build -f engine/Dockerfile -t ghcr.io/jeremialcala/hive-engine:vX.Y.Z .
-sudo docker build -f portal/Dockerfile -t ghcr.io/jeremialcala/hive-portal:vX.Y.Z .
+ssh -i ~/.ssh/id_ed25519_hgtech001 jalcala@192.168.10.2 'sudo bash -s -- vX.Y.Z' < deploy/desplegar.sh
 ```
 
-Después, cada proyecto con su compose:
-
-- **Comprobar el compose:** antes de levantar, `diff -q` entre el compose desplegado y el de `~/hive-build`. Si
-  cambió, se guarda una copia y se instala el nuevo.
-- **El gateway:** `cd /srv/apps/hive-gateway && sudo env IMAGE_TAG=vX.Y.Z docker compose up -d`.
-- **El motor:** `ENGINE_IMAGE_TAG=vX.Y.Z` en su `.env` (con copia antes), y
-  `sudo docker compose --project-directory /srv/apps/hive-engine up -d`.
-- **El portal:** `cd /srv/apps/hive-portal && sudo env PORTAL_IMAGE_TAG=vX.Y.Z docker compose up -d`.
-- **Bifröst,** solo si la release trae un cambio suyo, con su `instalar.sh` y su orden: primero el gateway, después
-  Bifröst, después el motor y al final el portal.
-
-Se comprueba que cada contenedor está `healthy` con su imagen `vX.Y.Z` y sin errores en el log. Si el portal cambió, se
-comprueba también que Cloudflare no sirve una copia vieja: `curl -sI` de un módulo debe decir `no-cache`, y
-`cf-cache-status` nunca `HIT`.
+Si los diez contenedores no quedan `healthy`, vuelve solo a la versión que corría. Las comprobaciones de después, los
+disparadores de la vuelta atrás y lo que no se deshace están en el runbook.
 
 ## Volver atrás
 
-Las imágenes de la release anterior siguen en midgard. Se levanta cada proyecto con la etiqueta anterior: el mismo
-`compose up -d` con `IMAGE_TAG`, `ENGINE_IMAGE_TAG` y `PORTAL_IMAGE_TAG` en `vX.Y.(Z-1)`. Un cambio de Bifröst se
-revierte con la copia que `instalar.sh` deja en `/root/bifrost-antes-*`.
+Volver es desplegar la versión anterior con el mismo script; las anteriores a la 0.20.0, que no están firmadas, con
+`--local`. El [runbook](runbook-despliegue-y-rollback.md#volver-atrás) tiene también cómo volver a mano si GitHub no
+responde. Un cambio de Bifröst se revierte con la copia que `instalar.sh` deja en `/root/bifrost-antes-*`.
 
 ## Hotfix
 
