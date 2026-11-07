@@ -7,6 +7,12 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **El Gate 4, cerrado** (HIG-20). Los siete gates del pipeline pasaron juntos en el PR de la 0.21.0 a `main`. La
+  0.21.0 fue la primera release desplegada con `deploy/desplegar.sh`, con las firmas verificadas. El runbook de
+  rollback está probado en producción, y cada release lleva sus SBOM
+  ([Gate 4](.ai-dlc/gates/gate-4-deployment.md)).
+
 ## [0.21.0] - 2026-11-06
 
 ### Seguridad
