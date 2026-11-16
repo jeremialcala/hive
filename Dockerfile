@@ -3,6 +3,12 @@
 FROM python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
 LABEL authors="Jeremi"
 
+# The image lags behind Debian: on 2026-11-16 even its newest build still had zlib1g with two HIGH already fixed in
+# trixie-security (CVE-2026-76844, CVE-2026-85091). What Debian has fixed comes in at build time.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 

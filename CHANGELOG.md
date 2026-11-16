@@ -7,6 +7,16 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Seguridad
+- **Cuatro vulnerabilidades HIGH, corregidas en las imágenes de Python** (gateway, motor y portal). Las encontraron
+  el escaneo de contenedores y el SCA del CI el 2026-11-16, y rompían todos los PR:
+  - **zlib1g** (CVE-2026-76844, CVE-2026-85091): ni la `python:3.12-slim` más reciente trae el arreglo de Debian.
+    Las tres imágenes lo toman al construir con `apt-get upgrade`, como la documentación ya hacía con `apk upgrade`.
+  - **opentelemetry-api** 1.45.1 → 1.45.2 (CVE-2026-126360), con el resto de la familia, en los ocho locks y en los
+    pines exactos del motor. Cumple la regla de las dos semanas.
+  - **dnspython** 2.9.0 → 2.9.2 (CVE-2026-128089). Se toma un día antes de cumplir dos semanas, como excepción a la
+    regla decidida por Jeremi: la imagen de producción tenía ese HIGH.
+
 ### Añadido
 - **El Gate 4, cerrado** (HIG-20). Los siete gates del pipeline pasaron juntos en el PR de la 0.21.0 a `main`. La
   0.21.0 fue la primera release desplegada con `deploy/desplegar.sh`, con las firmas verificadas. El runbook de

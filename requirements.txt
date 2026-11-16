@@ -6,9 +6,11 @@
 fastapi>=0.115
 uvicorn>=0.30
 
-# MongoDB handlers (dnspython resolves the mongodb+srv:// hosts)
+# MongoDB handlers (dnspython resolves the mongodb+srv:// hosts). 2.9.2, published on 2026-11-03, fixes
+# CVE-2026-128089 (HIGH). It was taken on 2026-11-16, one day before it was two weeks old: an exception to the rule,
+# decided by Jeremi, because the image in production had that HIGH.
 pymongo>=4.6.2
-dnspython>=2.6.1
+dnspython>=2.9.2
 mongoengine>=0.28.2
 
 # Rest clients
@@ -40,9 +42,9 @@ pika>=1.3.2
 nats-py>=2.16
 
 # Traces (OpenTelemetry, R4): the SDK and its OTLP exporter over HTTP. No instrumentation package: they record the
-# address with its query string and the client's address, which the rule of the logs forbids (RS19). 1.45.1, published
-# on 2026-10-06, fixes CVE-2026-114603 of opentelemetry-api; a release is only taken once it is two weeks old, and
-# this one was on 2026-10-22. Below 1.46 until that one is too.
-opentelemetry-api>=1.45.1,<1.46
-opentelemetry-sdk>=1.45.1,<1.46
-opentelemetry-exporter-otlp-proto-http>=1.45.1,<1.46
+# address with its query string and the client's address, which the rule of the logs forbids (RS19). 1.45.2, published
+# on 2026-10-29, fixes CVE-2026-126360 of opentelemetry-api (1.45.1 fixed CVE-2026-114603); a release is only taken
+# once it is two weeks old, and this one was on 2026-11-12. Below 1.46 until that one is too.
+opentelemetry-api>=1.45.2,<1.46
+opentelemetry-sdk>=1.45.2,<1.46
+opentelemetry-exporter-otlp-proto-http>=1.45.2,<1.46
