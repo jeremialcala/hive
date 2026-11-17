@@ -1,0 +1,18 @@
+# /etc/systemd/system/hive-seguridad.service
+[Unit]
+Description=Hive: cuenta los eventos de seguridad de los logs para Prometheus
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hive-seguridad.sh
+# Lee diez logs de un minuto. Si una pasada se alarga, el temporizador se salta la siguiente en vez de lanzar dos a
+# la vez, y la que venga después cuenta las dos ventanas.
+TimeoutStartSec=50
+# Root: lee de docker y escribe en el directorio de Thor. ProtectSystem=full y no strict, como los vigías: deja /var
+# escribible para el estado y para el CLI de docker.
+StateDirectory=hive-seguridad
+StateDirectoryMode=0700
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes

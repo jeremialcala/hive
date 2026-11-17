@@ -18,6 +18,17 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     regla decidida por Jeremi: la imagen de producción tenía ese HIGH.
 
 ### Añadido
+- **El contador de eventos de seguridad** (HIG-140, Gate 5; `deploy/seguridad/`). Cada minuto, un timer de
+  nidavellir cuenta en los logs de Hive nueve eventos y los deja en un fichero que Thor sirve a Prometheus:
+  - los rechazos y frenos de `/oauth/token`;
+  - las rutas denegadas;
+  - las firmas malas y las verificaciones fallidas del webhook;
+  - los bots que pasan a ERR;
+  - las caídas de Andvari, Bifröst y la base.
+
+  Cuenta de los logs, y no con métricas en la aplicación, por decisión de Jeremi del 2026-11-16. Una prueba de
+  contrato fija cada expresión contra el log del código que la escribe
+  ([eventos de seguridad](docs/06-monitoring/eventos-de-seguridad.md)).
 - **El Gate 4, cerrado** (HIG-20). Los siete gates del pipeline pasaron juntos en el PR de la 0.21.0 a `main`. La
   0.21.0 fue la primera release desplegada con `deploy/desplegar.sh`, con las firmas verificadas. El runbook de
   rollback está probado en producción, y cada release lleva sus SBOM
