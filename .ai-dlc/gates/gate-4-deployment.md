@@ -1,9 +1,14 @@
 # Gate 4 — Despliegue (cierre de Fase 05)
 
-**Estado a 2026-11-06: abierto, con un ítem.** HIG-157 a HIG-160 y el despliegue de HIG-20 están hechos. Falta que los
-siete gates pasen juntos en el CI de la release que cierre el gate.
+**Cerrado el 2026-11-06** (HIG-20, con HIG-157 a HIG-160): los cuatro ítems están cumplidos. Lo aprueba Jeremi Alcala
+al fusionar este cierre. Estuvo abierto desde el 2026-10-30, y las releases de entonces salieron sin esperarlo.
 
-- [ ] Pipeline con 7 gates limpio (SAST, SCA, secrets, license, container, IaC, DAST)
+- **Desde la 0.20.0,** producción corre las imágenes que el CI construye, escanea y firma.
+- **Desde la 0.21.0,** se despliegan con `deploy/desplegar.sh`, que verifica la firma antes de levantarlas y vuelve
+  solo si no quedan sanas. La 0.21.0 fue la primera release desplegada así: 94 s, con las cuatro firmas verificadas.
+- **Lo que queda de la matriz OWASP** es del Gate 5: las alertas, el tablero y el runbook de incidentes (HIG-140).
+
+- [x] Pipeline con 7 gates limpio (SAST, SCA, secrets, license, container, IaC, DAST)
   - **Están** (`seguridad.yml`, `e2e.yml`):
     - SAST, con CodeQL y su umbral;
     - SCA, con `pip-audit` sobre los seis locks;
@@ -13,7 +18,10 @@ siete gates pasen juntos en el CI de la release que cierre el gate.
     - **IaC**, con hadolint y `trivy config` (HIG-157);
     - **license**, con Trivy sobre los seis locks y la política de `.trivy-licencias.yaml` (HIG-158).
   - **Las Actions del pipeline,** fijadas por SHA, y Dependabot para moverlas, igual que las imágenes base (HIG-159).
-  - **Falta:** que los siete pasen juntos en el CI de la release que cierre el gate.
+  - **Juntos y en verde** en el PR de la release 0.21.0 a `main` (#223, 2026-11-06): `SAST · CodeQL`,
+    `SCA · dependencias vulnerables`, `Fuga de secretos`, `Licencias`, los cuatro `Contenedores`, `IaC · Dockerfile` y
+    `dast · zap` ([seguridad](https://github.com/jeremialcala/hive/actions/runs/42154244961)). En el mismo PR pasaron también el e2e y la prueba en seco del workflow
+    `release`.
 - [x] IaC escaneada sin findings críticos
   - **Está** (2026-11-05, HIG-157): hadolint y `trivy config`, sobre los cuatro Dockerfile, sin avisos ni errores. Los
     compose, que Trivy no lee, los prueba `tests/unit/test_compose_hardening.py`. Encontró los servicios del gateway

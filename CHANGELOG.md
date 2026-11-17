@@ -7,6 +7,39 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-16
+
+### Seguridad
+- **Cuatro vulnerabilidades HIGH, corregidas en las imágenes de Python** (gateway, motor y portal). Las encontraron
+  el escaneo de contenedores y el SCA del CI el 2026-11-16, y rompían todos los PR:
+  - **zlib1g** (CVE-2026-76844, CVE-2026-85091): ni la `python:3.12-slim` más reciente trae el arreglo de Debian.
+    Las tres imágenes lo toman al construir con `apt-get upgrade`, como la documentación ya hacía con `apk upgrade`.
+  - **opentelemetry-api** 1.45.1 → 1.45.2 (CVE-2026-126360), con el resto de la familia, en los ocho locks y en los
+    pines exactos del motor. Cumple la regla de las dos semanas.
+  - **dnspython** 2.9.0 → 2.9.2 (CVE-2026-128089). Se toma un día antes de cumplir dos semanas, como excepción a la
+    regla decidida por Jeremi: la imagen de producción tenía ese HIGH.
+
+### Añadido
+- **El contador de eventos de seguridad** (HIG-140, Gate 5; `deploy/seguridad/`). Cada minuto, un timer de
+  nidavellir cuenta en los logs de Hive nueve eventos y los deja en un fichero que Thor sirve a Prometheus:
+  - los rechazos y frenos de `/oauth/token`;
+  - las rutas denegadas;
+  - las firmas malas y las verificaciones fallidas del webhook;
+  - los bots que pasan a ERR;
+  - las caídas de Andvari, Bifröst y la base.
+
+  Cuenta de los logs, y no con métricas en la aplicación, por decisión de Jeremi del 2026-11-16. Una prueba de
+  contrato fija cada expresión contra el log del código que la escribe
+  ([eventos de seguridad](docs/06-monitoring/eventos-de-seguridad.md)).
+- **El Gate 4, cerrado** (HIG-20). Los siete gates del pipeline pasaron juntos en el PR de la 0.21.0 a `main`. La
+  0.21.0 fue la primera release desplegada con `deploy/desplegar.sh`, con las firmas verificadas. El runbook de
+  rollback está probado en producción, y cada release lleva sus SBOM
+  ([Gate 4](.ai-dlc/gates/gate-4-deployment.md)).
+
+### Cambiado
+- **La imagen de la documentación construye con Node 26.13.1** (antes 26.13.0), fijada por digest. Es un parche que
+  propuso Dependabot.
+
 ## [0.21.0] - 2026-11-06
 
 ### Seguridad
@@ -1775,7 +1808,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/jeremialcala/hive/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/jeremialcala/hive/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jeremialcala/hive/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0

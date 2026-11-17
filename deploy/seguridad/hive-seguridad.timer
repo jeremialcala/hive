@@ -1,0 +1,12 @@
+# /etc/systemd/system/hive-seguridad.timer
+[Unit]
+Description=Hive: contador de eventos de seguridad cada minuto
+
+[Timer]
+# En el segundo 5: el vigía de Hive corre en el 30, Thor en el 40 y el de morocota en el 50, y todos consultan
+# docker.
+OnCalendar=*-*-* *:*:05
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
