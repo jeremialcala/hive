@@ -7,6 +7,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-16
+
 ### Seguridad
 - **Cuatro vulnerabilidades HIGH, corregidas en las imágenes de Python** (gateway, motor y portal). Las encontraron
   el escaneo de contenedores y el SCA del CI el 2026-11-16, y rompían todos los PR:
@@ -33,6 +35,10 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
   0.21.0 fue la primera release desplegada con `deploy/desplegar.sh`, con las firmas verificadas. El runbook de
   rollback está probado en producción, y cada release lleva sus SBOM
   ([Gate 4](.ai-dlc/gates/gate-4-deployment.md)).
+
+### Cambiado
+- **La imagen de la documentación construye con Node 26.13.1** (antes 26.13.0), fijada por digest. Es un parche que
+  propuso Dependabot.
 
 ## [0.21.0] - 2026-11-06
 
@@ -1802,7 +1808,8 @@ Cierre del Gate 0 (requisitos). Primera versión con la estructura AI-DLC.
 Primera versión etiquetada. Los cambios entre esta versión y la adopción de este changelog (2026-10-12) no se
 registraron aquí; están en el historial de git.
 
-[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/jeremialcala/hive/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/jeremialcala/hive/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/jeremialcala/hive/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jeremialcala/hive/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jeremialcala/hive/compare/v0.18.0...v0.19.0
