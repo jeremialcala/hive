@@ -41,8 +41,10 @@ EJEMPLOS = {
     "andvari": ["Key service unavailable: ConnectError"],
     "bifrost": [
         "Event bus: TimeoutError",
-        "The bus did not take a send of client c-1 (TimeoutError): it was not accepted, and the same key can be sent "
-        "again",
+        (
+            "The bus did not take a send of client c-1 (TimeoutError): it was not accepted, and the same key can be "
+            "sent again"
+        ),
         "Esperando a Bifröst: ConnectionClosedError",
         "El mensaje clasificado del bot b-1 no se pudo publicar: TimeoutError",
     ],
