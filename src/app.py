@@ -1078,5 +1078,5 @@ def remove_service_key(client_id: str, kid: str, _operator: Principal = Depends(
 
 @app.delete(path="/clients/{client_id}/keys/{kid}", tags=["Clients"], response_model=ResponseData)
 def remove_client_key(client_id: str, kid: str, _operator: Principal = Depends(require_operator)):
-    """Revoking a key is deleting it: the tokens signed with it stop being accepted at once."""
+    """Revoking a key is deleting it: no new access token is issued with it from then on. One issued before stays good until it expires, at most 10 minutes."""
     return ctr_remove_signing_key(client_id, kid, keep_one=False)

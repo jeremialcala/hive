@@ -1,10 +1,10 @@
 # Exportar y borrar: contactos, bots y clientes
 
 * **Estado:** review
-* **Fecha:** 2026-10-13
+* **Fecha:** 2026-11-20
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 03-implementation
-* **Versión:** 0.1.0
+* **Versión:** 0.1.1
 
 Lo que un cliente necesita para atender a quien le pide sus datos, y lo que pasa cuando un bot o un cliente se
 van. Cubre RF08, RF09 y RF10 del [PRD](../01-requirements/mvp-baas-gateway.md); esto es cómo quedó construido y
@@ -97,8 +97,9 @@ Los tres borrados son definitivos: quitan los documentos de la base, no los marc
 
 El orden está pensado para que se pueda interrumpir y repetir:
 
-1. Se le retiran las claves de firma y se le marca como inactivo. Desde ese instante no entra ningún token
-   suyo, tampoco uno emitido antes.
+1. Se le retiran las claves de firma y se le marca como inactivo. Desde ese instante no obtiene ningún token
+   nuevo. Un token emitido antes sigue valiendo hasta que caduca, como mucho 10 minutos: la API valida los tokens
+   sin consultar la base (ADR-0025).
 2. Se borran sus bots, y con ellos sus webhooks dejan de responder; después, lo guardado para ellos.
 3. Se borra su registro, y con él su clave de datos envuelta. La clave abierta se quita de la memoria del
    proceso que atiende la baja; cualquier otro proceso la suelta en cinco minutos como mucho.
