@@ -1,10 +1,10 @@
 # Matriz OWASP Top 10:2025 → controles de Hive
 
 * **Estado:** review
-* **Fecha:** 2026-11-05
+* **Fecha:** 2026-11-20
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 04-testing
-* **Versión:** 1.9.0
+* **Versión:** 1.10.0
 
 Lo que Hive hace de verdad contra cada riesgo del OWASP Top 10:2025, con lo que lo prueba y dónde se decidió. Sustituye
 a la copia de la plantilla, que estaba «sin adaptar todavía» (HIG-133, Gate 3).
@@ -34,7 +34,7 @@ Todas las pruebas citadas existen y corren en el CI: `gateway · test`, `engine 
 | A06 | Diseño inseguro | Cubierto, con una salvedad | Threat model; límites de `/oauth/token`, del resto de rutas, del webhook y de envíos; `Idempotency-Key`, ventana y consentimiento | Los contadores del webhook son por proceso, aproximados |
 | A07 | Identificación y autenticación | Cubierto | Aserción firmada y cifrada de un solo uso, DPoP, MFA en el `amr`, BFF con PKCE | DAST con la sesión abierta: `dast · zap` escanea el login sin ella |
 | A08 | Integridad de software y datos | Cubierto | Firma de Meta sobre el cuerpo crudo, contratos versionados, imágenes firmadas por el CI y verificadas antes de levantarlas | — |
-| A09 | Registro y monitorización | Parcial | Logs sin datos personales, `WARNING` de auditoría, trazas sin PII, vigía | Alertas, tablero y runbook (HIG-140); RS14, RS19, RS25 |
+| A09 | Registro y monitorización | Parcial | Logs sin datos personales, `WARNING` de auditoría, trazas sin PII, vigía; alertas de seguridad y del SLO, tablero, logs 90 días en Loki fuera del host, runbook de incidentes | El simulacro del runbook (HIG-140, punto 5); RS14, RS19, RS25 |
 | A10 | Condiciones excepcionales | Cubierto | 503 para que Meta reintente, fallo cerrado, 500 genérico, bus que reentrega | Mutation testing (HIG-137); RD-19 aceptado |
 
 ## A01 — Control de acceso
@@ -373,9 +373,21 @@ verifica nada.
   - **Decidido en:** `docs/03-implementation/trazas.md`.
 - **El vigía** (`deploy/vigia/hive-vigia.sh`): reinicia lo que no está healthy y avisa por ntfy.
   - **Prueba:** `tu/test_hive_vigia.py::test_reinicia_lo_unhealthy_y_avisa`.
+- **Alertas de seguridad** (HIG-140): el contador de eventos de los logs y ocho alertas en Yggdrasil
+  ([eventos de seguridad](../docs/06-monitoring/eventos-de-seguridad.md)).
+  - **Prueba:** `tu/test_hive_seguridad.py` fija contra el código cada frase que cuenta; las alertas, con promtool
+    en Yggdrasil (`hive-alertas.test.yml`).
+- **El tablero «Hive · seguridad»** en Odín, revisado en producción el 2026-11-20.
+- **Los logs, fuera del host que los escribe:** Loki los guarda 90 días en midgard, sin borrado por API
+  (ADR-0013 de Yggdrasil).
+- **El SLO, medido desde fuera** ([SLO](../docs/06-monitoring/slo.md)), con alertas de quema del presupuesto.
+  - **Prueba:** `hive-slo.test.yml` de Yggdrasil.
+- **El runbook de incidentes** ([runbook](../docs/06-monitoring/runbook-incidentes.md)), con el aviso de brechas
+  del art. 33.2.
 
 **Huecos:**
-- `docs/06-monitoring/` está vacío: no hay alertas de seguridad, ni tablero, ni runbook de incidentes (HIG-140);
+- el runbook no se ha probado: el simulacro sobre el cliente de prueba es HIG-140, punto 5. Los huecos que encontró
+  al escribirlo están en el [feedback loop](../docs/06-monitoring/feedback-loop.md#pendientes);
 - la auditoría por cliente, legible por el `cliente-admin`, es HIG-95 (RS14, RS25);
 - los eventos del bus sin datos personales siguen pendientes (RS19).
 

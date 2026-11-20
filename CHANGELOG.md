@@ -7,6 +7,27 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
 
 ## [Unreleased]
 
+### Añadido
+- **La fase 06 de monitoreo, para el Gate 5** (HIG-140, punto 4; `docs/06-monitoring/`):
+  - **SLI y SLO:** hive-api y hive-webhook disponibles el 99,5 % en 30 días y el 99 % de las respuestas en menos de
+    1 s, medidos con sondas desde fuera (decisión de Jeremi del 2026-11-20). Incluye la política del presupuesto de
+    errores. Las reglas, las alertas y el tablero «Hive · SLO» están en Yggdrasil (higerotech/yggdrasil#134).
+  - **Los tres pilares:** métricas en Mimir, logs en Loki (90 días, fuera de nidavellir) y trazas en Saga, y cómo
+    encajan.
+  - **El inventario de alertas y tableros** que vigilan a Hive.
+  - **El runbook de incidentes:** del aviso al postmortem, con seis escenarios (clave robada, token de Meta
+    filtrado, cliente comprometido, persona comprometida, secreto de la plataforma y caída), consultas de Loki y el
+    aviso de brechas a los clientes (art. 33.2). Este último era un entregable pendiente de la clasificación de
+    datos.
+  - **El feedback loop:** cómo vuelve lo aprendido a las fases anteriores, con lo que ya volvió y lo pendiente.
+  - **El Gate 5,** con tres de cinco ítems cumplidos. Faltan el SLO desplegado y el simulacro.
+
+### Corregido
+- **Revocar una clave no corta al instante los tokens ya emitidos:** valen hasta que caducan, 10 minutos como
+  mucho, porque la API los valida sin consultar la base (ADR-0025). Lo decían mal la descripción de
+  `DELETE /clients/{client_id}/keys/{kid}`, y con ella el contrato OpenAPI, y la baja de un cliente en
+  `exportar-y-borrar.md`.
+
 ## [0.22.0] - 2026-11-16
 
 ### Seguridad

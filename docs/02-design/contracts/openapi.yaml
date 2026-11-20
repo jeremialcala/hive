@@ -975,7 +975,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   summary: 'The chatbots of a Hive client: their Meta credentials, numbers, rules, intents and contacts'
   title: Hive management API
-  version: 0.22.0
+  version: 0.22.0+develop
 openapi: 3.1.0
 paths:
   /audit:
@@ -2809,7 +2809,8 @@ paths:
       - Clients
   /clients/{client_id}/keys/{kid}:
     delete:
-      description: 'Revoking a key is deleting it: the tokens signed with it stop being accepted at once.'
+      description: 'Revoking a key is deleting it: no new access token is issued with it from then on. One issued
+        before stays good until it expires, at most 10 minutes.'
       operationId: remove_client_key_clients__client_id__keys__kid__delete
       parameters:
       - in: path

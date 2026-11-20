@@ -1,10 +1,10 @@
 # Clasificación de datos
 
 * **Estado:** approved (Gate 0 del refactor, 2026-10-18)
-* **Fecha:** 2026-11-01
+* **Fecha:** 2026-11-20
 * **Decisores:** Jeremi Alcala
 * **Fase AI-DLC:** 00-project
-* **Versión:** 0.6.0
+* **Versión:** 0.6.1
 * **Owner de datos (DPO):** `<TODO: designar o confirmar que no aplica>`
 * **Regulación aplicable:** GDPR (Reglamento (UE) 2016/679), adoptado como modelo de diseño
 
@@ -100,4 +100,6 @@ Niveles: Público < Interno < Confidencial < Restringido.
 
 - **Contrato de encargo.** Un modelo de contrato del art. 28 con los clientes y un registro de actividades del
   art. 30.
-- **Brechas.** Un procedimiento para avisar a los clientes de una violación de seguridad (art. 33.2).
+- **Brechas.** Un procedimiento para avisar a los clientes de una violación de seguridad (art. 33.2). Está en el
+  [runbook de incidentes](../06-monitoring/runbook-incidentes.md#aviso-de-brechas); falta fijar el contacto y el
+  canal de cada cliente en su contrato de encargo.
