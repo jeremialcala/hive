@@ -20,7 +20,8 @@ y este proyecto se adhiere a [Versionado Semántico](https://semver.org/lang/es/
     aviso de brechas a los clientes (art. 33.2). Este último era un entregable pendiente de la clasificación de
     datos.
   - **El feedback loop:** cómo vuelve lo aprendido a las fases anteriores, con lo que ya volvió y lo pendiente.
-  - **El Gate 5,** con tres de cinco ítems cumplidos. Faltan el SLO desplegado y el simulacro.
+  - **El Gate 5,** con cuatro de cinco ítems cumplidos: el SLO se mide en producción desde Yggdrasil 0.5.29. Falta
+    el simulacro.
 
 ### Corregido
 - **Revocar una clave no corta al instante los tokens ya emitidos:** valen hasta que caducan, 10 minutos como
