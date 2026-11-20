@@ -1,19 +1,19 @@
 # Gate 5 — Monitoreo (cierre de Fase 06)
 
-**Abierto** (HIG-140): tres de los cinco ítems están cumplidos.
-- **El SLO** está definido y se medirá en cuanto se despliegue la release de Yggdrasil con sus sondas.
-- **El proceso de incidentes** está documentado, pero falta probarlo con el simulacro (HIG-140, punto 5).
+**Abierto** (HIG-140): cuatro de los cinco ítems están cumplidos. El proceso de incidentes está documentado, pero
+falta probarlo con el simulacro (HIG-140, punto 5). El gate se cierra con el simulacro.
 
-El gate se cierra con el simulacro.
-
-- [ ] SLIs/SLOs definidos y monitoreados
+- [x] SLIs/SLOs definidos y monitoreados
   - **Definidos** (2026-11-20, decisión de Jeremi): hive-api y hive-webhook disponibles el 99,5 % en 30 días, y el 99 %
     de las respuestas en menos de 1 s, medidos con sondas desde fuera
     ([SLI y SLO](../../docs/06-monitoring/slo.md)). Los números de partida, medidos por el mismo camino: 99,87 % en
     7 días y 99,37 % en 30.
   - **Vigilados por Mimir** (higerotech/yggdrasil#134): reglas, alertas de quema del presupuesto con sus 7 pruebas de
     promtool, y el tablero «Hive · SLO».
-  - **Falta:** desplegarlo y comprobar en midgard que llegan las sondas.
+  - **En producción** desde Yggdrasil 0.5.29 (2026-11-20, 22:00 UTC), comprobado en midgard:
+    - las dos sondas responden (`probe_success` a 1), en 0,24 y 0,25 s;
+    - las 14 reglas de los cuatro grupos `hive_slo_*` están cargadas y sanas, y las 5 alertas, inactivas;
+    - el tablero está montado en Odín, sin errores de provisioning.
 - [x] Dashboard de seguridad activo
   - **Está** (Yggdrasil 0.5.27, 2026-11-19): «Hive · seguridad» en Odín, con los eventos que cuenta el contador de los
     logs ([eventos de seguridad](../../docs/06-monitoring/eventos-de-seguridad.md)). Jeremi lo revisó en producción
