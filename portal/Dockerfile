@@ -5,7 +5,7 @@
 #
 # What goes into the context is said by portal/Dockerfile.dockerignore, which BuildKit uses instead of the root's.
 # The base goes by digest, like the engine's: a tag moves, and the same line would give another image another day.
-FROM python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 LABEL authors="Jeremi"
 
 # The image lags behind Debian: on 2026-11-16 even its newest build still had zlib1g with two HIGH already fixed in

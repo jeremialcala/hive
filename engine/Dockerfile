@@ -10,7 +10,7 @@
 # (`python -m src.workers.<worker>`). Sin NeMo ni annoy no se compila nada, así que basta una etapa, sobre la base
 # delgada. Va por digest: un tag es móvil y la misma línea daría otra imagen otro día. Para renovarla:
 #   docker buildx imagetools inspect python:3.12-slim --format '{{.Manifest.Digest}}'
-FROM python:3.12-slim@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 LABEL authors="Jeremi"
 
 # La imagen va por detrás de Debian: el 2026-11-16, incluso su versión más nueva traía un zlib1g con dos HIGH ya
